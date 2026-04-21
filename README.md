@@ -32,7 +32,7 @@ Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das scho
 
 ## Hardware-Bastelei
 
-Der Part folgt noch
+Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
 
 ### Benötigte Software
