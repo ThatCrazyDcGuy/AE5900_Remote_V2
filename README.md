@@ -114,5 +114,6 @@ Ich bin kein Programmierer, aber ich kann Texte lesen, verstehen und in meine Pr
 ## Was in den letzten Tagen passiert ist:
 
 21. Apri 2026:
+    
 1. Angefangen den Krams hochzuladen
 
