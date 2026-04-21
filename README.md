@@ -111,9 +111,5 @@ Aber ich werde einige Skripte, Bilder und Ideen hochladen, um sie mit anderen zu
 
 Ich bin kein Programmierer, aber ich kann Texte lesen, verstehen und in meine Projekte einbauen.
 
-## Was in den letzten Tagen passiert ist:
 
-21. Apri 2026:
-    
-1. Angefangen den Krams hochzuladen
 
