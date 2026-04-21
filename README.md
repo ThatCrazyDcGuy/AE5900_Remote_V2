@@ -91,9 +91,13 @@ pulse.rules = [ { matches = [ { application.process.binary = "mumble" } ]; actio
 
 Wenn die Hardware aufgebaut und alle Einstellungen vorgenommen sind, dann:
 
-# git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
+	# git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
 
-# python3 ~/AE-5900_Remote_v1/webinterface/app.py
+	# python3 ~/AE-5900_Remote_v1/webinterface/app.py
+
+Updaten kann man dann jeweils mit:
+
+	# git pull
 
 Es empfiehlt sich, zu Hause einen WebSDR zu betreiben. Ich nutze ihn selbst. Nicht nur, um zu überprüfen, ob der richtige Kanal und Modus ausgewählt ist, sondern auch, um den Ton zu prüfen. Außerdem können Sie so die Vorgänge auf allen Kanälen verfolgen. Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RTL-SDR-Dongle (z. B. RTL-SDR Blog V3 oder V4 / Nooelec NESDR V5) und einer Antenne aufbauen.
 
