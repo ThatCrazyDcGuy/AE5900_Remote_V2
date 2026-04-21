@@ -46,10 +46,10 @@ Tailscale auf all den Geräten die für dieses Projekt genutzt werden. :)
 
 Dann wird in die Tasten gehauen oder der nachfolgende Krams einfach kopiert und eingefügt.
 
-sudo apt update && sudo apt full-upgrade -y
+	# sudo apt update && sudo apt full-upgrade -y
 
-sudo apt install git curl openssh-server python3-pyaudio python3-numpy python3-serial python3-flask pipewire pipewire-audio pipewire-alsa pipewire-pulse pipewire pipewire-audio-client-libraries pavucontrol wireplumber libpipewire-0.3-modules ladspa-sdk swh-plugins dbus-user-session mc htop
-sudo apt remove pipewire-media-session
+	# sudo apt install git curl openssh-server python3-pyaudio python3-numpy python3-serial python3-flask pipewire pipewire-audio pipewire-alsa pipewire-pulse pipewire pipewire-audio-client-libraries pavucontrol wireplumber libpipewire-0.3-modules ladspa-sdk swh-plugins dbus-user-session mc htop
+	# sudo apt remove pipewire-media-session
 
     # sudo usermod -a -G audio $USER
     # sudo usermod -a -G dialout $USER
