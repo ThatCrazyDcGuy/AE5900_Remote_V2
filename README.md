@@ -15,6 +15,10 @@ Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachge
 
 	![AE5900_Remote_v2](/pictures/screenshot_v43_v2.jpg)
 
+- Ein Foto, ok, zwei Fotos vom Prototyp
+
+	![AE5900_Remote_v2](/pictures/prototype2.jpg)
+
 ## Über das Gerät & Warum
 
 Das Albrecht AE-5900 ist das fantastische neue (2026) FM/AM/SSB/CW-Funkgerät, mit dem ich nicht gerechnet hatte. Es bietet riesiges Potenzial für jede Menge Spaß und hat mich nach 35 Jahren Funkpause wieder zum CB-Funk zurückgebracht.
