@@ -9,6 +9,12 @@ Es ist zwar nicht mit rigctl oder hamlib vergleichbar, aber es funktioniert.
 Falls Sie das Funkgerät nicht kennen: https://www.alan-electronics.de/product-details.aspx?WPParams=50C9D4C6C5D2E6BDA5A98494A895
 Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachgeschäft für klassische CB- und Amateurfunkgeräte.
 
+## Ein Bild erzählt dir mehr als deine Ehefrau
+
+- Ein Screenshot vom aktuellen UI, im Browser, auf dem Smartphone
+
+	![AE5900_Remote_v12](/pictures/screenshot_v43_v2.jpg)
+
 ## Über das Gerät & Warum
 
 Das Albrecht AE-5900 ist das fantastische neue (2026) FM/AM/SSB/CW-Funkgerät, mit dem ich nicht gerechnet hatte. Es bietet riesiges Potenzial für jede Menge Spaß und hat mich nach 35 Jahren Funkpause wieder zum CB-Funk zurückgebracht.
