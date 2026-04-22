@@ -40,6 +40,11 @@ Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das scho
 
 Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
+- Vorab mal die Komponenten für den Audiofilter und was man so zum Basteln nutzen kann:
+
+	![AE5900_Remote_v2](/pictures/filterkomponenten.jpg)
+	![AE5900_Remote_v2](/pictures/steuerungkomponenten.jpg)
+
 
 ### Benötigte Software
 
