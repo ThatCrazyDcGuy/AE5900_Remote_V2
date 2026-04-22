@@ -1,4 +1,4 @@
-Eine komplexere LAN/Web-Fernsteuerung, die das AMM-500 Mikrofon simuliert, für das Albrecht AE-5900 Funkgerät per Webbrowser bedienbar
+Eine komplexere LAN/Web-Fernsteuerung für das Albrecht AE-5900 Funkgerät, die das AMM-500 Mikrofon simuliert. Per Webbrowser bedienbar.
 =======================================================
 
 ## Hauptziel des Projekts:
