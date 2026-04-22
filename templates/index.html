@@ -39,7 +39,10 @@
     <div class="controls">
         <button onclick="send('U')">▲ CH UP</button>
         <button onclick="send('D')">▼ CH DOWN</button>
-        <button onclick="send('M')" style="grid-column: span 2;">MODE</button>
+	<button onclick="send('M')">MODE</button>
+	<button onclick="send('SSCAN')" id="scanBtn">S-SCAN</button>
+
+<!--        <button onclick="send('M')" style="grid-column: span 2;">MODE</button> -->
         <button onclick="send('P1')" id="lbl-p1">P1 ({{config.p1_label}})</button>
         <button onclick="send('P2')" id="lbl-p2">P2 ({{config.p2_label}})</button>
         <button onclick="send('P3')" id="lbl-p3">P3 ({{config.p3_label}})</button>
@@ -57,6 +60,24 @@
             <p>P2 Label: <input type="text" value="{{config.p2_label}}" onchange="setCfg('P2', this.value)" style="width:100px;"></p>
             <p>P3 Label: <input type="text" value="{{config.p3_label}}" onchange="setCfg('P3', this.value)" style="width:100px;"></p>
             <p>P4 Label: <input type="text" value="{{config.p4_label}}" onchange="setCfg('P4', this.value)" style="width:100px;"></p>
+<!--            <p>Scan Speed (ms): <input type="number" id="scanSpeedInput" value="{{ config.scan_speed }}" style="width: 60px;" onchange="fetch('/api/cmd/SETSPEED_' + this.value)"> </p> -->
+<p>Scan Speed (ms): 
+    <input type="number" id="scanSpeedInput" 
+           value="{{ config.scan_speed * 1000 | int }}" 
+           style="width: 70px;" 
+           onchange="send('SETSPEED_' + this.value)"> 
+</p>
+<div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #444; color: #aaa; font-size: 0.9em; line-height: 1.4;">
+    <strong style="color: #0f0;">ℹ️ Kurzanleitung für Tester:</strong>
+    <ul style="padding-left: 20px; margin-top: 5px;">
+        <li><strong style="color: #ff8800;">Orange Taste:</strong> VOX hat angesprochen (Gerät sendet automatisch).</li>
+        <li><strong style="color: #00ff00;">S-SCAN:</strong> Suchlauf stoppt bei Signal. Jede Taste beendet den Scan.</li>
+        <li><strong style="color: #0088ff;">Super Sync:</strong> 3 Sek. halten, um Kanal 01 zu erzwingen (falls Anzeige asynchron).</li>
+        <li>Kanalwahl via Keypad: Immer 2 Ziffern eingeben (z.B. 07).</li>
+    </ul>
+    <p style="font-style: italic;">Viel Spass beim Testen! Feedback bitte direkt an mich.</p>
+</div>
+
         </div>
     </details>
 
@@ -66,7 +87,6 @@
 const canvas = document.getElementById('audioVisualizer');
 const ctx = canvas.getContext('2d');
 
-// WICHTIG: Auflösung setzen
 canvas.width = canvas.offsetWidth;
 canvas.height = canvas.offsetHeight;
 
@@ -82,14 +102,11 @@ function drawSpectrum() {
             const barWidth = canvas.width / data.length;
             
             data.forEach((val, i) => {
-                // Fall-Dämpfung etwas verringert für flüssigere Optik
                 let displayVal = Math.max(val, lastData[i] - 1.5);
                 lastData[i] = displayVal;
 
-                // Hier den Teiler anpassen (40 ist empfindlicher als 80)
                 let height = (displayVal / 40) * canvas.height; 
                 
-                // Sicherheit: Höhe begrenzen
                 if(height > canvas.height) height = canvas.height;
 
                 let grad = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - height);
@@ -97,7 +114,6 @@ function drawSpectrum() {
                 grad.addColorStop(1, '#00ff00');
                 
                 ctx.fillStyle = grad;
-                // Zeichne von unten nach oben
                 ctx.fillRect(i * barWidth, canvas.height - height, barWidth - 1, height);
             });
             
@@ -109,7 +125,6 @@ function drawSpectrum() {
         });
 }
 
-// Fenster-Resize abfangen, damit das Canvas mitwächst
 window.onresize = () => {
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
@@ -120,6 +135,8 @@ drawSpectrum();
 
         function updateUI(data) {
             if(!data) return;
+            
+            // 1. Kanal und Modus
             const ch = data.CH;
             document.getElementById('chDisp').innerText = ch;
             document.getElementById('mhzDisp').innerText = (freqs[ch] || "---.---") + " MHz";
@@ -127,31 +144,60 @@ drawSpectrum();
             
             const btn = document.getElementById('pttBtn');
             const stat = document.getElementById('pttStat');
+            const sBtn = document.getElementById('scanBtn');
             
-            if(data.PTT === "ON") {
-                btn.classList.add('active'); btn.innerText = "TX ACTIVE (" + data.REMAINING + "s)";
-                stat.innerText = "● TRANSMIT"; stat.style.color = "red";
-            } else if(data.BUSY) {
-                btn.classList.remove('active'); btn.innerText = "PTT TOGGLE";
-                stat.innerText = "⚡ SIGNAL DETECTED"; stat.style.color = "#00ff00";
+            // 2. Sende-Zustand (PTT / VOX) und Status-Text
+            if (data.PTT === "ON") {
+                // Manuelle PTT aktiv (Rot)
+                btn.classList.add('active');
+                btn.style.background = "#ff0000";
+                btn.innerText = "TX ACTIVE (" + data.REMAINING + "s)";
+                stat.innerText = "● TRANSMIT"; 
+                stat.style.color = "red";
+            } else if (data.VOX_TX) {
+                // VOX sendet (Gelb/Orange)
+                btn.classList.remove('active');
+                btn.style.background = "#ff8800"; 
+                btn.innerText = "VOX TRANSMITTING";
+                stat.innerText = "● VOX ACTIVE"; 
+                stat.style.color = "#ff8800";
+            } else if (data.BUSY) {
+                // Signal wird empfangen (Grün)
+                btn.classList.remove('active');
+                btn.style.background = "#4a0000"; 
+                btn.innerText = "PTT TOGGLE";
+                stat.innerText = "⚡ SIGNAL DETECTED"; 
+                stat.style.color = "#00ff00";
             } else {
-                btn.classList.remove('active'); btn.innerText = "PTT TOGGLE";
-                stat.innerText = "○ RX IDLE"; stat.style.color = "#444";
+                // Leerlauf (Grau)
+                btn.classList.remove('active');
+                btn.style.background = "#4a0000"; 
+                btn.innerText = "PTT TOGGLE";
+                stat.innerText = "○ RX IDLE"; 
+                stat.style.color = "#444";
             }
-        }
 
-        // NEU: Die intelligente Abfrage-Schleife
+            if(data.SW_SCAN) {
+                sBtn.style.background = "#004444";
+                sBtn.style.boxShadow = "0 0 10px #00ffff";
+                sBtn.innerText = "SCANNING...";
+            } else {
+                sBtn.style.background = "#333";
+                sBtn.style.boxShadow = "none";
+                sBtn.innerText = "S-SCAN";
+            }
+        } 
+
+
         function pollStatus() {
             fetch('/api/cmd/STATUS')
                 .then(r => r.json())
                 .then(data => {
                     updateUI(data);
-                    // Warte 1 Sekunde NACHDEM die Antwort da war
                     setTimeout(pollStatus, 1000); 
                 })
                 .catch(e => {
                     console.error("Poll Fehler:", e);
-                    // Bei Netzwerkfehler etwas länger warten (2 Sek)
                     setTimeout(pollStatus, 2000);
                 });
         }
@@ -167,7 +213,6 @@ drawSpectrum();
         sB.onmousedown = sB.ontouchstart = (e) => { if(e.type==='touchstart') e.preventDefault(); startS(); };
         sB.onmouseup = sB.onmouseleave = sB.ontouchend = stopS;
 
-        // START: Anstelle von setInterval jetzt der einmalige Aufruf
         pollStatus();
     </script>
 </body>
