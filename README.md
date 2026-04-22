@@ -6,7 +6,7 @@ Eine komplexere LAN/Web-Fernsteuerung für das Albrecht AE-5900 Funkgerät, die 
 Entwicklung einer komplexeren LAN/Web-Fernsteuerung für das Albrecht AE-5900.
 Es ist zwar nicht mit rigctl oder hamlib vergleichbar, aber es funktioniert.
 
-Falls Sie das Funkgerät nicht kennen: https://www.alan-electronics.de/product-details.aspx?WPParams=50C9D4C6C5D2E6BDA5A98494A895
+Falls Du das Funkgerät nicht kennst: https://www.alan-electronics.de/product-details.aspx?WPParams=50C9D4C6C5D2E6BDA5A98494A895
 Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachgeschäft für klassische CB- und Amateurfunkgeräte.
 
 ## Ein Bild erzählt dir mehr als deine Ehefrau
@@ -19,19 +19,21 @@ Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachge
 
 Das Albrecht AE-5900 ist das fantastische neue (2026) FM/AM/SSB/CW-Funkgerät, mit dem ich nicht gerechnet hatte. Es bietet riesiges Potenzial für jede Menge Spaß und hat mich nach 35 Jahren Funkpause wieder zum CB-Funk zurückgebracht.
 
-Also habe ich etwas Zusätzliches dafür gebaut, und jemand (ja, danke nochmal, Kumpel!) hat mir geraten, es auf GitHub zu veröffentlichen. Ich dachte mir: Na gut. Das Gerät basiert auf einem FT232RL FT232 FTDI USB 3,3 V 5,5 V zu TTL Seriell Adapter, einer günstigen USB-Soundkarte, einem USB-Hub-Breakout-Board, Spulen, Widerständen, Kondensatoren und ein paar Teilen aus meiner Bastelkiste. Es funktioniert einwandfrei und macht mir viel Spaß. Mal sehen, was die nächsten Tage bringen.
+Also habe ich etwas Zusätzliches dafür gebaut, und jemand (ja, danke nochmal, Kumpel!) hat mir geraten, es auf GitHub zu veröffentlichen. Ich dachte mir: Na gut.
+
+Das Gerät basiert auf einem FT232RL FT232 FTDI USB 3,3 V 5,5 V zu TTL Seriell Adapter, einer günstigen USB-Soundkarte, einem USB-Hub-Breakout-Board, Spulen, Widerständen, Kondensatoren und ein paar Teilen aus meiner Bastelkiste. Es funktioniert einwandfrei und macht mir viel Spaß. Mal sehen, was die nächsten Tage bringen.
 
 Aber warum?
 
-Es ist ein Hobby, für das man einfach nicht genug Zeit haben wird. Besonders, wenn man ein älterer Herr mit Kindern, Garten, einem oder mehreren Jobs und all den Überraschungen des Lebens ist. Jetzt können Sie Ihre Heimstation mit Ihrer selbstgebauten Antenne sogar auf der Toilette Ihres Arbeitsplatzes oder wo auch immer nutzen.
+Es ist ein Hobby, für das man einfach nicht genug Zeit haben wird. Besonders, wenn man ein älterer Kerl mit Kindern, Garten, einem oder mehreren Jobs und all den anderen Überraschungen des Lebens. Jetzt kannst du deine Heimstation mit deiner perfekten, selbstgebauten Antenne sogar auf der Toilette deines Arbeitsplatzes oder wo auch immer nutzen.
 
 Genau deshalb.
 
 ## So funktioniert es:
 
-Schließen Sie das Remote-Gerät an einen Raspberry Pi oder ein anderes Gerät an, auf dem das Python-Skript ausgeführt werden kann. Außerdem sollten Mikrofon- und Lautsprecherausgang Ihres AE5900 angeschlossen sein. Starten Sie Mumble auf Ihrem Host-Rechner. Eventuell müssen Sie Ein- und Ausgang tauschen. Führen Sie die Datei `python3 ae_5900_v2.py` aus.
+Schließe das Remote-Gerät an einen Raspberry Pi oder ein anderes Gerät an, auf dem das Python-Skript ausgeführt werden kann. Außerdem sollten Mikrofon- und Lautsprecherausgang des AE5900 angeschlossen sein. Starte Mumble auf dem Host-Rechner. Eventuell muss Ein- und Ausgang in den Linux-Audio-Settings getauscht werden. Führe die Datei `python3 ae_5900_v2.py` aus.
 
-Rufen Sie `localhost:5000` auf. Stellen Sie an Ihrem AE5900 Mikrofon TYPE 2 ein, setzen Sie ihre P1 - P4 Key-Shortcuts Halten Sie die Sync-Taste im Websetup-Menü 3 Sekunden lang gedrückt.  Starten Sie Mumble auf Ihrem Remote-Gerät und viel Spaß!
+Rufe `localhost:5000` auf. Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts Halte die Sync-Taste im Websetup-Menü 3 Sekunden lang gedrückt.  Starte Mumble auf dem Remote-Gerät (Smartphone / Computer... was auch immer) und hab viel Spaß!
 
 
 Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das schon hin.
@@ -110,7 +112,7 @@ Updaten kann man dann jeweils mit:
 
 	# git pull
 
-Es empfiehlt sich, zu Hause einen WebSDR zu betreiben. Ich nutze ihn selbst. Nicht nur, um zu überprüfen, ob der richtige Kanal und Modus ausgewählt ist, sondern auch, um den Ton zu prüfen. Außerdem können Sie so die Vorgänge auf allen Kanälen verfolgen. Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RTL-SDR-Dongle (z. B. RTL-SDR Blog V3 oder V4 / Nooelec NESDR V5) und einer Antenne aufbauen.
+Es empfiehlt sich, zu Hause einen WebSDR zu betreiben. Ich nutze ihn selbst. Nicht nur, um zu überprüfen, ob der richtige Kanal und Modus ausgewählt ist, sondern auch, um den Ton zu prüfen. Außerdem kannst du so die Vorgänge auf allen Kanälen verfolgen. Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RTL-SDR-Dongle (z. B. RTL-SDR Blog V3 oder V4 / Nooelec NESDR V5) und einer Antenne aufbauen.
 
 Schau dir einfach OpenwebrxPlus an: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https://www.rtl-sdr.com/v4/
 
