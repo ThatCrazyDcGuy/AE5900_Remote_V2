@@ -67,6 +67,13 @@
            style="width: 70px;" 
            onchange="send('SETSPEED_' + this.value)"> 
 </p>
+<div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">
+    <p>MIC Volume: <span id="volDisp">--</span>%</p>
+    <div style="display: flex; gap: 10px;">
+        <button onclick="changeVol('down')" style="flex: 1;">Vol -</button>
+        <button onclick="changeVol('up')" style="flex: 1;">Vol +</button>
+    </div>
+</div>
 <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #444; color: #aaa; font-size: 0.9em; line-height: 1.4;">
     <strong style="color: #0f0;">ℹ️ Kurzanleitung für Tester:</strong>
     <ul style="padding-left: 20px; margin-top: 5px;">
@@ -187,6 +194,17 @@ drawSpectrum();
                 sBtn.innerText = "S-SCAN";
             }
         } 
+
+// Neue Funktion für die Lautstärke
+function changeVol(action) {
+    fetch('/api/volume/' + action)
+        .then(r => r.json())
+        .then(data => {
+            if(data.volume !== undefined) {
+                document.getElementById('volDisp').innerText = data.volume;
+            }
+        });
+}
 
 
         function pollStatus() {
