@@ -51,7 +51,7 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
 	![AE5900_Remote_v2](/pictures/filterkomponenten.jpg)
 	![AE5900_Remote_v2](/pictures/steuerungkomponenten.jpg)
 	![AE5900_Remote_v2](/pictures/overview_v1.jpg)
-	
+	![AE5900_Remote_v2](/pictures/audiofilter.jpg)
 
 
 ### Benötigte Software
