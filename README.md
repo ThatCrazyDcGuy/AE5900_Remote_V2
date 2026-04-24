@@ -13,7 +13,7 @@ Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachge
 
 - Ein Screenshot vom aktuellen UI, im Browser, auf dem Smartphone
 
-	![AE5900_Remote_v2](/pictures/screenshot_v43_v2.jpg)
+	![AE5900_Remote_v2](/pictures/webui.jpg)
 
 - Ein Foto, ok, zwei Fotos vom Prototyp
 
