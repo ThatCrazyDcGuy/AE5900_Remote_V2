@@ -5,6 +5,7 @@ import json
 import os
 import numpy as np
 import pyaudio
+import subprocess
 from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
@@ -159,6 +160,32 @@ def get_audio():
         return jsonify(fft_scaled.tolist())
     except:
         return jsonify([0]*32)
+
+@app.route('/api/volume/<action>')
+def volume_api(action):
+    try:
+        # 1. Aktuelle Lautstärke holen
+        res = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], capture_output=True, text=True)
+        # Ausgabe ist oft "Volume: 0.50" (oder mit [MUTED])
+        parts = res.stdout.split()
+        current_vol = float(parts[1])
+
+        # 2. Aktion berechnen (5% Schritte sind meistens spürbarer als 1%)
+        step = 0.05 
+        if action == 'up':
+            new_vol = min(1.0, current_vol + step)
+        elif action == 'down':
+            new_vol = max(0.0, current_vol - step)
+        elif action.replace('.','',1).isdigit(): # Falls direkter Wert übergeben wird
+            new_vol = max(0.0, min(1.0, float(action)))
+        else:
+            return jsonify({"volume": current_vol})
+
+        # 3. Setzen
+        subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{new_vol:.2f}"])
+        return jsonify({"volume": int(new_vol * 100)}) # Rückgabe in Prozent für die UI
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/cmd/<cmd>')
 def api_cmd(cmd):
