@@ -53,7 +53,7 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
 - Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen gemalt, aber so verstehts jeder.
 
-	![AE5900_Remote_v2](/pictures/overview_v2.jpg)
+	![AE5900_Remote_v2](/pictures/overview_v2.png)
 	![AE5900_Remote_v2](/pictures/audiofilter.jpg)
 
 Man kann die USB Geräte natürlich auch einfach in einen USB Hub stecken, aber wo bleibt da der Spass am "so klein wie möglich" bauen?
