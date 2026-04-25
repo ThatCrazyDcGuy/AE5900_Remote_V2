@@ -51,18 +51,21 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
 	![AE5900_Remote_v2](/pictures/filterkomponenten.jpg)
 	![AE5900_Remote_v2](/pictures/steuerungkomponenten.jpg)
 
-- Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen gemalt, aber so verstehts jeder.
+- Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen aber so verstehts jeder.
 Zudem habe ich auch gleich einen Fehler darin gemacht. Die rote und grüne Verbindung vom FT232RL zum RJ45 Terminal sind falsch.
-Richtig ist; vom FT232RL RXD zu RJ45 TXD und vom FT232RL TXD zum RJ45 RXD. Bei Gelegenheit folgt ein Korrektur des Bildes.
+Richtig ist; vom FT232RL RXD zu RJ45 TXD und vom FT232RL TXD zum RJ45 RXD. Bei Gelegenheit folgt eine Korrektur des Bildes.
 
 	![AE5900_Remote_v2](/pictures/overview_v2.png)
 	![AE5900_Remote_v2](/pictures/audiofilter.jpg)
 
+
 Man kann die USB Geräte natürlich auch einfach in einen USB Hub stecken, aber wo bleibt da der Spass am "so klein wie möglich" bauen?
 Die beiden Filter muss man aber dennoch löten. 
 
-Es ist auch mölich ohne Klinkenstecker das Audio des AE5900 abzugreifen. Der Mic Plug bietet die Pins EXT-AF und GND.
-Hier gibt es aber 2 Proleme. Zumindest auf meinem AE5900 habe ich dort unschöne HF drauf. Will man dass das Gerät zu Hause stumm da steht, muss man dennoch einen Klinkenstecker als Terminator verwenden.
+Es ist auch mölich ohne Klinkenstecker das Audio des AE5900 abzugreifen. Der Mic Plug bietet die Pins EXT-AF und GND. Da lieht ein schwaches Signal, womöglich extra für Soundkarten an.
+Hier gibt es aber 2 Proleme. 1. Zumindest auf meinem AE5900 habe ich dort unschöne HF drauf, trotz Mantelwellensperre und Filter. 2. Will man dass das Gerät bei Remotenutzung zu Hause stumm da steht, muss man dennoch einen Klinkenstecker als Terminator verwenden.
+
+Falls ihr HF auf der Leitung habt, euch also auf AM und SSB selber hört, weil eure Mantelwellensperre Schrott ist, lötet paralell zu den Ei- uund Ausgängen der Audioerbindungen jeweils noch einen Keramikkondensator 104 (100nF). Das hilft. Auch das Anbringen diverser Klappferrite ist hier hilfreich.
 
 ### Benötigte Software
 
@@ -117,6 +120,8 @@ pulse.rules = [ { matches = [ { application.process.binary = "mumble" } ]; actio
 
 
 ## Los geht's!
+
+Bestenfalls ist der Rechner neugestartet, damit "sudo usermod -a -G dialout $USER" auch seine Wirkung zeigt.
 
 Wenn die Hardware aufgebaut und alle Einstellungen vorgenommen sind, dann:
 
