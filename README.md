@@ -56,8 +56,6 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
 	![AE5900_Remote_v2](/pictures/steuerungkomponenten.jpg)
 
 - Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen aber so verstehts jeder.
-Zudem habe ich auch gleich einen Fehler darin gemacht. Die rote und grüne Verbindung vom FT232RL zum RJ45 Terminal sind falsch.
-Richtig ist; vom FT232RL RXD zu RJ45 TXD und vom FT232RL TXD zum RJ45 RXD. Bei Gelegenheit folgt eine Korrektur des Bildes.
 
 	![AE5900_Remote_v2](/pictures/overview_v2.png)
 	![AE5900_Remote_v2](/pictures/audiofilter.jpg)
