@@ -12,9 +12,9 @@ Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachge
 ## Ein Bild erzählt dir mehr als deine Ehefrau
 
 - Ein Screenshot vom aktuellen UI, im Browser, auf dem Smartphone
-  visuelles Audiofeedback
-  Lautsärke des Mikrofons regelbar
-  Optimierte Scan-Funktion mit regelbarer Geschwindigkeit
+  1. visuelles Audiofeedback
+  2. Lautsärke des Mikrofons regelbar
+  3. Optimierte Scan-Funktion mit regelbarer Geschwindigkeit
 
 
 	![AE5900_Remote_v2](/pictures/webui.jpg)
