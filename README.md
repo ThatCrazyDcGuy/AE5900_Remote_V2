@@ -66,7 +66,7 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
   Komponenten:
   
-  1. USB Brekoutboard oder einen HUB
+  1. USB Breakoutboard oder einen HUB
   2. FT232RL FT232 FTDI USB 3,3 V 5,5 V zu TTL Seriell Adapter
   3. USB Soundkarte
   4. Rj45 Terminal
