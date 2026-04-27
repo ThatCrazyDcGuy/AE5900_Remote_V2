@@ -40,9 +40,17 @@ Genau deshalb.
 
 ## So funktioniert es:
 
-Schließe das Remote-Gerät an einen Raspberry Pi oder ein anderes Gerät an, auf dem das Python-Skript ausgeführt werden kann. Außerdem sollten Mikrofon- und Lautsprecherausgang des AE5900 angeschlossen sein. Starte Mumble auf dem Host-Rechner. Eventuell muss Ein- und Ausgang in den Linux-Audio-Settings getauscht werden. Führe die Datei `python3 ae_5900_v2.py` aus.
-
-Rufe `localhost:5000` auf. Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts Halte die Sync-Taste im Websetup-Menü 3 Sekunden lang gedrückt.  Starte Mumble auf dem Remote-Gerät (Smartphone / Computer... was auch immer) und hab viel Spaß!
+Schließe das gebastelte Gerät an einen Raspberry Pi oder einen anderen Host-Rechner, auf dem das Python-Skript ausgeführt werden kann an.
+Außerdem sollten Mikrofon RJ45 Stecker und Lautsprecherausgang des AE5900 angeschlossen sein.
+Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 20 Klicks am Lautstärkeregler hoch.
+Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
+Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts. Ich nutze P1 ASQ / P2 VOX / P3 MUTE
+Starte Mumble auf dem Host-Rechner und deinem Endgerät (Handy /Laptop etc.)
+Führe `python3 ae_5900_v2.py` auf dem Hostrechner aus.
+Öffne auf dem Endgerät `HOSTNAMEIP:5000` in deinem Browser. Du solltest nun bereits Kontrolle über dein AE5900 haben.
+Öffne ganz unten im WebUI das Setup und führe den Sync aus.
+Setze die entsprechenden Labels für die P1 bis P4 Tasten so, wie du sie am AE5900 gesetzt hast.
+Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen.
 
 
 Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das schon hin.
