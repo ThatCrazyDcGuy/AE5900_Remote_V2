@@ -96,6 +96,14 @@ Hier gibt es aber 2 Proleme. 1. Zumindest auf meinem AE5900 habe ich dort unsch�
 
 Falls ihr HF auf der Leitung habt, euch also auf AM und SSB selber hört, weil eure Mantelwellensperre Schrott ist, lötet paralell zu den Ein- und Ausgängen der Audioverbindungen jeweils noch einen Keramikkondensator 104 (100nF). Das hilft. Auch das Anbringen diverser Klappferrite ist hier hilfreich.
 
+### Wie ist das egentlich möglich
+
+Das AMM-500 sendet seriell HEX codes an das AE-5900 und das AE-5900 antwrtet entsprechend. Damit ist so eniges möglich.
+Um die Bastelei zu verwirklichen, musste ich zwischen den beiden Geräten mitlesen.
+Prinzip: Man in the middle.
+
+Da das AE-5900 selbst erst nach einem Handshake mit dem AMM-500 seine Codes freigibt, musste dies erst käuflich erworben und sehnlichst erwartet werden.
+
 ### Benötigte Software
 
 
