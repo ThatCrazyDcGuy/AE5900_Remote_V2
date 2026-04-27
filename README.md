@@ -60,8 +60,18 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
   3. 1x 10 Kohm Widerstand
   4. 1x Keramikkondensator 100nF (104)
   5. 1x Elco Kondensator 10µF (c.a 16 - 50v)
+  6. Klinkensteckr Buchse
 
 	![AE5900_Remote_v2](/pictures/filterkomponenten.jpg)
+
+  Komponenten:
+  
+  1. USB Brekoutboard oder einen HUB
+  2. FT232RL FT232 FTDI USB 3,3 V 5,5 V zu TTL Seriell Adapter
+  3. USB Soundkarte
+  4. Rj45 Terminal
+  5. Ein Gehäuse aus Metall
+
 	![AE5900_Remote_v2](/pictures/steuerungkomponenten.jpg)
 
 - Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen aber so verstehts jeder.
