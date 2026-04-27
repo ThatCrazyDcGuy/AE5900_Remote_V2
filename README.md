@@ -40,17 +40,17 @@ Genau deshalb.
 
 ## So funktioniert es:
 
-Schließe das gebastelte Gerät an einen Raspberry Pi oder einen anderen Host-Rechner, auf dem das Python-Skript ausgeführt werden kann an.
-Außerdem sollten Mikrofon RJ45 Stecker und Lautsprecherausgang des AE5900 angeschlossen sein.
-Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 20 Klicks am Lautstärkeregler hoch.
-Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
-Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts. Ich nutze P1 ASQ / P2 VOX / P3 MUTE
-Starte Mumble auf dem Host-Rechner und deinem Endgerät (Handy /Laptop etc.)
-Führe `python3 ae_5900_v2.py` auf dem Hostrechner aus.
-Öffne auf dem Endgerät `HOSTNAMEIP:5000` in deinem Browser. Du solltest nun bereits Kontrolle über dein AE5900 haben.
-Öffne ganz unten im WebUI das Setup und führe den Sync aus.
-Setze die entsprechenden Labels für die P1 bis P4 Tasten so, wie du sie am AE5900 gesetzt hast.
-Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen.
+1. Schließe das gebastelte Gerät an einen Raspberry Pi oder einen anderen Host-Rechner, auf dem das Python-Skript ausgeführt werden kann an.
+2. Außerdem sollten Mikrofon RJ45 Stecker und Lautsprecherausgang des AE5900 angeschlossen sein.
+3. Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 20 Klicks am Lautstärkeregler hoch.
+4. Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
+5. Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts. Ich nutze P1 ASQ / P2 VOX / P3 MUTE
+6. Starte Mumble auf dem Host-Rechner und deinem Endgerät (Handy /Laptop etc.)
+7. Führe `python3 ae_5900_v2.py` auf dem Hostrechner aus.
+8. Öffne auf dem Endgerät `HOSTNAMEIP:5000` in deinem Browser. Du solltest nun bereits Kontrolle über dein AE5900 haben.
+9. Öffne ganz unten im WebUI das Setup und führe den Sync aus.
+10. Setze die entsprechenden Labels für die P1 bis P4 Tasten so, wie du sie am AE5900 gesetzt hast.
+11. Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen.
 
 
 Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das schon hin.
