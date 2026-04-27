@@ -52,7 +52,9 @@ Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das scho
 Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
 - Vorab mal die Komponenten für den Audiofilter und was man so zum Basteln nutzen kann. Das meisste davon hatte ich in meiner Bastelkiste.
-  Wir nutzen hier nun:
+
+  Für die Audiofilter nutzen wir hier nun:
+  
   1. 2x 600:660 Ohm Transformtoren
   2. 1x 100 Ohm Widerstand
   3. 1x 10 Kohm Widerstand
