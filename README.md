@@ -22,7 +22,7 @@ Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachge
 
 - Hier noch ein kurzer Clip. Ich sende hier mit einem Handfunkgerät an meine Heimstation und höre mich auf dem Smartphone
 
-  https://www.youtube.com/shorts/vvg-HywBKIc
+	[![AE5900 Webinterface V2](https://img.youtube.com/vi/vvg-HywBKIc/0.jpg)](https://www.youtube.com/shorts/vvg-HywBKIc)
 
 - Ein Foto, ok, zwei Fotos vom Prototyp
 
