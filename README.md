@@ -64,7 +64,7 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
 	![AE5900_Remote_v2](/pictures/filterkomponenten.jpg)
 
-  Komponenten:
+  Restliche Komponenten:
   
   1. USB Breakoutboard oder einen HUB
   2. FT232RL FT232 FTDI USB 3,3 V 5,5 V zu TTL Seriell Adapter
