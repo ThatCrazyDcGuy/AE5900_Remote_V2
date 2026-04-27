@@ -164,7 +164,10 @@ Nichts weiter als meine Erfahrung.
 Ich werde keinen persönlichen Support anbieten.
 Aber ich werde einige Skripte, Bilder und Ideen hochladen, um sie mit anderen zu teilen.
 
-Ich bin kein Programmierer, aber ich kann Texte lesen, verstehen und in meine Projekte einbauen.
+Ich bin kein Programmierer, aber ich kann Texte lesen, verstehen, umsetzen und in meine Projekte einbauen.
+
+Ich übernehme keine Verantwortung für eure Basteleien. Bei meinem lieben Betatester und bei mir funktionieren Soft - so wie Hardware einwandfrei.
+Das Audio bekam in QSO's durchweg gutes Feedback.
 
 
 
