@@ -74,7 +74,7 @@ Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
 	![AE5900_Remote_v2](/pictures/steuerungkomponenten.jpg)
 
-- Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen aber so verstehts jeder.
+- Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen aber so verstehts vielleicht jeder Hobbybastler und Lötkolbenbesitzer.
 
 	![AE5900_Remote_v2](/pictures/overview_v2.png)
 	![AE5900_Remote_v2](/pictures/audiofilter.jpg)
