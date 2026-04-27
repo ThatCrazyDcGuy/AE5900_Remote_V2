@@ -52,13 +52,12 @@ Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das scho
 Der Part folgt noch, mit Bildern und allem was man wissen muss.
 
 - Vorab mal die Komponenten für den Audiofilter und was man so zum Basteln nutzen kann. Das meisste davon hatte ich in meiner Bastelkiste.
-
-Wir nutzen hier:
-2x 600:660 Ohm Transformtoren
-1x 100 Ohm Widerstand
-1x 10 Kohm Widerstand
-1x Keramikkondensator 100nF (104)
-1x Elco Kondensator 10µF (c.a 16 - 50v)
+  Wir nutzen hier nun:
+  1. 2x 600:660 Ohm Transformtoren
+  2. 1x 100 Ohm Widerstand
+  3. 1x 10 Kohm Widerstand
+  4. 1x Keramikkondensator 100nF (104)
+  5. 1x Elco Kondensator 10µF (c.a 16 - 50v)
 
 	![AE5900_Remote_v2](/pictures/filterkomponenten.jpg)
 	![AE5900_Remote_v2](/pictures/steuerungkomponenten.jpg)
