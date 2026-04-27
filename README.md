@@ -94,7 +94,7 @@ Die beiden Filter muss man aber dennoch löten.
 Es ist auch möglich ohne Klinkenstecker das Audio des AE5900 abzugreifen. Der Mic Plug bietet die Pins EXT-AF und GND. Da liegt ein schwaches Signal, womöglich extra für Soundkarten an.
 Hier gibt es aber 2 Proleme. 1. Zumindest auf meinem AE5900 habe ich dort unschöne HF drauf, trotz Mantelwellensperre und Filter. 2. Will man dass das Gerät bei Remotenutzung zu Hause stumm da steht, muss man dennoch einen Klinkenstecker als Terminator verwenden.
 
-Falls ihr HF auf der Leitung habt, euch also auf AM und SSB selber hört, weil eure Mantelwellensperre Schrott ist, lötet paralell zu den Ei- uund Ausgängen der Audioerbindungen jeweils noch einen Keramikkondensator 104 (100nF). Das hilft. Auch das Anbringen diverser Klappferrite ist hier hilfreich.
+Falls ihr HF auf der Leitung habt, euch also auf AM und SSB selber hört, weil eure Mantelwellensperre Schrott ist, lötet paralell zu den Ein- und Ausgängen der Audioverbindungen jeweils noch einen Keramikkondensator 104 (100nF). Das hilft. Auch das Anbringen diverser Klappferrite ist hier hilfreich.
 
 ### Benötigte Software
 
