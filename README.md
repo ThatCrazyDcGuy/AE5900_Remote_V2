@@ -24,8 +24,6 @@ Ich habe mein AE5900 von https://gmw-funktechnik.ch/, einem fantastischen Fachge
 
   https://www.youtube.com/shorts/vvg-HywBKIc
 
-  [![AE-5900 / AM-500](https://www.youtube.com/shorts/vvg-HywBKIc)
-
 - Ein Foto, ok, zwei Fotos vom Prototyp
 
 	![AE5900_Remote_v2](/pictures/prototype2.jpg)
