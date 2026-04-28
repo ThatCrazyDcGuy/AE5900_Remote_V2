@@ -168,7 +168,7 @@ Wenn die Hardware aufgebaut und alle Einstellungen vorgenommen sind, dann:
 
 	# git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
 
-	# python3 ~/AE-5900_Remote_v1/webinterface/app.py
+	# python3 ~/AE5900_Remote_V2/ae_5900_v2.py
 
 Updaten kann man dann jeweils mit:
 
