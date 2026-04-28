@@ -67,12 +67,12 @@ Mit Bildern und allem was man wissen muss.
 
   Für die Audiofilter nutzen wir hier nun:
   
-  1. 2x 600:660 Ohm Transformatoren
+  1. 2x 600:600 Ohm Transformatoren
   2. 1x 100 Ohm Widerstand
   3. 1x 10 KOhm Widerstand
   4. 1x Keramikkondensator 100nF (104) (mindestens einer um die HF zu filtern)
   5. 1x Elco Kondensator 10µF (c.a 16 - 50v)
-  6. Klinkensteckr Buchse
+  6. Klinkenstecker Buchse
 
 	![AE5900_Remote_v2](/pictures/filterkomponenten.jpg)
 
