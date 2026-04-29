@@ -183,7 +183,7 @@ def volume_api(action):
 
         # 3. Setzen
         subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{new_vol:.2f}"])
-        return jsonify({"volume": int(new_vol * 130)}) # Rückgabe in Prozent für die UI
+        return jsonify({"volume": int(new_vol * 100)}) # Rückgabe in Prozent für die UI
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
