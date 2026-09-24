@@ -288,7 +288,16 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-120726 BTVO
+Aktuell: V-241026 BGF
+
+Nach längerer, notwendiger Pause, hier zumindest einige Bugfixes.
+
+1. S-Scan optimiert
+2. Fehler in den CLAR +/- UP/DOWN behoben
+3. A/SQ Res. gibt jetzt wieder ein visuelles Feedback.
+4. Im PA stehen nun UP/DOWN zur Verfügung. Damit lässt sich blind die Lautstärke der physichen Gerätes korrigieren, falls zu leise oder zu laut.
+
+Vorherige Version: V-200726 BTVO
 
 1. S-Meter über BT-Option
 2. Stabilerer VFO
