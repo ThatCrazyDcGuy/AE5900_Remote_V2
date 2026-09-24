@@ -139,6 +139,8 @@ class RadioInterface:
         self.ignore_until = 0 
         self.audio_mute = False
         self.macro_active = False
+        # --- NEU: CQ-REC WARTET AUF SPEICHERN/ABBRECHEN, BEVOR DIE ALTE AUFNAHME UEBERSCHRIEBEN WIRD ---
+        self.cq_rec_pending = False
         self.current_ch = self.config.get("last_ch", 1)
         self.mode_idx = self.config.get("last_mode", 2)
         self.config["bt_mac_address"] = self.config.get("bt_mac_address", "00:00:00:00:00:00")
@@ -1604,23 +1606,30 @@ def api_cmd(cmd):
 
 
         elif cmd == 'CQ_REC':
+            cq_path = os.path.join(SCRIPT_DIR, "ARC", "cq_loop.wav")
+            cq_tmp_path = os.path.join(SCRIPT_DIR, "ARC", "cq_loop_pending.wav")
+
             if getattr(radio, 'is_recording_live', False):
-                print("PAPAGEI: CQ-Aufnahme vorzeitig gestoppt.")
-                radio.is_recording_live = False 
+                # --- AUFNAHME STOPPEN: NICHT MEHR SOFORT UEBERNEHMEN, SONDERN AUF SPEICHERN/ABBRECHEN WARTEN ---
+                print("PAPAGEI: CQ-Aufnahme gestoppt. Warte auf Speichern/Abbrechen.")
+                radio.is_recording_live = False
                 subprocess.run(["pkill", "-x", "pw-record"], check=False)
                 subprocess.run(["pkill", "-x", "arecord"], check=False)
+                radio.cq_rec_pending = True
+            elif getattr(radio, 'cq_rec_pending', False):
+                # --- ES LIEGT BEREITS EINE UNBESTAETIGTE AUFNAHME VOR: ERST ENTSCHEIDEN LASSEN ---
+                print("PAPAGEI: Es liegt bereits eine unbestätigte CQ-Aufnahme vor. Bitte zuerst Speichern oder Abbrechen.")
             else:
                 print("PAPAGEI: Starte ungelinkten PipeWire-Recorder...")
                 radio.is_recording_live = True
-                cq_path = os.path.join(SCRIPT_DIR, "ARC", "cq_loop.wav")
-                
+
                 proc = subprocess.Popen([
                     "pw-record",
                     "--target", "0",
                     "--format", "s16",
                     "--rate", "22050",
                     "--channels", "1",
-                    str(cq_path)
+                    str(cq_tmp_path)
                 ])
                 
                 time.sleep(0.060)
@@ -1637,10 +1646,34 @@ def api_cmd(cmd):
 
                 def auto_stop_cq_rec():
                     if proc.poll() is None:
-                        print("PAPAGEI: 12s Limit erreicht. Beende CQ-Aufnahme.")
+                        print("PAPAGEI: 12s Limit erreicht. CQ-Aufnahme wartet auf Speichern/Abbrechen.")
                         radio.is_recording_live = False
                         subprocess.run(["pkill", "-x", "pw-record"], check=False)
+                        radio.cq_rec_pending = True
                 threading.Timer(12.0, auto_stop_cq_rec).start()
+
+        elif cmd == 'CQ_REC_SAVE':
+            # --- NEU AUFGENOMMENE CQ-KONSERVE BESTAETIGEN: TMP-DATEI WIRD ZUR AKTIVEN cq_loop.wav ---
+            cq_path = os.path.join(SCRIPT_DIR, "ARC", "cq_loop.wav")
+            cq_tmp_path = os.path.join(SCRIPT_DIR, "ARC", "cq_loop_pending.wav")
+            if getattr(radio, 'cq_rec_pending', False) and os.path.exists(cq_tmp_path):
+                try:
+                    os.replace(cq_tmp_path, cq_path)
+                    print("PAPAGEI: Neue CQ-Aufnahme gespeichert.")
+                except Exception as e:
+                    print(f"Fehler beim Speichern der CQ-Aufnahme: {e}")
+            radio.cq_rec_pending = False
+
+        elif cmd == 'CQ_REC_DISCARD':
+            # --- NEU AUFGENOMMENE CQ-KONSERVE VERWERFEN: ALTE cq_loop.wav BLEIBT UNANGETASTET ---
+            cq_tmp_path = os.path.join(SCRIPT_DIR, "ARC", "cq_loop_pending.wav")
+            if os.path.exists(cq_tmp_path):
+                try:
+                    os.remove(cq_tmp_path)
+                except Exception as e:
+                    print(f"Fehler beim Verwerfen der CQ-Aufnahme: {e}")
+            radio.cq_rec_pending = False
+            print("PAPAGEI: Neue CQ-Aufnahme verworfen, alte Aufnahme bleibt erhalten.")
 
         elif cmd == 'CQ_CALL':
             def run_cq_call():
@@ -2033,6 +2066,7 @@ def api_cmd(cmd):
         "MAX_ASQ": radio.config.get("max_asq_steps", 9),
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
+        "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
         "VFO_FREQ": radio.vfo_freq,
         "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
@@ -2099,6 +2133,7 @@ def api_config_override():
                 "MAX_ASQ": radio.config.get("max_asq_steps", 9),
                 "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
                 "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
+                "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
                 "CURRENT_BAND": radio.config.get("current_band", "EU"),
                 "VFO_FREQ": radio.vfo_freq,
                 "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
@@ -2255,6 +2290,7 @@ def get_current_status_dict():
         "MAX_ASQ": radio.config.get("max_asq_steps", 9),
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
+        "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
         "VFO_FREQ": radio.vfo_freq,
         "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
