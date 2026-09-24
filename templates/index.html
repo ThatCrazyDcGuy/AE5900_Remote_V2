@@ -390,8 +390,8 @@
 
     <div class="controls">
         <button onclick="send('M')">MODE</button>
-        <button onclick="send('U')">CH ▲</button>
-        <button onclick="send('D')">CH ▼</button>
+        <button onclick="send('U')">UP ▲</button>
+        <button onclick="send('D')">DOWN ▼</button>
         <button onclick="send('MUTECOMBBTN')">MUTE</button>
 
         <button onclick="send('VOX_TOGGLE')">VOX</button>
@@ -606,7 +606,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-200726 BGF";
+                if (vInd) vInd.textContent = "V-241026 BGF";
             });
 
             socket.on('audio', (data) => { 
@@ -768,11 +768,45 @@
             else { rbBtn.style.color = ""; rbBtn.style.fontWeight = "normal"; }
         }
 
-        if(data.VOL !== undefined) {  const dvDisp = document.getElementById('displayVolDisp'); if(dvDisp) dvDisp.innerText = data.VOL; }
-        currentSqTimeout = data.SQ_TIMEOUT || 0; currentAsqTimeout = data.ASQ_TIMEOUT || 0; currentMuteTimeout = data.MUTE_TIMEOUT || 0;
+        if(data.VOL !== undefined) { const dvDisp = document.getElementById('displayVolDisp'); if(dvDisp) dvDisp.innerText = data.VOL; }
+        
+        // --- SQUELCH-RESET COUNTDOWN ANPASSUNG (17 SEKUNDEN HARDWARE-REALITÄT) ---
+        currentSqTimeout = data.SQ_TIMEOUT || 0; 
+        currentAsqTimeout = data.ASQ_TIMEOUT || 0; 
+        currentMuteTimeout = data.MUTE_TIMEOUT || 0;
         if (data.LOCK_ENABLED !== undefined) isWebUILocked = data.LOCK_ENABLED;
 
+        // Wenn der Sync aktiv ist, rechnen wir die Anzeige starr auf die 17s Hardware-Dauer um!
+        const sqTimeout = data.FULL_SYNC_ACTIVE ? Math.min(17, Math.ceil(currentSqTimeout)) : Math.max(0, Math.ceil(currentSqTimeout - 8));
+        const asqTimeout = currentAsqTimeout;
+        const muteTimeout = currentMuteTimeout;
+
         const lockInd = document.getElementById('lockIndicator'); if (lockInd) { lockInd.style.color = isWebUILocked ? "#ff8800" : "#333"; lockInd.style.opacity = isWebUILocked ? "1" : "0.5"; }
+
+    // =========================================================================
+    // GRÜNER COUNTDOWN-TIMER FÜR "A/SQ Res." BUTTON
+    // =========================================================================
+    const sqResetBtnElement = document.getElementById('sqResetBtn');
+    if (sqResetBtnElement) {
+        if (data.FULL_SYNC_ACTIVE === true) {
+            // Berechne die echten verbleibenden Sekunden aus der Hardware-Dauer
+            let sekundenVerbleibend = Math.min(17, Math.ceil(data.SQ_TIMEOUT || 0));
+            if (sekundenVerbleibend > 0) {
+                sqResetBtnElement.innerText = `SYNC (${sekundenVerbleibend}s)`;
+                sqResetBtnElement.style.color = "#00ff00"; // Wunderschönes Giftgrün während des Syncs!
+                sqResetBtnElement.style.fontWeight = "bold";
+            } else {
+                sqResetBtnElement.innerText = "A/SQ Res.";
+                sqResetBtnElement.style.color = "";
+                sqResetBtnElement.style.fontWeight = "normal";
+            }
+        } else {
+            sqResetBtnElement.innerText = "A/SQ Res.";
+            sqResetBtnElement.style.color = "";
+            sqResetBtnElement.style.fontWeight = "normal";
+        }
+    }
+
 
         const btnRec = document.getElementById('btn-rec'); const btnCqRec = document.getElementById('btn-cqrec');
         if (data.AUDIO_RECORDING === true) { if (btnRec) btnRec.classList.add('recording-active'); if (btnCqRec) btnCqRec.classList.add('recording-active'); }
@@ -813,7 +847,8 @@
 
                 // 2. RETTUNG DER MODE-TASTE IM PA-MODUS FÜR DEN VFO
                 if (currentMode === "PA") {
-                    if (oc === "send('P')" || oc === "send('M')") {
+                    // ERWEITERUNG: 'U' (UP) und 'D' (DOWN) werden im PA-Modus voll ermächtigt!
+                    if (oc === "send('P')" || oc === "send('M')" || oc === "send('U')" || oc === "send('D')") {
                         b.disabled = false;
                         b.style.opacity = "";
                     } else {
