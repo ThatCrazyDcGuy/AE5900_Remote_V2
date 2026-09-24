@@ -968,6 +968,37 @@ def api_cmd(cmd):
                 return jsonify(get_current_status_dict())
 
             # --- 3. NORMALE CB-KANAL-UMSCHALTUNG (WENN NICHT IM VFO-MODUS) ---
+            clar_step = radio.config.get("clar_step", "STEP")
+            
+            # === NEU & ZERSTÖRUNGSFREI: WEICHE FÜR AKTIVEN CLARIFIER IM CB-MODUS ===
+            if current_hardware_mode in ["USB", "LSB", "CW"] and clar_step != "STEP":
+                step_sizes = {"1 Hz": 1, "10 Hz": 10, "100 Hz": 100}
+                size = step_sizes.get(clar_step, 1)
+                
+                ch_str = str(radio.current_ch).zfill(2)
+                current_offset = radio.config["clar_offsets"].get(ch_str, 0)
+                
+                # Mathematischen Frequenzversatz im RAM einberechnen
+                if cmd == 'U':
+                    new_offset = min(500, current_offset + size)
+                else:
+                    new_offset = max(-500, current_offset - size)
+                    
+                radio.config["clar_offsets"][ch_str] = new_offset
+                radio.save_config()
+                print(f"[UP/DOWN -> CLAR] Offset für CH {ch_str} auf {new_offset} Hz geaendert (Schrittweite: {clar_step}).")
+                
+                # Physische Clarifier-Befehle (26/27) an das echte Albrecht senden
+                if radio.ser:
+                    hex_cmd = "26" if cmd == 'U' else "27"
+                    radio.ser.write(bytes.fromhex(f"41000100{hex_cmd}000006"))
+                    time.sleep(0.08)
+                    radio.ser.write(bytes.fromhex(f"41000000{hex_cmd}000006"))
+                
+                # Route sofort bündig beenden, damit kein CB-Kanal umspringt!
+                return jsonify(get_current_status_dict())
+
+            # --- AB HIER LÄUFT EUER ORIGINALER KANAL- UND FREQUENZ-CODE ABSOLUT UNBERÜHRT WEITER ---
             max_ch = 40
             if band == "DE": max_ch = 80
             elif band == "IN": max_ch = 27
@@ -979,18 +1010,15 @@ def api_cmd(cmd):
             else:
                 radio.current_ch = max_ch if radio.current_ch == 1 else radio.current_ch - 1
 
-            # Deutschland Logik (Kanal 41-80)
             # Deutschland Logik (Kanal 41-80) - Korrigierter Grenzwächter
             if band == "DE":
                 alter_modus = MODES[radio.mode_idx].upper()
-                # Fall A: Wir überschreiten die Grenze nach oben (Kanal 1-40 -> 41-80)
                 if alter_kanal <= 40 and radio.current_ch > 40:
                     radio.config["backup_mode_idx"] = radio.mode_idx
                     radio.save_config()
                     if alter_modus != "FM":
                         radio.mode_idx = MODES.index("FM")
                         print(f"[TUNER DE] Grenzübergang > 40: Erzwinge FM.")
-                # Fall B: Wir kommen von den oberen Kanälen zurück in den regulären Bereich (41-80 -> 1-40)
                 elif alter_kanal > 40 and radio.current_ch <= 40:
                     radio.mode_idx = radio.config.get("backup_mode_idx", 2)
                     print(f"[TUNER DE] Grenzübergang <= 40: Modus wiederhergestellt.")
@@ -1009,6 +1037,8 @@ def api_cmd(cmd):
                 radio.config["vfo_freq"] = radio.vfo_freq
 
             radio.save_config()
+
+
 
         elif cmd == 'M':
             band = radio.config.get("current_band", "EU")
@@ -1114,7 +1144,26 @@ def api_cmd(cmd):
             radio.save_config()
         elif cmd == 'SSCAN':
             radio.sw_scan_active = not radio.sw_scan_active
-            if radio.sw_scan_active: 
+            if radio.sw_scan_active:
+                # OPTIMIERUNG: Bevor der Suchlauf startet, schalten wir starr einen Kanal HOCH,
+                # um lokalen Matsch/Störungen oder ein offenes Squelch-Signal sofort zu durchbrechen!
+                print("[S-SCAN INITIATION] Schalte einen Kanal vorab hoch, um Rauschsperren-Blockade zu umgehen...")
+                max_ch = 80 if radio.config.get("current_band", "EU") == "DE" else (27 if radio.config.get("current_band", "EU") == "IN" else 40)
+                
+                # Kanal im RAM hochzählen
+                radio.current_ch = (radio.current_ch % max_ch) + 1
+                
+                # Physischen Umschaltbefehl (Kanal UP) ans Albrecht jagen
+                if radio.ser:
+                    radio.ser.write(bytes.fromhex("4100010010000006"))
+                    time.sleep(0.08)
+                    radio.ser.write(bytes.fromhex("4100000010000006"))
+                    
+                # Dem Albrecht-Prozessor 150 Millisekunden Zeit geben, den Kanal stabil einzurasten,
+                # bevor der eigentliche Scan-Loop mit voller Geschwindigkeit losknallt!
+                time.sleep(0.150)
+                
+                # Jetzt erst das Suchlauf-Triebwerk im Hintergrund-Thread zünden
                 threading.Thread(target=radio.sw_scan_loop, daemon=True).start()
         elif cmd.startswith('SETSPEED_'):
             radio.config["scan_speed"] = float(cmd.split('_')[1]) / 1000.0
@@ -1985,7 +2034,8 @@ def api_cmd(cmd):
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
-        "VFO_FREQ": radio.vfo_freq
+        "VFO_FREQ": radio.vfo_freq,
+        "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
     })
 @app.route('/api/config/override', methods=['POST'])
 def api_config_override():
@@ -2050,7 +2100,8 @@ def api_config_override():
                 "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
                 "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
                 "CURRENT_BAND": radio.config.get("current_band", "EU"),
-                "VFO_FREQ": radio.vfo_freq
+                "VFO_FREQ": radio.vfo_freq,
+                "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
             })
     except Exception as e: 
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2205,7 +2256,8 @@ def get_current_status_dict():
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
-        "VFO_FREQ": radio.vfo_freq
+        "VFO_FREQ": radio.vfo_freq,
+        "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
     }
 
 threading.Thread(target=auto_patch_streams, daemon=True).start()
