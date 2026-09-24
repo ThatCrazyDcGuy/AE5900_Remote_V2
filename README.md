@@ -292,11 +292,20 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-120726 BTVO
+Current: V-241026 BGF
 
-1. S-Meter over BT option
+After a necessary, extended break, here are at least a few bug fixes.
+
+1. S-Scan optimized
+2. Fixed errors in CLAR +/- UP/DOWN
+3. A/SQ Res. now provides visual feedback again.
+4. UP/DOWN controls are now available in PA mode. This allows for blind adjustment of the physical device's volume if it is too quiet or too loud.
+
+Previous version: V-200726 BTVO
+
+1. S-meter via BT option
 2. More stable VFO
-3. CH50 bugfix
+3. CH50 bug fix
 
 Previous version: V-090726 i3/a6 B-VFO
 
