@@ -170,7 +170,7 @@
         }
         .btn-ptt.active { background: #ff0000; box-shadow: 0 0 20px red; }
         .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 200px; margin: 0 auto; }
-        .num-btn { background: #333; color: white; padding: 12px 5px; border: none; }
+        .num-btn { background: #333; color: white; padding: 12px 5px; border: 1px solid transparent; }
         .setup-area { margin-top: 30px; border-top: 1px solid #333; padding-top: 20px; color: #888; text-align: left; max-width: 420px; margin: 0 auto; }
         .hold-button { 
             position: relative; 
@@ -178,7 +178,7 @@
             height: 50px; 
             background: #444; 
             color: white; 
-            border: none; 
+            border: 1px solid transparent; 
             overflow: hidden; 
             margin: 10px 0; 
             border-radius: 5px; 
@@ -191,6 +191,19 @@
         .recording-active {
             animation: pulse-red 1.2s infinite linear !important;
             color: white !important;
+        }
+        @keyframes pulse-amber-box {
+            0% { box-shadow: 0 0 4px #ffaa0055; }
+            50% { box-shadow: 0 0 14px #ffaa00cc; }
+            100% { box-shadow: 0 0 4px #ffaa0055; }
+        }
+        #cqRecConfirm {
+            display: flex;
+            flex-wrap: wrap;
+            border: 1px solid #ffaa00;
+            border-radius: 6px;
+            padding: 6px;
+            animation: pulse-amber-box 1.4s infinite ease-in-out;
         }
         /* --- VISUELLES FEEDBACK FÜR DIE ULTRA-OMs BEIM KANALWECHSEL --- */
         @keyframes vfo-blink {
@@ -409,6 +422,11 @@
             <button onclick="send('VOICE_PLAY')" id="btn-rplay" style="color: #00ff00;">RPLAY</button>
             <button onclick="send('CQ_REC')" id="btn-cqrec" style="color: #ffaa00;">CQ REC</button>
             <button onclick="send('CQ_CALL')" id="btn-cqcall" style="color: #00ffff;">CQ CALL</button>
+            <div id="cqRecConfirm" style="display:none; grid-column: 1 / -1; gap: 8px; justify-content: center; align-items: center; margin-top: 4px;">
+                <span style="color:#ffaa00; font-size:0.85em;">Neue CQ-Aufnahme:</span>
+                <button onclick="send('CQ_REC_SAVE')" style="color:#00ff00; border-color:#00ff00;">💾 Speichern</button>
+                <button onclick="send('CQ_REC_DISCARD')" style="color:#ff3333; border-color:#ff3333;">✖ Abbrechen</button>
+            </div>
         {% elif config.active_p_block == 'custom' %}
             <button onclick="send('CUST_1')" id="btn-cust1">{{ config.cust_lbl_1 or 'CUST 1' }}</button>
             <button onclick="send('CUST_2')" id="btn-cust2">{{ config.cust_lbl_2 or 'CUST 2' }}</button>
@@ -586,6 +604,7 @@
     let isWebUILocked = false; let radioConfigGlobal = { ptt_hotkey: 'F6' };
     let webuiQueue = []; let isWebUIBusy = false; let clarTimer = null; let currentClarOffset = 0;
     let currentSqTimeout = 0; let currentAsqTimeout = 0; let currentMuteTimeout = 0;
+    let cqRecPendingGlobal = false; // NEU: sperrt CQ REC, solange Speichern/Abbrechen noch offen ist
 
     function resizeCanvas() { if (canvas) { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; } }
     window.addEventListener('resize', resizeCanvas);
@@ -812,6 +831,14 @@
         if (data.AUDIO_RECORDING === true) { if (btnRec) btnRec.classList.add('recording-active'); if (btnCqRec) btnCqRec.classList.add('recording-active'); }
         else { if (btnRec) btnRec.classList.remove('recording-active'); if (btnCqRec) btnCqRec.classList.remove('recording-active'); }
 
+        // --- CQ REC: SPEICHERN/ABBRECHEN-BESTÄTIGUNG, VERHINDERT VERSEHENTLICHES ÜBERSCHREIBEN ---
+        const cqConfirm = document.getElementById('cqRecConfirm');
+        cqRecPendingGlobal = (data.CQ_REC_PENDING === true);
+        if (cqConfirm) {
+            cqConfirm.style.display = cqRecPendingGlobal ? 'flex' : 'none';
+        }
+        if (btnCqRec) { btnCqRec.disabled = cqRecPendingGlobal; btnCqRec.style.opacity = cqRecPendingGlobal ? '0.4' : ''; }
+
         const clarUp = document.getElementById('clarUpBtn'); const clarHz = document.getElementById('clarHzBtn'); const clarDn = document.getElementById('clarDnBtn');
         if (currentMode === "CW" || currentMode === "USB" || currentMode === "LSB") {
             if (!isWebUILocked && clarHz) clarHz.disabled = false; if (document.getElementById('clarIndicator')) document.getElementById('clarIndicator').style.display = "block";
@@ -835,6 +862,7 @@
         } else {
             allButtons.forEach(b => {
                 const oc = b.getAttribute('onclick') || ''; 
+                if (oc.includes("send('CQ_REC')") && cqRecPendingGlobal) { b.disabled = true; b.style.opacity = "0.4"; return; }
                 if (oc.includes('CLARUP') || oc.includes('CLARDN')) return;
                 if (oc.includes('CLARHZ') && (currentMode !== "CW" && currentMode !== "USB" && currentMode !== "LSB")) { b.disabled = true; return; }
                 
