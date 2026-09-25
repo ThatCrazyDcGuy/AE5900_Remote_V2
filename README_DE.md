@@ -288,7 +288,15 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-241026 BGF
+Aktuell: V-251026 WFB
+
+TESTING! Ich muss selber erst sehen, ob mir das gefällt.
+
+1. Schüttel-Fehler in der Desktopansicht korrigiert.
+2. Die Audio-Balken sind jetzt feiner dargestellt.
+3. Im Setup & Sync kann man zwischen Audiobalken, so etwas ähnlichem wie einem Wasserfall oder beidem wählen.
+
+Vorherige Version: V-241026 BGF
 
 Nach längerer, notwendiger Pause, hier zumindest einige Bugfixes.
 
