@@ -292,12 +292,20 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-241026 BGF
+Current: V-251026 WFB
 
-After a necessary, extended break, here are at least a few bug fixes.
+TESTING! I need to see for myself if I like this.
 
-1. S-Scan optimized
-2. Fixed errors in CLAR +/- UP/DOWN
+1. Fixed a "shaking" glitch in the desktop view.
+2. Audio bars are now rendered with finer detail.
+3. In Setup & Sync, you can choose between audio bars, a waterfall-like display, or both.
+
+Previous version: V-241026 BGF
+
+After a long, necessary hiatus, here are at least a few bug fixes.
+
+1. S-Scan optimized.
+2. Fixed errors in CLAR +/- UP/DOWN controls.
 3. A/SQ Res. now provides visual feedback again.
 4. UP/DOWN controls are now available in PA mode. This allows for blind adjustment of the physical device's volume if it is too quiet or too loud.
 
