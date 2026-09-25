@@ -695,7 +695,7 @@
         visualizerMode = (mode === 'waterfall' || mode === 'both') ? mode : 'bars';
         try { localStorage.setItem('ae5900_viz_mode', visualizerMode); } catch (e) {}
         if (ctx && canvas) { ctx.fillStyle = '#00030c'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-        wfFloor = 0; wfCeil = 1; // Kontrastanpassung bei Moduswechsel zuruecksetzen
+        wfFloor = 0; wfCeil = 2; // Kontrastanpassung bei Moduswechsel zuruecksetzen
         syncVzModeSelect();
     }
 
