@@ -349,6 +349,7 @@
 <div class="main-layout-wrapper">
     <div class="display">
         <canvas id="audioVisualizer"></canvas>
+        <div id="splitMarker" style="display:none; position:absolute; top:0; left:50%; transform:translateX(-50%); width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid rgba(0,255,255,0.6); z-index:5; pointer-events:none;"></div>
         
         <div id="voxIndicator" style="position: absolute; top: 10px; right: 10px; font-weight: bold; font-size: 0.9em; z-index: 3;">VOX</div>
         <div id="asqIndicator" style="position: absolute; top: 10px; right: 45px; font-weight: bold; font-size: 0.9em; z-index: 3;">ASQ</div>
@@ -423,9 +424,9 @@
             <button onclick="send('CQ_REC')" id="btn-cqrec" style="color: #ffaa00;">CQ REC</button>
             <button onclick="send('CQ_CALL')" id="btn-cqcall" style="color: #00ffff;">CQ CALL</button>
             <div id="cqRecConfirm" style="display:none; grid-column: 1 / -1; gap: 8px; justify-content: center; align-items: center; margin-top: 4px;">
-                <span style="color:#ffaa00; font-size:0.85em;">Neue CQ-Aufnahme:</span>
-                <button onclick="send('CQ_REC_SAVE')" style="color:#00ff00; border-color:#00ff00;">💾 Speichern</button>
-                <button onclick="send('CQ_REC_DISCARD')" style="color:#ff3333; border-color:#ff3333;">✖ Abbrechen</button>
+                <span style="color:#ffaa00; font-size:0.85em;">New CQ recording:</span>
+                <button onclick="send('CQ_REC_SAVE')" style="color:#00ff00; border-color:#00ff00;">💾 Save</button>
+                <button onclick="send('CQ_REC_DISCARD')" style="color:#ff3333; border-color:#ff3333;">✖ Discard</button>
             </div>
         {% elif config.active_p_block == 'custom' %}
             <button onclick="send('CUST_1')" id="btn-cust1">{{ config.cust_lbl_1 or 'CUST 1' }}</button>
@@ -460,6 +461,14 @@
                </select>
         </p>
 
+        <p>Display mode: 
+            <select id="vzModeSelect" onchange="setVisualizerMode(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
+                <option value="bars">Classic (Bars)</option>
+                <option value="waterfall">Waterfall</option>
+                <option value="both">Both (Bars + Waterfall)</option>
+            </select>
+        </p>
+
         <p>Multinorm bands: 
             <select onchange="fetch('/api/cmd/SET_CURRENT_BAND?val=' + this.value).then(() => { setTimeout(() => location.reload(), 150); })" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
                 <option value="EU" {% if config.current_band == 'EU' %}selected{% endif %}>EU (40 CH AM/FM/SSB)</option>
@@ -484,7 +493,7 @@
             <div style="border-left: 2px solid #00ff00; padding-left: 10px; margin: 10px 0;">
                 <p style="color: #00ff00; font-weight: bold; margin-bottom: 5px;"> Button 1 (e.g. Antenna 1):</p>
                 <p>Label: <input type="text" value="{{config.cust_lbl_1}}" onchange="setCfg('CUST_LBL_1', this.value)" style="width:100px;">
-                  Terminal command: <input type="text" value="{{config.cust_cmd_1}}" onchange="setCfg('CUST_CMD_1', this.value)" style="width:160px;" placeholder="z.B. curl ..."></p>
+                  Terminal command: <input type="text" value="{{config.cust_cmd_1}}" onchange="setCfg('CUST_CMD_1', this.value)" style="width:160px;" placeholder="e.g. curl ..."></p>
             </div>
             <div style="border-left: 2px solid #00ff00; padding-left: 10px; margin: 10px 0;">
                 <p style="color: #00ff00; font-weight: bold; margin-bottom: 5px;"> Button 2 (e.g. Antenna 2):</p>
@@ -600,11 +609,95 @@
 
     const canvas = document.getElementById('audioVisualizer');
     const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
-    let socket; let lastData = new Array(32).fill(0); let currentBarColor = 'green';
+    let socket; let lastData = []; let currentBarColor = 'green';
     let isWebUILocked = false; let radioConfigGlobal = { ptt_hotkey: 'F6' };
     let webuiQueue = []; let isWebUIBusy = false; let clarTimer = null; let currentClarOffset = 0;
     let currentSqTimeout = 0; let currentAsqTimeout = 0; let currentMuteTimeout = 0;
     let cqRecPendingGlobal = false; // NEU: sperrt CQ REC, solange Speichern/Abbrechen noch offen ist
+
+    // --- NEU: WASSERFALL-DISPLAY ALS UMSCHALTBARE, LOKAL GESPEICHERTE ANSICHT ---
+    let visualizerMode = localStorage.getItem('ae5900_viz_mode') || 'bars';
+    const wfColorStops = [
+        [0.00, 0x00, 0x03, 0x0c], [0.18, 0x00, 0x12, 0x33], [0.38, 0x00, 0x3b, 0x1f],
+        [0.58, 0x00, 0xd9, 0x5c], [0.72, 0xe6, 0xe6, 0x00], [0.86, 0xff, 0x95, 0x00], [1.00, 0xff, 0x22, 0x00]
+    ];
+    function wfColorAt(v) {
+        v = Math.max(0, Math.min(1, v));
+        for (let i = 0; i < wfColorStops.length - 1; i++) {
+            const s0 = wfColorStops[i], s1 = wfColorStops[i + 1];
+            if (v >= s0[0] && v <= s1[0]) {
+                const t = (s1[0] === s0[0]) ? 0 : (v - s0[0]) / (s1[0] - s0[0]);
+                const r = Math.round(s0[1] + (s1[1] - s0[1]) * t);
+                const g = Math.round(s0[2] + (s1[2] - s0[2]) * t);
+                const b = Math.round(s0[3] + (s1[3] - s0[3]) * t);
+                return 'rgb(' + r + ',' + g + ',' + b + ')';
+            }
+        }
+        const last = wfColorStops[wfColorStops.length - 1];
+        return 'rgb(' + last[1] + ',' + last[2] + ',' + last[3] + ')';
+    }
+    // Laufender Rauschboden/Decke fuer automatische Kontrastanpassung (wie bei echten SDR-Wasserfaellen)
+    let wfFloor = 0, wfCeil = 1;
+    // --- LIVE-TUNING: diese beiden Werte kannst du direkt hier im Browser (F12 -> Console) testen, z.B.:
+    //     wfAdaptSpeed = 0.05    (groesser = folgt dem Pegel schneller)
+    //     wfContrastExponent = 0.4   (kleiner = "drueckt staerker durch", mehr Farbe bei schwachen Signalen)
+    // Aenderungen hier im <script> sind dauerhaft, in der Konsole nur bis zum naechsten Reload.
+    let wfAdaptSpeed = 0.02;
+    let wfContrastExponent = 0.45;
+    function drawWaterfall(data, xOffset, regionWidth) {
+        if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
+        const ox = xOffset || 0;
+        const w = (regionWidth !== undefined) ? regionWidth : canvas.width;
+        if (w < 2 || canvas.height < 2) return;
+        try {
+            const img = ctx.getImageData(ox, 0, w, canvas.height - 1);
+            ctx.putImageData(img, ox, 1);
+        } catch (e) { return; }
+
+        let frameMin = Infinity, frameMax = -Infinity;
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] < frameMin) frameMin = data[i];
+            if (data[i] > frameMax) frameMax = data[i];
+        }
+        if (!isFinite(frameMin)) frameMin = 0;
+        if (!isFinite(frameMax) || frameMax <= frameMin) frameMax = frameMin + 1;
+        wfFloor += (frameMin - wfFloor) * wfAdaptSpeed;
+        wfCeil += (frameMax - wfCeil) * wfAdaptSpeed;
+        if (wfCeil - wfFloor < 0.001) wfCeil = wfFloor + 0.001;
+
+        const barWidth = w / data.length;
+        data.forEach((val, i) => {
+            let v = (val - wfFloor) / (wfCeil - wfFloor);
+            v = Math.max(0, Math.min(1, v));
+            v = Math.pow(v, wfContrastExponent);
+            ctx.fillStyle = wfColorAt(v);
+            ctx.fillRect(ox + Math.floor(i * barWidth), 0, Math.ceil(barWidth) + 1, 1);
+        });
+        // dezente Mittelmarkierung (rein optisch, keine echte USB/LSB-Aussage bei NF-Audio)
+        ctx.fillStyle = 'rgba(0,255,255,0.18)';
+        ctx.fillRect(ox + Math.floor(w / 2), 0, 1, 1);
+    }
+    function drawSplit(data) {
+        if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
+        const half = Math.floor(canvas.width / 2);
+        drawAudioBars(data, 0, half);
+        drawWaterfall(data, half, canvas.width - half);
+        // Der Trennindikator ist jetzt ein echtes HTML-Element (#splitMarker), kein Canvas-Pixel mehr -
+        // ein im Canvas gemaltes Dreieck wurde vom Wasserfall-Scroll erfasst und ist als Streifen mitgelaufen.
+    }
+    function syncVzModeSelect() {
+        const sel = document.getElementById('vzModeSelect');
+        if (sel) sel.value = visualizerMode;
+        const marker = document.getElementById('splitMarker');
+        if (marker) marker.style.display = (visualizerMode === 'both') ? 'block' : 'none';
+    }
+    function setVisualizerMode(mode) {
+        visualizerMode = (mode === 'waterfall' || mode === 'both') ? mode : 'bars';
+        try { localStorage.setItem('ae5900_viz_mode', visualizerMode); } catch (e) {}
+        if (ctx && canvas) { ctx.fillStyle = '#00030c'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+        wfFloor = 0; wfCeil = 1; // Kontrastanpassung bei Moduswechsel zuruecksetzen
+        syncVzModeSelect();
+    }
 
     function resizeCanvas() { if (canvas) { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; } }
     window.addEventListener('resize', resizeCanvas);
@@ -625,11 +718,14 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-241026 BGF";
+                if (vInd) vInd.textContent = "V-251026 WFB";
             });
 
             socket.on('audio', (data) => { 
-                if (data && Array.isArray(data.data)) drawAudioBars(data.data); 
+                if (!data || !Array.isArray(data.data)) return;
+                if (visualizerMode === 'waterfall') drawWaterfall(data.data);
+                else if (visualizerMode === 'both') drawSplit(data.data);
+                else drawAudioBars(data.data);
             });
             
             socket.on('connect_error', (err) => {
@@ -644,10 +740,16 @@
         }, 400); 
     }
 
-    function drawAudioBars(data) {
+    function drawAudioBars(data, xOffset, regionWidth) {
         if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const barWidth = canvas.width / data.length;
+        // NEU: lastData wird jetzt passend zur tatsaechlichen Bin-Anzahl (128) gehalten -
+        // vorher fest auf 32 Eintraege begrenzt, wodurch Bins 33-128 als NaN "verschwanden"
+        // (das war der Grund fuer die Balken, die nur noch auf der linken Seite auftauchten).
+        if (lastData.length !== data.length) lastData = new Array(data.length).fill(0);
+        const ox = xOffset || 0;
+        const w = (regionWidth !== undefined) ? regionWidth : canvas.width;
+        ctx.clearRect(ox, 0, w, canvas.height);
+        const barWidth = w / data.length;
         data.forEach((val, i) => {
             let displayVal = Math.max(val, lastData[i] - 2.2); lastData[i] = displayVal;
             let height = Math.min((displayVal / 42) * canvas.height, canvas.height);
@@ -655,7 +757,11 @@
             if (currentBarColor === 'red') { grad.addColorStop(0, '#440000'); grad.addColorStop(1, '#ff4444'); }
             else if (currentBarColor === 'orange') { grad.addColorStop(0, '#442200'); grad.addColorStop(1, '#ffaa44'); }
             else { grad.addColorStop(0, '#003300'); grad.addColorStop(1, '#44ff44'); }
-            ctx.fillStyle = grad; ctx.fillRect(i * barWidth, canvas.height - height, barWidth - 1, height);
+            // NEU: Mindestbreite von 1px voll deckend, sonst wird das fillRect bei schmalen Balken
+            // (z.B. im "Both"-Split mit halber Breite) subpixel-antialiast und wirkt viel dunkler.
+            const bx = Math.floor(ox + i * barWidth);
+            const bw = Math.max(1, Math.round(barWidth) - (barWidth > 2 ? 1 : 0));
+            ctx.fillStyle = grad; ctx.fillRect(bx, canvas.height - height, bw, height);
         });
     }
 
@@ -767,7 +873,7 @@
             btn.classList.toggle('active', data.PTT === "ON");
         }
         
-        if (sBtn) { if(data.SW_SCAN) { sBtn.style.background = "#004444"; sBtn.style.boxShadow = "0 0 10px #00ffff"; sBtn.innerText = "SCANN..."; } else { sBtn.style.background = ""; sBtn.style.boxShadow = "none"; sBtn.innerText = "S-SCAN"; } }
+        if (sBtn) { if(data.SW_SCAN) { sBtn.style.background = "#004444"; sBtn.style.boxShadow = "0 0 10px #00ffff"; sBtn.innerText = "SCAN..."; } else { sBtn.style.background = ""; sBtn.style.boxShadow = "none"; sBtn.innerText = "S-SCAN"; } }
         const mwBtn = document.getElementById('mwBtn');
         if (mwBtn) { if(data.MW_SCAN) { mwBtn.style.background = "#004444"; mwBtn.style.boxShadow = "0 0 10px #00ffff"; mwBtn.innerText = "MW..."; } else { mwBtn.style.background = ""; mwBtn.style.boxShadow = "none"; mwBtn.innerText = "MW"; } }
 
@@ -1025,7 +1131,7 @@
         const macValue = macField.value.trim();
         
         if (macValue === "") {
-            alert("Bitte zuerst eine MAC-Adresse eingeben!");
+            alert("Please enter a MAC address first!");
             return;
         }
         
@@ -1039,19 +1145,19 @@
                     console.log("BT-Status:", data.message);
                 } else {
                     macField.style.background = "#440000"; // Rot: Fehler
-                    alert("Fehler: " + data.message);
+                    alert("Error: " + data.message);
                 }
                 setTimeout(() => { macField.style.background = "#000"; }, 2000);
             })
             .catch(err => {
                 macField.style.background = "#440000";
-                alert("Netzwerkfehler beim Bluetooth-Sync.");
+                alert("Network error during Bluetooth sync.");
                 setTimeout(() => { macField.style.background = "#000"; }, 2000);
             });
     }
 
     function pollStatus() { fetch('/api/cmd/STATUS').then(r => r.json()).then(data => { updateUI(data); setTimeout(pollStatus, 850); }).catch(e => { setTimeout(pollStatus, 1500); }); }
-    window.onload = function() { resizeCanvas(); initSocket(); pollStatus(); };
+    window.onload = function() { resizeCanvas(); initSocket(); pollStatus(); syncVzModeSelect(); };
 </script>
 </body>
 </html>
