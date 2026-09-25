@@ -838,23 +838,25 @@ def index():
                            beeps_list=radio.beeps_list, 
                            lang=erkannte_sprache)
 
+FFT_BINS = 128  # NEU: von 32 auf 128 erhoeht - deckt bei 22050Hz/CHUNK=512 das ganze Sprachband (bis ~5.5kHz) feiner aufgeloest ab
+
 @app.route('/api/audio')
 def get_audio():
     try:
-        if getattr(radio, 'audio_mute', False): return jsonify([0] * 32)
+        if getattr(radio, 'audio_mute', False): return jsonify([0] * FFT_BINS)
         if radio.is_tx or radio.is_device_sending:
             raw_data = stream_rx.read(CHUNK, exception_on_overflow=False)
             gain = radio.config.get("fft_tx_gain", 55000)
             data = np.frombuffer(raw_data, dtype=np.int16)
-            return jsonify((np.abs(np.fft.rfft(data))[:32] / gain).tolist())
+            return jsonify((np.abs(np.fft.rfft(data))[:FFT_BINS] / gain).tolist())
         else:
             raw_data = stream_tx.read(CHUNK, exception_on_overflow=False)
             gain = radio.config.get("fft_rx_gain", 25000)
             data = np.frombuffer(raw_data, dtype=np.int16)
-            fft = np.abs(np.fft.rfft(data))[:32]
+            fft = np.abs(np.fft.rfft(data))[:FFT_BINS]
             fft_clean = np.where(fft < 40000, 0, fft - 40000)
             return jsonify((fft_clean / gain).tolist())
-    except: return jsonify([0] * 32)
+    except: return jsonify([0] * FFT_BINS)
 
 
 @app.route('/api/rig/ptt/<int:state>')
@@ -2076,7 +2078,7 @@ def api_config_override():
     try:
         data = request.get_json()
         if not data: 
-            return jsonify({"status": "error", "message": "Keine Daten"}), 400
+            return jsonify({"status": "error", "message": "No data"}), 400
         mapping = {"toggle_vox": "vox_enabled", "toggle_mute": "mute_enabled", "toggle_asq": "asq_enabled", "toggle_lock": "lock_enabled"}
         with radio.lock:
             for json_key, config_key in mapping.items():
@@ -2179,20 +2181,20 @@ def api_bluetooth_connect():
         target_mac = request.args.get('mac', '').strip().upper()
 
     if not target_mac or target_mac == "00:00:00:00:00:00" or len(target_mac) != 17:
-        return jsonify({"status": "error", "message": "Bitte gib eine gueltige MAC-Adresse ein!"}), 400
+        return jsonify({"status": "error", "message": "Please enter a valid MAC address!"}), 400
         
     try:
         with radio.lock:
             radio.config["bt_mac_address"] = target_mac
             radio.save_config()
         
-        print(f"[BLUETOOTH CONTROL] Adresse {target_mac} erfolgreich in config.json gesichert.")
+        print(f"[BLUETOOTH CONTROL] Address {target_mac} successfully saved to config.json.")
         
         subprocess.run(["sudo", "rfcomm", "release", "rfcomm0"], check=False)
         time.sleep(0.5)
         subprocess.Popen(["sudo", "rfcomm", "bind", "rfcomm0", target_mac, "1"])
         
-        return jsonify({"status": "success", "message": f"Adresse gespeichert und Brücke zu {target_mac} initiiert!"})
+        return jsonify({"status": "success", "message": f"Address saved, bridge to {target_mac} initiated!"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 # =========================================================================
