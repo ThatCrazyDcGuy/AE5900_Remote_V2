@@ -637,13 +637,13 @@
         return 'rgb(' + last[1] + ',' + last[2] + ',' + last[3] + ')';
     }
     // Laufender Rauschboden/Decke fuer automatische Kontrastanpassung (wie bei echten SDR-Wasserfaellen)
-    let wfFloor = 0, wfCeil = 1;
+    let wfFloor = 0, wfCeil = 2;
     // --- LIVE-TUNING: diese beiden Werte kannst du direkt hier im Browser (F12 -> Console) testen, z.B.:
     //     wfAdaptSpeed = 0.05    (groesser = folgt dem Pegel schneller)
     //     wfContrastExponent = 0.4   (kleiner = "drueckt staerker durch", mehr Farbe bei schwachen Signalen)
     // Aenderungen hier im <script> sind dauerhaft, in der Konsole nur bis zum naechsten Reload.
-    let wfAdaptSpeed = 0.02;
-    let wfContrastExponent = 0.45;
+    let wfAdaptSpeed = 0.85;
+    let wfContrastExponent = 0.15;
     function drawWaterfall(data, xOffset, regionWidth) {
         if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
         const ox = xOffset || 0;
