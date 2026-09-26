@@ -642,7 +642,7 @@
     //     wfAdaptSpeed = 0.05    (groesser = folgt dem Pegel schneller)
     //     wfContrastExponent = 0.4   (kleiner = "drueckt staerker durch", mehr Farbe bei schwachen Signalen)
     // Aenderungen hier im <script> sind dauerhaft, in der Konsole nur bis zum naechsten Reload.
-    let wfAdaptSpeed = 0.85;
+    let wfAdaptSpeed = 1.0;
     let wfContrastExponent = 0.15;
     function drawWaterfall(data, xOffset, regionWidth) {
         if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
