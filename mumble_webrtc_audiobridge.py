@@ -90,6 +90,70 @@ def index():
             
             let nextStartTime = 0;
             const BUFFER_DELAY = 0.08; 
+            let keepAliveOsc = null;
+            let keepAliveInterval = null;
+            let wakeLock = null;
+
+            // NEU: Screen Wake Lock - verhindert, dass das Display (und damit der gedrosselte
+            // Hintergrund-Tab) ueberhaupt erst sperrt, solange Audio an ist. Wird automatisch vom
+            // Browser freigegeben, wenn der Tab den Fokus verliert - darum bei 'visibilitychange'
+            // erneut anfordern, sobald die Seite wieder sichtbar wird.
+            async function requestWakeLock() {
+                if (!('wakeLock' in navigator)) return;
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('[WAKELOCK] aktiv');
+                } catch (e) {
+                    console.log('[WAKELOCK] nicht verfuegbar:', e.message);
+                }
+            }
+            document.addEventListener('visibilitychange', () => {
+                if (isAudioOn && document.visibilityState === 'visible' && (!wakeLock || wakeLock.released)) {
+                    requestWakeLock();
+                }
+            });
+
+            // NEU: MediaSession - meldet dem Betriebssystem "hier laeuft echte Medienwiedergabe"
+            // (wie ein Musik-Player), was Android/Chrome meist bevorzugt im Hintergrund am Leben
+            // laesst statt den Tab als inaktiv einzufrieren.
+            function setupMediaSession() {
+                if (!('mediaSession' in navigator)) return;
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: 'AE-5900 Live Audio',
+                    artist: 'Funkgeraet-Fernsteuerung'
+                });
+                navigator.mediaSession.playbackState = 'playing';
+                navigator.mediaSession.setActionHandler('play', () => { navigator.mediaSession.playbackState = 'playing'; });
+                navigator.mediaSession.setActionHandler('pause', () => { navigator.mediaSession.playbackState = 'playing'; });
+            }
+
+            // NEU: Ohne staendigen Ton stufen manche Browser den Tab/Context nach einer Weile
+            // Stille als "inaktiv" ein und suspendieren ihn (v.a. mobil). Ein fast lautloser
+            // Dauerton (Gain ~0.0001, praktisch unhoerbar) haelt den AudioContext durchgehend
+            // "beschaeftigt", damit er gar nicht erst einschlaeft - robuster als nur hinterher
+            // wieder aufzuwecken.
+            function startKeepAlive() {
+                if (!audioContext || keepAliveOsc) return;
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                gain.gain.value = 0.0001;
+                osc.frequency.value = 20; // unterhalb des Hoerbereichs
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                osc.start();
+                keepAliveOsc = osc;
+
+                // Sicherheitsnetz: falls der Context trotzdem mal suspended wird, alle 3s aufwecken
+                keepAliveInterval = setInterval(() => {
+                    if (audioContext && audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                }, 3000);
+            }
+            function stopKeepAlive() {
+                if (keepAliveOsc) { try { keepAliveOsc.stop(); } catch(e) {} keepAliveOsc = null; }
+                if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }
+            }
 
             socket.on('connect', () => {
                 document.getElementById('status').innerText = "Verbunden mit Audio-Gateway";
@@ -98,6 +162,13 @@ def index():
 
             socket.on('audio_out', (pcmData) => {
                 if (!isAudioOn || !audioContext) return;
+
+                // NEU: Browser (v.a. mobil) suspendieren den AudioContext von selbst nach einer Weile
+                // Stille (Energiesparen). resume() ist ungefaehrlich, wenn er schon laeuft - also einfach
+                // vor jedem Abspielen sicherheitshalber aufwecken.
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
                 
                 const int16Array = new Int16Array(
                     pcmData instanceof ArrayBuffer ? pcmData : pcmData.buffer || pcmData
@@ -135,6 +206,9 @@ def index():
                     isAudioOn = true;
                     btn.innerText = "AUDIO RECV: ON";
                     btn.classList.remove('off');
+                    startKeepAlive();
+                    requestWakeLock();
+                    setupMediaSession();
                     
                     navigator.mediaDevices.getUserMedia({
                         audio: {
@@ -179,6 +253,9 @@ def index():
                     btn.innerText = "AUDIO RECV: OFF";
                     btn.classList.add('off');
                     document.getElementById('status').innerText = "Audio gestoppt.";
+                    stopKeepAlive();
+                    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+                    if ('mediaSession' in navigator) { navigator.mediaSession.playbackState = 'none'; }
                     
                     if (window.micStream) {
                         window.micStream.getTracks().forEach(track => track.stop());
@@ -242,6 +319,94 @@ def handle_connect():
         except Exception as e:
             print(f"[MUMBLE] Verbindung fehlgeschlagen: {e}")
 
+def ensure_valid_cert(domain, cert_path, key_path, renew_within_days=7):
+    """
+    Prueft, ob ein Tailscale-Zertifikat existiert und noch ausreichend lange gueltig ist.
+    Fehlt es, ist es abgelaufen oder laeuft es bald ab, wird automatisch per
+    'tailscale cert <domain>' ein neues ausgestellt (dauert ein paar Sekunden).
+    Prueft danach auch, ob das Skript die Dateien ueberhaupt LESEN darf - haeufige Falle,
+    wenn 'tailscale cert' mal mit sudo lief und die Dateien dann root gehoeren.
+    Gibt True zurueck, wenn am Ende ein gueltiges, lesbares Zertifikatspaar vorliegt.
+    """
+    import subprocess
+    from datetime import datetime
+
+    def read_expiry(path):
+        try:
+            result = subprocess.run(
+                ["openssl", "x509", "-enddate", "-noout", "-in", path],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode != 0:
+                return None
+            end_str = result.stdout.strip().replace("notAfter=", "")
+            return datetime.strptime(end_str, "%b %d %H:%M:%S %Y %Z")
+        except Exception:
+            return None
+
+    needs_renewal = True
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        end_date = read_expiry(cert_path)
+        if end_date:
+            days_left = (end_date - datetime.utcnow()).days
+            if days_left > renew_within_days:
+                print(f"[SSL] Zertifikat fuer '{domain}' ist gueltig bis {end_date.strftime('%d.%m.%Y')} (noch {days_left} Tage) - kein Erneuern noetig.")
+                needs_renewal = False
+            else:
+                print(f"[SSL] Zertifikat laeuft in {days_left} Tag(en) ab ({end_date.strftime('%d.%m.%Y')}) - erneuere vorsorglich...")
+        else:
+            print(f"[SSL] Zertifikat fuer '{domain}' vorhanden, aber Ablaufdatum nicht lesbar - erneuere sicherheitshalber...")
+
+    if needs_renewal:
+        print(f"[SSL] Fordere neues Zertifikat fuer '{domain}' via Tailscale an - das kann ein paar Sekunden dauern...")
+        try:
+            result = subprocess.run(["tailscale", "cert", domain], capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                print("[SSL] Neues Zertifikat erfolgreich ausgestellt.")
+            elif "access denied" in result.stderr.lower() or "operator" in result.stderr.lower():
+                # NEU: haeufigster Erststart-Fehler - tailscale cert braucht ohne gesetzten
+                # Operator root-Rechte. Einmaliger Selbstheilungs-Versuch, danach nie wieder noetig.
+                import getpass
+                user = getpass.getuser()
+                print(f"[SSL] Tailscale braucht dafuer einmalig root-Rechte. Versuche automatisch: sudo tailscale set --operator={user}")
+                print("[SSL] Falls jetzt ein Passwort-Prompt im Terminal erscheint: bitte das sudo-Passwort eingeben.")
+                try:
+                    op_result = subprocess.run(["sudo", "tailscale", "set", f"--operator={user}"], timeout=60)
+                    if op_result.returncode == 0:
+                        print("[SSL] Operator gesetzt - Tailscale braucht ab jetzt nie wieder sudo. Versuche Zertifikat erneut...")
+                        result = subprocess.run(["tailscale", "cert", domain], capture_output=True, text=True, timeout=30)
+                        if result.returncode == 0:
+                            print("[SSL] Neues Zertifikat erfolgreich ausgestellt.")
+                        else:
+                            print(f"[SSL WARNUNG] Immer noch fehlgeschlagen:\n{result.stderr.strip()}")
+                    else:
+                        print("[SSL WARNUNG] 'sudo tailscale set --operator' wurde abgebrochen oder ist fehlgeschlagen.")
+                        print(f"[SSL] Bitte einmalig manuell ausfuehren: sudo tailscale set --operator={user}")
+                except Exception as e:
+                    print(f"[SSL WARNUNG] Konnte Operator nicht automatisch setzen ({e}).")
+                    print(f"[SSL] Bitte einmalig manuell ausfuehren: sudo tailscale set --operator={user}")
+            else:
+                print(f"[SSL WARNUNG] 'tailscale cert' meldete einen Fehler:\n{result.stderr.strip()}")
+        except FileNotFoundError:
+            print("[SSL WARNUNG] Befehl 'tailscale' nicht gefunden - ist Tailscale installiert und im PATH?")
+        except subprocess.TimeoutExpired:
+            print("[SSL WARNUNG] 'tailscale cert' hat zu lange gebraucht (Timeout) - Netzwerkproblem?")
+        except Exception as e:
+            print(f"[SSL WARNUNG] Unerwarteter Fehler beim Erneuern: {e}")
+
+    if not (os.path.exists(cert_path) and os.path.exists(key_path)):
+        return False
+
+    for p in (cert_path, key_path):
+        if not os.access(p, os.R_OK):
+            print(f"[SSL FEHLER] '{p}' existiert, ist fuer diesen Nutzer aber nicht lesbar (Rechteproblem).")
+            print(f"              Das passiert oft, wenn 'tailscale cert' mit sudo lief. Abhilfe:")
+            print(f"              sudo chown $(whoami):$(whoami) {cert_path} {key_path}")
+            return False
+
+    return True
+
+
 if __name__ == '__main__':
     import os
     import subprocess
@@ -251,33 +416,49 @@ if __name__ == '__main__':
 
     try:
         ts_status = subprocess.check_output(["tailscale", "status"], text=True)
+        ts_domain = None
         for line in ts_status.split('\n'):
             if ".ts.net" in line:
-                parts = line.split()
-                for part in parts:
+                for part in line.split():
                     if part.endswith(".ts.net"):
                         ts_domain = part
-                        possible_paths = [
-                            (f"{ts_domain}.crt", f"{ts_domain}.key"),
-                            (f"/var/lib/tailscale/certs/{ts_domain}.crt", f"/var/lib/tailscale/certs/{ts_domain}.key")
-                        ]
-                        for cert_p, key_p in possible_paths:
-                            if os.path.exists(cert_p) and os.path.exists(key_p):
-                                ssl_args = {'certfile': cert_p, 'keyfile': key_p}
-                                cert_found = True
-                                break
-                if cert_found:
+                        break
+                if ts_domain:
                     break
+
+        if ts_domain:
+            cert_p, key_p = f"{ts_domain}.crt", f"{ts_domain}.key"
+            if ensure_valid_cert(ts_domain, cert_p, key_p):
+                ssl_args = {'certfile': cert_p, 'keyfile': key_p}
+                cert_found = True
+            else:
+                # Letzter Versuch: vielleicht liegt ein gueltiges Cert im Tailscale-Systempfad
+                sys_cert_p = f"/var/lib/tailscale/certs/{ts_domain}.crt"
+                sys_key_p = f"/var/lib/tailscale/certs/{ts_domain}.key"
+                if os.path.exists(sys_cert_p) and os.path.exists(sys_key_p) and os.access(sys_cert_p, os.R_OK) and os.access(sys_key_p, os.R_OK):
+                    ssl_args = {'certfile': sys_cert_p, 'keyfile': sys_key_p}
+                    cert_found = True
     except Exception:
         pass
 
     if not cert_found:
+        # NEU: crt/key nach gemeinsamem Basisnamen zusammenfuehren statt blind crts[0]/keys[0] zu nehmen -
+        # bei mehreren Zertifikatspaaren im selben Ordner (z.B. altes + neu ausgestelltes Tailscale-Cert)
+        # konnten die bisher zufaellig NICHT zusammengehoeren, was genau zu diesem TLS-Handshake-Fehler
+        # (SSLV3_ALERT_CERTIFICATE_UNKNOWN) fuehrt. Jetzt: nur echte Paare, davon das zuletzt geaenderte.
         local_files = os.listdir('.')
-        crts = [f for f in local_files if f.endswith('.crt')]
-        keys = [f for f in local_files if f.endswith('.key')]
-        if crts and keys:
-            ssl_args = {'certfile': crts[0], 'keyfile': keys[0]}
+        crt_bases = {os.path.splitext(f)[0]: f for f in local_files if f.endswith('.crt')}
+        key_bases = {os.path.splitext(f)[0]: f for f in local_files if f.endswith('.key')}
+        matching_bases = set(crt_bases) & set(key_bases)
+
+        if matching_bases:
+            newest_base = max(matching_bases, key=lambda b: os.path.getmtime(crt_bases[b]))
+            ssl_args = {'certfile': crt_bases[newest_base], 'keyfile': key_bases[newest_base]}
             cert_found = True
+            if len(matching_bases) > 1:
+                print(f"[SSL] Mehrere Zertifikatspaare gefunden ({', '.join(sorted(matching_bases))}), verwende das neueste: {newest_base}")
+        else:
+            print("[SSL WARNUNG] .crt/.key-Dateien gefunden, aber kein Paar mit gleichem Basisnamen (z.B. 'foo.crt' + 'foo.key'). Ignoriere sie.")
 
     if cert_found:
         print("Mumble-Audio-Gateway LAEUFT SICHER UEBER HTTPS auf Port 5001...")

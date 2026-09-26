@@ -2243,7 +2243,7 @@ def audio_broadcast_task():
                 audio_response = get_audio()
                 audio_data = audio_response.get_json()
                 socketio.emit('audio', {'type': 'audio', 'data': audio_data})
-            socketio.sleep(0.05)  # NEU: von 0.085s auf 0.05s (~20 statt ~12 Zeilen/Sek.) - das ist der echte "Speed"-Regler fuer den Wasserfall-Scroll
+            socketio.sleep(0.0417)  # ~24 Zeilen/Sek. (wie OpenWebRX) - das ist der echte "Speed"-Regler fuer den Wasserfall-Scroll
         except: 
             socketio.sleep(0.5)
 
