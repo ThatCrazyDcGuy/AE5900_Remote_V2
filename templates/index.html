@@ -42,6 +42,10 @@
             position: relative; 
             overflow: hidden; 
             box-sizing: border-box;
+            text-shadow: 0 0 3px #000, 0 0 6px #000; /* dunkler Halo/Glow, erbt sich automatisch an alle Kind-Elemente */
+            /* -webkit-text-stroke wieder entfernt: auf hochauflaesigen Handy-Displays rendert eine "duenne"
+               Kontur oft viel dicker als gedacht und frisst die gruene Fuellung fast komplett auf. Jetzt,
+               wo die hud-badge-Plakette zuverlaessig sitzt, brauchen wir die Kontur nicht mehr. */
         }
         
         .s-meter-container {
@@ -96,7 +100,7 @@
             position: absolute; 
             top: 0; left: 0; 
             width: 100%; height: 100%; 
-            opacity: 0.28; 
+            opacity: 0.9; /* NEU: war 0.28 - hat JEDE Farbe auf ~28% ihrer Kraft gedaempft, Hauptgrund fuer den matten Eindruck. Jetzt durch text-shadow auf .display geschuetzt, kann also hoch. */
             pointer-events: none; 
             image-rendering: crisp-edges;
             will-change: transform;
@@ -110,8 +114,13 @@
             z-index: 3;
             text-align: left;
         }
-        .freq { top: 62px; font-size: 3.15em; font-weight: bold; margin-top: 15px; }
-        .mhz { font-size: 1.1em; color: #008800; margin-bottom: 25px; }
+        .freq { position: relative; z-index: 3; font-size: 3.15em; font-weight: bold; margin-top: 15px; width: fit-content; margin-left: auto; margin-right: auto; }
+        .mhz { position: relative; z-index: 3; font-size: 1.1em; color: #008800; margin-bottom: 25px; width: fit-content; margin-left: auto; margin-right: auto; }
+        .hud-badge {
+            /* Die sichtbare "Schild"-Plakette ist auf Wunsch wieder raus - die eigentliche Ursache war die
+               fehlende Positionierung von .freq/.mhz (jetzt behoben), der text-shadow-Glow auf .display
+               reicht fuer den Rest. Klasse bleibt (falls spaeter doch nochmal gebraucht), aktuell aber leer. */
+        }
         
         #modeName { 
 			font-size: 0.95em;
@@ -268,7 +277,7 @@
                 font-weight: bold;    
             }
             
-            .freq { top: 92px; font-size: 5.0em;  }
+            .freq { font-size: 5.0em;  }
             .mhz { font-size: 1.4em; }
             
             
@@ -351,18 +360,18 @@
         <canvas id="audioVisualizer"></canvas>
         <div id="splitMarker" style="display:none; position:absolute; top:0; left:50%; transform:translateX(-50%); width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid rgba(0,255,255,0.6); z-index:5; pointer-events:none;"></div>
         
-        <div id="voxIndicator" style="position: absolute; top: 10px; right: 10px; font-weight: bold; font-size: 0.9em; z-index: 3;">VOX</div>
-        <div id="asqIndicator" style="position: absolute; top: 10px; right: 45px; font-weight: bold; font-size: 0.9em; z-index: 3;">ASQ</div>
-        <div id="muteIndicator" style="position: absolute; top: 10px; right: 80px; font-weight: bold; font-size: 0.9em; z-index: 3;">MUTE</div>
-        <div id="lockIndicator" style="position: absolute; top: 10px; right: 125px; font-weight: bold; font-size: 0.9em; z-index: 3;">LOCK</div>
-        <div id="micgainIndicator" style="position: absolute; top: 10px; left: 10px; font-weight: bold; font-size: 0.9em; z-index: 3; color: #00ff00;">MIC:<span id="displayVolDisp">--</span>%</div>
-        <div id="modeName" style="font-weight: bold; color: #00ccff; position: absolute; z-index: 3;">FM</div>
-        <div id="clarIndicator" style="position: absolute; top: 10px; left: 85px; font-weight: bold; font-size: 0.9em; z-index: 3; color: #00ff00; display: none;">CLAR:<span id="displayClarDisp">+0</span> Hz</div>
-        <div id="versionIndicator" style="position: absolute; bottom: 5px; right: 10px; font-weight: bold; font-size: 0.7em; z-index: 3; color: #ff8800;">Reload...</div>
-        <div id="pttStat" style="font-weight:bold; color:#444; position: absolute;  z-index: 3;">○ RX IDLE</div>
+        <div id="voxIndicator" class="hud-badge" style="position: absolute; top: 10px; right: 10px; font-weight: bold; font-size: 0.9em; z-index: 3;">VOX</div>
+        <div id="asqIndicator" class="hud-badge" style="position: absolute; top: 10px; right: 45px; font-weight: bold; font-size: 0.9em; z-index: 3;">ASQ</div>
+        <div id="muteIndicator" class="hud-badge" style="position: absolute; top: 10px; right: 80px; font-weight: bold; font-size: 0.9em; z-index: 3;">MUTE</div>
+        <div id="lockIndicator" class="hud-badge" style="position: absolute; top: 10px; right: 125px; font-weight: bold; font-size: 0.9em; z-index: 3;">LOCK</div>
+        <div id="micgainIndicator" class="hud-badge" style="position: absolute; top: 10px; left: 10px; font-weight: bold; font-size: 0.9em; z-index: 3; color: #00ff00;">MIC:<span id="displayVolDisp">--</span>%</div>
+        <div id="modeName" class="hud-badge" style="font-weight: bold; color: #00ccff; position: absolute; z-index: 3;">FM</div>
+        <div id="clarIndicator" class="hud-badge" style="position: absolute; top: 10px; left: 85px; font-weight: bold; font-size: 0.9em; z-index: 3; color: #00ff00; display: none;">CLAR:<span id="displayClarDisp">+0</span> Hz</div>
+        <div id="versionIndicator" class="hud-badge" style="position: absolute; bottom: 5px; right: 10px; font-weight: bold; font-size: 0.7em; z-index: 3; color: #ff8800;">Reload...</div>
+        <div id="pttStat" class="hud-badge" style="font-weight:bold; color:#444; position: absolute;  z-index: 3;">○ RX IDLE</div>
 
-        <div class="freq" id="chDisp">01</div>
-        <div class="mhz" id="mhzDisp">26.965 MHz</div>
+        <div class="freq hud-badge" id="chDisp">01</div>
+        <div class="mhz hud-badge" id="mhzDisp">26.965 MHz</div>
         
         <div class="s-meter-container">
              <div class="s-meter-labels">
@@ -380,7 +389,7 @@
             </div>
         </div>
 
-        <div id="sqDisplayLabel" style="position: absolute; bottom: 5px; left: 10px; font-size: 0.9em; color: #0f0;">SQ: 0%</div>
+        <div id="sqDisplayLabel" class="hud-badge" style="position: absolute; bottom: 5px; left: 10px; font-size: 0.9em; color: #0f0;">SQ: 0%</div>
     </div>
 
     <div class="keypad-wrapper">
@@ -617,9 +626,12 @@
 
     // --- NEU: WASSERFALL-DISPLAY ALS UMSCHALTBARE, LOKAL GESPEICHERTE ANSICHT ---
     let visualizerMode = localStorage.getItem('ae5900_viz_mode') || 'bars';
+    // NEU: satter/knalliger (X6100-Referenz) - reines Schwarz im Boden fuer max. Kontrast, dann kraeftiges
+    // Blau/Cyan/Gruen/Gelb/Orange/Rot statt der vorherigen eher gedaempften navy/dunkelgruenen Zwischentoene.
     const wfColorStops = [
-        [0.00, 0x00, 0x03, 0x0c], [0.18, 0x00, 0x12, 0x33], [0.38, 0x00, 0x3b, 0x1f],
-        [0.58, 0x00, 0xd9, 0x5c], [0.72, 0xe6, 0xe6, 0x00], [0.86, 0xff, 0x95, 0x00], [1.00, 0xff, 0x22, 0x00]
+        [0.00, 0x00, 0x00, 0x00], [0.15, 0x00, 0x20, 0x60], [0.32, 0x00, 0x70, 0xff],
+        [0.48, 0x00, 0xe8, 0xcc], [0.62, 0x00, 0xff, 0x33], [0.76, 0xff, 0xf2, 0x00],
+        [0.88, 0xff, 0x88, 0x00], [1.00, 0xff, 0x00, 0x00]
     ];
     function wfColorAt(v) {
         v = Math.max(0, Math.min(1, v));
@@ -638,12 +650,40 @@
     }
     // Laufender Rauschboden/Decke fuer automatische Kontrastanpassung (wie bei echten SDR-Wasserfaellen)
     let wfFloor = 0, wfCeil = 2;
-    // --- LIVE-TUNING: diese beiden Werte kannst du direkt hier im Browser (F12 -> Console) testen, z.B.:
-    //     wfAdaptSpeed = 0.05    (groesser = folgt dem Pegel schneller)
-    //     wfContrastExponent = 0.4   (kleiner = "drueckt staerker durch", mehr Farbe bei schwachen Signalen)
+    // --- LIVE-TUNING: diese Werte kannst du direkt hier im Browser (F12 -> Console) testen, z.B.:
+    //     wfAdaptSpeed = 0.2     (groesser = folgt dem Pegel schneller, ACHTUNG: 1.0 = keine Glaettung mehr,
+    //                             jeder Frame setzt Boden/Decke komplett neu -> ein einzelner Ausreisser
+    //                             reisst die Decke hoch und druckt den Rest optisch nach unten/dunkel)
+    //     wfContrastExponent = 0.35   (kleiner = "drueckt staerker durch", ABER zu klein macht alles
+    //                             gleich "heiss" und frisst den Farbverlauf/die Feinzeichnung wieder auf)
     // Aenderungen hier im <script> sind dauerhaft, in der Konsole nur bis zum naechsten Reload.
-    let wfAdaptSpeed = 1.0;
-    let wfContrastExponent = 0.15;
+    // WICHTIG: steuert NUR den Farbkontrast, NICHT das Scroll-Tempo. Das Scroll-Tempo (wie schnell neue
+    // Zeilen reinkommen) haengt am Server-Intervall in audio_broadcast_task() in ae_5900_v2.py.
+    let wfAdaptSpeed = 0.18;
+    let wfContrastExponent = 0.38;
+    // NEU (3. Anlauf): kosmetische USB/LSB/AM-Asymmetrie ("mogeln", da reines NF-Audio das nicht wirklich
+    // hergibt). Nicht mehr auf eine Haelfte beschraenkt - volle Breite bei allen Modi, nur die Zuordnung
+    // Bin-Index -> x-Position aendert sich: AM/FM von der Mitte aus gespiegelt nach beiden Seiten,
+    // USB normaler Sweep links->rechts, LSB gespiegelter Sweep rechts->links.
+    function binLayout(n, ox, w, mode) {
+        const positions = [];
+        if (mode === 'LSB') {
+            const bw = w / n;
+            for (let i = 0; i < n; i++) positions.push({ i, x: ox + w - (i + 1) * bw, width: bw });
+        } else if (mode === 'USB') {
+            const bw = w / n;
+            for (let i = 0; i < n; i++) positions.push({ i, x: ox + i * bw, width: bw });
+        } else {
+            // AM/FM/CW/PA etc: symmetrisch, jeder Bin erscheint gespiegelt auf beiden Seiten der Mitte
+            const half = w / 2;
+            const bw = half / n;
+            for (let i = 0; i < n; i++) {
+                positions.push({ i, x: ox + half - (i + 1) * bw, width: bw });
+                positions.push({ i, x: ox + half + i * bw, width: bw });
+            }
+        }
+        return positions;
+    }
     function drawWaterfall(data, xOffset, regionWidth) {
         if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
         const ox = xOffset || 0;
@@ -654,26 +694,27 @@
             ctx.putImageData(img, ox, 1);
         } catch (e) { return; }
 
-        let frameMin = Infinity, frameMax = -Infinity;
-        for (let i = 0; i < data.length; i++) {
-            if (data[i] < frameMin) frameMin = data[i];
-            if (data[i] > frameMax) frameMax = data[i];
-        }
-        if (!isFinite(frameMin)) frameMin = 0;
-        if (!isFinite(frameMax) || frameMax <= frameMin) frameMax = frameMin + 1;
-        wfFloor += (frameMin - wfFloor) * wfAdaptSpeed;
-        wfCeil += (frameMax - wfCeil) * wfAdaptSpeed;
+        // Perzentil-basierte Grenzwerte statt rohem Min/Max - robuster gegen einzelne Ausreisser-Spitzen,
+        // die sonst die ganze Skala fuer einen Frame verzerren.
+        const sorted = [...data].sort((a, b) => a - b);
+        let frameFloor = sorted[Math.floor(sorted.length * 0.08)];
+        let frameCeil = sorted[Math.floor(sorted.length * 0.92)];
+        if (!isFinite(frameFloor)) frameFloor = 0;
+        if (!isFinite(frameCeil) || frameCeil <= frameFloor) frameCeil = frameFloor + 0.5;
+        wfFloor += (frameFloor - wfFloor) * wfAdaptSpeed;
+        wfCeil += (frameCeil - wfCeil) * wfAdaptSpeed;
         if (wfCeil - wfFloor < 0.001) wfCeil = wfFloor + 0.001;
 
-        const barWidth = w / data.length;
-        data.forEach((val, i) => {
+        const layout = binLayout(data.length, ox, w, currentMode);
+        layout.forEach(p => {
+            const val = data[p.i];
             let v = (val - wfFloor) / (wfCeil - wfFloor);
             v = Math.max(0, Math.min(1, v));
             v = Math.pow(v, wfContrastExponent);
             ctx.fillStyle = wfColorAt(v);
-            ctx.fillRect(ox + Math.floor(i * barWidth), 0, Math.ceil(barWidth) + 1, 1);
+            ctx.fillRect(Math.floor(p.x), 0, Math.ceil(p.width) + 1, 1);
         });
-        // dezente Mittelmarkierung (rein optisch, keine echte USB/LSB-Aussage bei NF-Audio)
+        // dezente Mittelmarkierung
         ctx.fillStyle = 'rgba(0,255,255,0.18)';
         ctx.fillRect(ox + Math.floor(w / 2), 0, 1, 1);
     }
@@ -749,9 +790,10 @@
         const ox = xOffset || 0;
         const w = (regionWidth !== undefined) ? regionWidth : canvas.width;
         ctx.clearRect(ox, 0, w, canvas.height);
-        const barWidth = w / data.length;
-        data.forEach((val, i) => {
-            let displayVal = Math.max(val, lastData[i] - 2.2); lastData[i] = displayVal;
+        const layout = binLayout(data.length, ox, w, currentMode);
+        layout.forEach(p => {
+            const val = data[p.i];
+            let displayVal = Math.max(val, lastData[p.i] - 2.2); lastData[p.i] = displayVal;
             let height = Math.min((displayVal / 42) * canvas.height, canvas.height);
             const grad = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - height);
             if (currentBarColor === 'red') { grad.addColorStop(0, '#440000'); grad.addColorStop(1, '#ff4444'); }
@@ -759,8 +801,8 @@
             else { grad.addColorStop(0, '#003300'); grad.addColorStop(1, '#44ff44'); }
             // NEU: Mindestbreite von 1px voll deckend, sonst wird das fillRect bei schmalen Balken
             // (z.B. im "Both"-Split mit halber Breite) subpixel-antialiast und wirkt viel dunkler.
-            const bx = Math.floor(ox + i * barWidth);
-            const bw = Math.max(1, Math.round(barWidth) - (barWidth > 2 ? 1 : 0));
+            const bx = Math.floor(p.x);
+            const bw = Math.max(1, Math.round(p.width) - (p.width > 2 ? 1 : 0));
             ctx.fillStyle = grad; ctx.fillRect(bx, canvas.height - height, bw, height);
         });
     }
@@ -881,10 +923,10 @@
         if (data.PTT === "ON" && data.ACTIVE_P_BLOCK === "voice") { voiceButtons.forEach(b => { if (b) { b.classList.add('click-blocked'); b.style.opacity = "0.3"; } }); }
         else if (data.AUDIO_RECORDING !== true) { voiceButtons.forEach(b => { if (b) { b.classList.remove('click-blocked'); b.style.opacity = ""; } }); }
 
-        const voxInd = document.getElementById('voxIndicator'); if (voxInd) { voxInd.style.color = data.VOX_ENABLED ? "#ff8800" : "#333"; voxInd.style.opacity = data.VOX_ENABLED ? "1" : "0.5"; }
-        const asqInd = document.getElementById('asqIndicator'); if (asqInd) { asqInd.style.color = data.ASQ_ENABLED ? "#ff8800" : "#333"; asqInd.style.opacity = data.ASQ_ENABLED ? "1" : "0.5"; }
+        const voxInd = document.getElementById('voxIndicator'); if (voxInd) { voxInd.style.color = data.VOX_ENABLED ? "#ff8800" : "#888"; voxInd.style.opacity = data.VOX_ENABLED ? "1" : "0.85"; }
+        const asqInd = document.getElementById('asqIndicator'); if (asqInd) { asqInd.style.color = data.ASQ_ENABLED ? "#ff8800" : "#888"; asqInd.style.opacity = data.ASQ_ENABLED ? "1" : "0.85"; }
         const asqBtn = document.getElementById('asqBtn'); if (asqBtn && data.MODE) asqBtn.disabled = (currentMode === "AM" || currentMode === "FM") ? isWebUILocked : true;
-        const muteInd = document.getElementById('muteIndicator'); if (muteInd) { muteInd.style.color = data.MUTE_ENABLED ? "#ff8800" : "#333"; muteInd.style.opacity = data.MUTE_ENABLED ? "1" : "0.5"; }
+        const muteInd = document.getElementById('muteIndicator'); if (muteInd) { muteInd.style.color = data.MUTE_ENABLED ? "#ff8800" : "#888"; muteInd.style.opacity = data.MUTE_ENABLED ? "1" : "0.85"; }
 
         const rbBtn = document.getElementById('rbBtn');
         if (rbBtn && data.CURRENT_BEEP !== undefined && data.ROGER_BEEP_ENABLED !== undefined) {
@@ -906,7 +948,7 @@
         const asqTimeout = currentAsqTimeout;
         const muteTimeout = currentMuteTimeout;
 
-        const lockInd = document.getElementById('lockIndicator'); if (lockInd) { lockInd.style.color = isWebUILocked ? "#ff8800" : "#333"; lockInd.style.opacity = isWebUILocked ? "1" : "0.5"; }
+        const lockInd = document.getElementById('lockIndicator'); if (lockInd) { lockInd.style.color = isWebUILocked ? "#ff8800" : "#888"; lockInd.style.opacity = isWebUILocked ? "1" : "0.85"; }
 
     // =========================================================================
     // GRÜNER COUNTDOWN-TIMER FÜR "A/SQ Res." BUTTON
