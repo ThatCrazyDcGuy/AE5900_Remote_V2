@@ -2000,12 +2000,18 @@ def api_cmd(cmd):
                             
                             if radio.ser:
                                 print(f"[WÄCHTER VFO-SYNC] Übersetze CB-Kanal {ch_str} zu '{hardware_vfo_string}'...")
-                                for char in hardware_vfo_string:
-                                    if char in key_codes:
-                                        radio.ser.write(bytes.fromhex(f"41000100{key_codes[char]}000006"))
-                                        time.sleep(0.10) # Synchronisiert mit dem optimierten 0.10s Timing
-                                        radio.ser.write(bytes.fromhex(f"41000000{key_codes[char]}000006"))
-                                        time.sleep(0.10)
+                                # NEU: mit radio.lock abgesichert - dieser Block lief bisher OHNE Lock, anders
+                                # als alle vergleichbaren Sende-Ketten im Code. Da diese Funktion auch vom
+                                # 850ms-Status-Polling angestossen wird, konnte waehrend der ca. 1.4s langen
+                                # Ziffernkette ein weiterer Tastendruck/Poll dazwischenfunken und die seriellen
+                                # Schreibvorgaenge verschachteln - vermutlich die Ursache der "falschen Eingaben".
+                                with radio.lock:
+                                    for char in hardware_vfo_string:
+                                        if char in key_codes:
+                                            radio.ser.write(bytes.fromhex(f"41000100{key_codes[char]}000006"))
+                                            time.sleep(0.10) # Synchronisiert mit dem optimierten 0.10s Timing
+                                            radio.ser.write(bytes.fromhex(f"41000000{key_codes[char]}000006"))
+                                            time.sleep(0.10)
                         print(f"[WÄCHTER] VFO-Kanal {val} erfolgreich synchronisiert.")
                     else:
                         print(f"[WÄCHTER ERROR] VFO-Kanal {val} ungültig.")
