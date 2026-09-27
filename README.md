@@ -294,6 +294,14 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 Current: V-251026 WFB
 
+1. Waterfall adjusted
+2. Bug fixes
+3. WebAudio integrated via HTTPS/port 5443. The controls for WebAudio are located in the Setup & Sync section.
+
+Note: Please take a look around the Setup & Sync area. There are new settings there, including some for the waterfall.
+
+Previous version: V-251026 WFB
+
 TESTING! I need to see for myself if I like this.
 
 1. Fixed a "shaking" glitch in the desktop view.
