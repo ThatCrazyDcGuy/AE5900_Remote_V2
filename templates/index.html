@@ -659,8 +659,8 @@
     // Aenderungen hier im <script> sind dauerhaft, in der Konsole nur bis zum naechsten Reload.
     // WICHTIG: steuert NUR den Farbkontrast, NICHT das Scroll-Tempo. Das Scroll-Tempo (wie schnell neue
     // Zeilen reinkommen) haengt am Server-Intervall in audio_broadcast_task() in ae_5900_v2.py.
-    let wfAdaptSpeed = 0.95;
-    let wfContrastExponent = 0.38;
+    let wfAdaptSpeed = 0.042;
+    let wfContrastExponent = 1.5;
     // NEU (3. Anlauf): kosmetische USB/LSB/AM-Asymmetrie ("mogeln", da reines NF-Audio das nicht wirklich
     // hergibt). Nicht mehr auf eine Haelfte beschraenkt - volle Breite bei allen Modi, nur die Zuordnung
     // Bin-Index -> x-Position aendert sich: AM/FM von der Mitte aus gespiegelt nach beiden Seiten,
@@ -923,10 +923,10 @@
         if (data.PTT === "ON" && data.ACTIVE_P_BLOCK === "voice") { voiceButtons.forEach(b => { if (b) { b.classList.add('click-blocked'); b.style.opacity = "0.3"; } }); }
         else if (data.AUDIO_RECORDING !== true) { voiceButtons.forEach(b => { if (b) { b.classList.remove('click-blocked'); b.style.opacity = ""; } }); }
 
-        const voxInd = document.getElementById('voxIndicator'); if (voxInd) { voxInd.style.color = data.VOX_ENABLED ? "#ff8800" : "#888"; voxInd.style.opacity = data.VOX_ENABLED ? "1" : "0.85"; }
-        const asqInd = document.getElementById('asqIndicator'); if (asqInd) { asqInd.style.color = data.ASQ_ENABLED ? "#ff8800" : "#888"; asqInd.style.opacity = data.ASQ_ENABLED ? "1" : "0.85"; }
+        const voxInd = document.getElementById('voxIndicator'); if (voxInd) { voxInd.style.color = data.VOX_ENABLED ? "#ff8800" : "#333"; voxInd.style.opacity = data.VOX_ENABLED ? "1" : "0.85"; }
+        const asqInd = document.getElementById('asqIndicator'); if (asqInd) { asqInd.style.color = data.ASQ_ENABLED ? "#ff8800" : "#333"; asqInd.style.opacity = data.ASQ_ENABLED ? "1" : "0.85"; }
         const asqBtn = document.getElementById('asqBtn'); if (asqBtn && data.MODE) asqBtn.disabled = (currentMode === "AM" || currentMode === "FM") ? isWebUILocked : true;
-        const muteInd = document.getElementById('muteIndicator'); if (muteInd) { muteInd.style.color = data.MUTE_ENABLED ? "#ff8800" : "#888"; muteInd.style.opacity = data.MUTE_ENABLED ? "1" : "0.85"; }
+        const muteInd = document.getElementById('muteIndicator'); if (muteInd) { muteInd.style.color = data.MUTE_ENABLED ? "#ff8800" : "#333"; muteInd.style.opacity = data.MUTE_ENABLED ? "1" : "0.85"; }
 
         const rbBtn = document.getElementById('rbBtn');
         if (rbBtn && data.CURRENT_BEEP !== undefined && data.ROGER_BEEP_ENABLED !== undefined) {
@@ -948,7 +948,7 @@
         const asqTimeout = currentAsqTimeout;
         const muteTimeout = currentMuteTimeout;
 
-        const lockInd = document.getElementById('lockIndicator'); if (lockInd) { lockInd.style.color = isWebUILocked ? "#ff8800" : "#888"; lockInd.style.opacity = isWebUILocked ? "1" : "0.85"; }
+        const lockInd = document.getElementById('lockIndicator'); if (lockInd) { lockInd.style.color = isWebUILocked ? "#ff8800" : "#333"; lockInd.style.opacity = isWebUILocked ? "1" : "0.85"; }
 
     // =========================================================================
     // GRÜNER COUNTDOWN-TIMER FÜR "A/SQ Res." BUTTON
