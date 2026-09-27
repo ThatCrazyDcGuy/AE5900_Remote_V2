@@ -535,6 +535,8 @@
         </p>
         <p>FFT Gain RX: <input type="number" value="{{config.fft_rx_gain}}" onchange="send('SETGAIN_RX_' + this.value)" style="width:80px;"></p>
         <p>FFT Gain TX: <input type="number" value="{{config.fft_tx_gain}}" onchange="send('SETGAIN_TX_' + this.value)" style="width:80px;"></p>
+        <p>Waterfall contrast (0.05-2.0): <input type="number" id="wfContrastInput" step="0.01" min="0.05" max="2" value="1.52" onchange="setWfContrast(this.value)" style="width:80px;"></p>
+        <p>Waterfall adapt speed (0.01-1.0): <input type="number" id="wfSpeedInput" step="0.01" min="0.01" max="1" value="0.042" onchange="setWfSpeed(this.value)" style="width:80px;"></p>
         <p>PTT Hotkey (e.g. F6, Space, p): 
             <input type="text" id="pttHotkeyInput" value="{{ config.ptt_hotkey if config.ptt_hotkey else 'F6' }}" style="width:100px;" readonly>
             <button onclick="changePTTHotkey()" style="padding: 2px 8px; font-size: 0.8em; background: #575757;">Change button</button>
@@ -659,8 +661,24 @@
     // Aenderungen hier im <script> sind dauerhaft, in der Konsole nur bis zum naechsten Reload.
     // WICHTIG: steuert NUR den Farbkontrast, NICHT das Scroll-Tempo. Das Scroll-Tempo (wie schnell neue
     // Zeilen reinkommen) haengt am Server-Intervall in audio_broadcast_task() in ae_5900_v2.py.
-    let wfAdaptSpeed = 0.042;
-    let wfContrastExponent = 1.52;
+    let wfAdaptSpeed = parseFloat(localStorage.getItem('ae5900_wf_speed')) || 0.042;
+    let wfContrastExponent = parseFloat(localStorage.getItem('ae5900_wf_contrast')) || 1.52;
+    // NEU: live im Setup & Sync einstellbar, statt nur ueber Browser-Konsole/Datei - jeder OM kann
+    // selbst rumprobieren. Wert wird lokal je Browser gemerkt (localStorage), nicht global am Server.
+    function setWfContrast(v) {
+        v = Math.max(0.05, Math.min(2, parseFloat(v) || 1.52));
+        wfContrastExponent = v;
+        try { localStorage.setItem('ae5900_wf_contrast', v); } catch (e) {}
+    }
+    function setWfSpeed(v) {
+        v = Math.max(0.01, Math.min(1, parseFloat(v) || 0.042));
+        wfAdaptSpeed = v;
+        try { localStorage.setItem('ae5900_wf_speed', v); } catch (e) {}
+    }
+    function syncWfInputs() {
+        const cIn = document.getElementById('wfContrastInput'); if (cIn) cIn.value = wfContrastExponent;
+        const sIn = document.getElementById('wfSpeedInput'); if (sIn) sIn.value = wfAdaptSpeed;
+    }
     // NEU (3. Anlauf): kosmetische USB/LSB/AM-Asymmetrie ("mogeln", da reines NF-Audio das nicht wirklich
     // hergibt). Nicht mehr auf eine Haelfte beschraenkt - volle Breite bei allen Modi, nur die Zuordnung
     // Bin-Index -> x-Position aendert sich: AM/FM von der Mitte aus gespiegelt nach beiden Seiten,
@@ -714,9 +732,6 @@
             ctx.fillStyle = wfColorAt(v);
             ctx.fillRect(Math.floor(p.x), 0, Math.ceil(p.width) + 1, 1);
         });
-        // dezente Mittelmarkierung
-        ctx.fillStyle = 'rgba(0,255,255,0.18)';
-        ctx.fillRect(ox + Math.floor(w / 2), 0, 1, 1);
     }
     function drawSplit(data) {
         if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
@@ -795,6 +810,9 @@
             const val = data[p.i];
             let displayVal = Math.max(val, lastData[p.i] - 2.2); lastData[p.i] = displayVal;
             let height = Math.min((displayVal / 42) * canvas.height, canvas.height);
+            if (height < 3) height = 0; // NEU: reiner Anzeige-Filter gegen die durchgehende "Grundrauschen"-Linie
+                                         // am unteren Rand - blendet nur sehr kleine Restausschlaege aus, die
+                                         // echten Daten/Peaks bleiben unangetastet.
             const grad = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - height);
             if (currentBarColor === 'red') { grad.addColorStop(0, '#440000'); grad.addColorStop(1, '#ff4444'); }
             else if (currentBarColor === 'orange') { grad.addColorStop(0, '#442200'); grad.addColorStop(1, '#ffaa44'); }
@@ -1199,7 +1217,7 @@
     }
 
     function pollStatus() { fetch('/api/cmd/STATUS').then(r => r.json()).then(data => { updateUI(data); setTimeout(pollStatus, 850); }).catch(e => { setTimeout(pollStatus, 1500); }); }
-    window.onload = function() { resizeCanvas(); initSocket(); pollStatus(); syncVzModeSelect(); };
+    window.onload = function() { resizeCanvas(); initSocket(); pollStatus(); syncVzModeSelect(); syncWfInputs(); };
 </script>
 </body>
 </html>
