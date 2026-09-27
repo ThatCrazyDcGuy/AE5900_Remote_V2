@@ -2550,6 +2550,15 @@ def handle_connect():
         pass
 
 
+@socketio.on('webaudio_listen_start')
+def handle_webaudio_listen_start():
+    # NEU: setzt den ADPCM-Kodierer synchron zum frisch zurueckgesetzten Browser-Decoder zurueck.
+    # Der Kodierer laeuft sonst durchgehend im Hintergrund weiter (auch ohne Zuhoerer) und "altert" -
+    # ohne diesen Reset klang der Start leiser/verzerrt, wenn "WebAudio streaming" schon vorher an war.
+    _adpcm_state["predictor"] = 0
+    _adpcm_state["index"] = 0
+
+
 @socketio.on('mic_start')
 def handle_mic_start():
     # NEU: kein Mumble-Bot mehr - direkter PyAudio-Ausgabe-Stream statt dem Protokoll-Umweg.
