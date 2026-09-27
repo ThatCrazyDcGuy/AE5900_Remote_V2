@@ -809,6 +809,12 @@
             // vorher zwei getrennte Schalter fuer einen Vorgang, das war unnoetig fummelig.
             const waCb = document.getElementById('webaudioToggle');
             if (waCb && !waCb.checked) { send('WEBAUDIO_TOGGLE'); }
+            // NEU: immer separat signalisieren, dass JETZT wirklich zugehoert wird (unabhaengig davon,
+            // ob der Haken schon gesetzt war) - der Server setzt daraufhin seinen ADPCM-Kodierer
+            // zurueck, damit er zum frisch zurueckgesetzten Browser-Decoder passt. Vorher passierte das
+            // nur zufaellig, wenn WEBAUDIO_TOGGLE mit ausgeloest wurde - bei schon gesetztem Haken nicht,
+            // was zu Encoder/Decoder-Drift (leiserer Start) fuehrte.
+            if (socket) socket.emit('webaudio_listen_start');
         } else {
             waIsListening = false;
             if (btn) { btn.textContent = '🔈 Listen to RX audio'; btn.style.background = ''; }
@@ -968,7 +974,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-271026 AUD";
+                if (vInd) vInd.textContent = "V-251026 WFB";
             });
 
             socket.on('audio', (data) => { 
