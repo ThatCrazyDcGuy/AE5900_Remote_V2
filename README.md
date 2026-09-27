@@ -292,7 +292,7 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-251026 WFB
+Current: V-271026 WFB
 
 1. Waterfall adjusted
 2. Bug fixes
