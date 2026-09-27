@@ -9,6 +9,34 @@ import json
 import os
 import numpy as np
 import pyaudio
+import base64
+import queue
+import ssl
+
+# NEU: Kompatibilitaets-Shim - pymumble_py3 ruft noch das alte ssl.wrap_socket() auf, das ab
+# Python 3.12 komplett entfernt wurde (ihr lauft auf 3.13). Baut die alte Funktion mit dem
+# modernen SSLContext nach, ohne die Bibliothek selbst anzufassen. CERT_NONE/check_hostname=False
+# entspricht dem alten Standardverhalten von wrap_socket (Mumble-Server nutzen meist eh nur ein
+# selbstsigniertes Zertifikat fuer die reine Transportverschluesselung, keine echte CA-Pruefung).
+if not hasattr(ssl, 'wrap_socket'):
+    def _legacy_wrap_socket_shim(sock, keyfile=None, certfile=None, server_side=False,
+                                  cert_reqs=ssl.CERT_NONE, ssl_version=None, ca_certs=None,
+                                  do_handshake_on_connect=True, suppress_ragged_eofs=True, ciphers=None):
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER if server_side else ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        if certfile:
+            ctx.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        return ctx.wrap_socket(sock, server_side=server_side, do_handshake_on_connect=do_handshake_on_connect,
+                                suppress_ragged_eofs=suppress_ragged_eofs)
+    ssl.wrap_socket = _legacy_wrap_socket_shim
+
+try:
+    import pymumble_py3 as pymumble
+    PYMUMBLE_AVAILABLE = True
+except ImportError:
+    PYMUMBLE_AVAILABLE = False
+    print("[MIC] pymumble_py3 nicht gefunden - Mikrofon-Senden uebers Web-UI bleibt deaktiviert (RX/Zuhoeren funktioniert trotzdem).")
 import subprocess
 import socket
 import sys
@@ -80,6 +108,70 @@ def setup_audio():
         print(f"Audio-Setup Fehler: {e}")
 
 setup_audio()
+
+# =========================================================================
+# NEU: DIREKTER MIKROFON-AUSGABE-STREAM (ersetzt den Mumble-Bot-Umweg)
+# Statt Browser-Audio ueber Mumble zu leiten (Protokoll-Inkompatibilitaeten
+# zwischen der unmaintained pymumble_py3 und einem moderneren Mumble-Server
+# fuehrten zu wiederholten, stillen Verbindungsabbruechen), spielt dieser
+# Stream das vom Browser kommende PCM direkt ueber PyAudio aus - genau wie im
+# eigenen, unfertigen Direct-Audio-Gateway-Prototyp. Kein Mumble mehr im
+# Sende-Pfad noetig, kein Protokoll-Gerangel.
+# =========================================================================
+mic_tx_queue = queue.Queue(maxsize=30)
+mic_tx_stream = None
+
+_mic_tx_leftover = bytearray()
+
+def _mic_tx_callback(in_data, frame_count, time_info, status):
+    # NEU: echter Zwischenpuffer statt Abschneiden. Die Browser-Pakete (8192 Samples, wegen der
+    # Paket-Rate-Drosselung gegen "Too many packets") sind 4x groesser als ein einzelner
+    # Ausgabe-Aufruf (2048 Frames) braucht - ohne Puffer wurden bisher 75% jedes Pakets
+    # stillschweigend verworfen ("zerhackt"). Jetzt wird der Rest fuer die naechsten Aufrufe
+    # aufgehoben, bis er komplett abgespielt ist.
+    global _mic_tx_leftover
+    try:
+        needed = frame_count * 2
+        while len(_mic_tx_leftover) < needed:
+            try:
+                chunk = mic_tx_queue.get_nowait()
+            except queue.Empty:
+                break
+            _mic_tx_leftover.extend(chunk)
+        if len(_mic_tx_leftover) >= needed:
+            out = bytes(_mic_tx_leftover[:needed])
+            del _mic_tx_leftover[:needed]
+        else:
+            out = bytes(_mic_tx_leftover) + b'\x00' * (needed - len(_mic_tx_leftover))
+            _mic_tx_leftover.clear()
+        return (out, pyaudio.paContinue)
+    except Exception:
+        return (b'\x00' * (frame_count * 2), pyaudio.paContinue)
+
+def setup_mic_tx_stream():
+    global mic_tx_stream
+    if mic_tx_stream is not None:
+        return True
+    try:
+        # NEU: eigener PipeWire-Name (wie bei AE_RX/AE_TX) - vorher lief dieser Stream namenlos auf
+        # dem Standard-Ausgabegeraet. Falls das zufaellig dasselbe Geraet ist, dessen Monitor schon
+        # fuers Zuhoeren (stream_rx/stream_tx) abgegriffen wird, entsteht eine Software-Rueckkopplung
+        # (verzoegertes Selbst-Hoeren, ganz ohne HF). Mit eigenem Namen laesst sich das in pavucontrol
+        # gezielt trennen/pruefen.
+        os.environ['PULSE_PROP'] = 'node.description="AE_MIC_TX" node.name="AE_MIC_TX"'
+        pa_mic_tx = pyaudio.PyAudio()
+        mic_tx_stream = pa_mic_tx.open(
+            format=pyaudio.paInt16, channels=1, rate=48000, output=True,
+            frames_per_buffer=2048, stream_callback=_mic_tx_callback
+        )
+        os.environ.pop('PULSE_PROP', None)
+        print("[MIC] Direkter Mikrofon-Ausgabe-Stream 'AE_MIC_TX' (48kHz) bereit.")
+        return True
+    except Exception as e:
+        os.environ.pop('PULSE_PROP', None)
+        print(f"[MIC WARNUNG] Konnte Mikrofon-Ausgabe-Stream nicht oeffnen: {e}")
+        mic_tx_stream = None
+        return False
 
 def auto_patch_streams():
     time.sleep(6) 
@@ -209,6 +301,7 @@ class RadioInterface:
             "ptt_hotkey": "F6", "current_beep": "None", "roger_beep_enabled": True, "max_sq_steps": 80, 
             "max_asq_steps": 9, "current_sq_level": 0, "current_asq_level": 1, "full_sync_active": False,
             "bt_mac_address": "00:00:00:00:00:00",
+            "webaudio_enabled": False,
             
             # --- NEU: VFO DEFAULTS FÜR DEN HARDWARE-SYNC ---
             "vfo_freq": 27555000,      # Default Startfrequenz in Hz (27.555 MHz)
@@ -840,23 +933,212 @@ def index():
 
 FFT_BINS = 128  # NEU: von 32 auf 128 erhoeht - deckt bei 22050Hz/CHUNK=512 das ganze Sprachband (bis ~5.5kHz) feiner aufgeloest ab
 
+# =========================================================================
+# NEU: LIVE-WEBAUDIO DIREKT IM HAUPTSKRIPT (IMA ADPCM, ~4:1 komprimiert)
+# Ersetzt die separate Mumble-Browser-Bruecke fuers Zuhoeren. Mumble selbst
+# bleibt bestehen (wird weiterhin fuers VOX-Mute gebraucht), liefert aber
+# nicht mehr den Audio-Pfad zum Browser - der laeuft jetzt roh & kontinuierlich
+# aus genau demselben PyAudio-Stream, aus dem auch die FFT-Werte kommen.
+# Ein einzelner Hintergrund-Thread liest kontinuierlich (kein Stau/Aussetzer
+# durch Sprachaktivitaetserkennung wie bei Mumble), aktualisiert einen
+# FFT-Cache fuers Display UND verschickt bei Bedarf ADPCM-komprimiertes PCM.
+# =========================================================================
+_IMA_INDEX_TABLE = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8]
+_IMA_STEP_TABLE = [
+    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45,
+    50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307,
+    337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066,
+    2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899,
+    15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
+]
+
+def _adpcm_encode_sample(sample, state):
+    predictor = state['predictor']
+    index = state['index']
+    step = _IMA_STEP_TABLE[index]
+    diff = int(sample) - predictor
+    code = 0
+    if diff < 0:
+        code = 8
+        diff = -diff
+    tmp_step = step
+    diffq = step >> 3
+    if diff >= tmp_step:
+        code |= 4
+        diff -= tmp_step
+        diffq += step
+    tmp_step >>= 1
+    if diff >= tmp_step:
+        code |= 2
+        diff -= tmp_step
+        diffq += step >> 1
+    tmp_step >>= 1
+    if diff >= tmp_step:
+        code |= 1
+        diffq += step >> 2
+    if code & 8:
+        predictor -= diffq
+    else:
+        predictor += diffq
+    predictor = max(-32768, min(32767, predictor))
+    index += _IMA_INDEX_TABLE[code]
+    index = max(0, min(88, index))
+    state['predictor'] = predictor
+    state['index'] = index
+    return code & 0x0F
+
+def encode_adpcm(samples, state):
+    """samples: numpy int16 Array. Gibt die ADPCM-Bytes zurueck (2 Nibbles pro Byte)."""
+    out = bytearray()
+    pending = None
+    for s in samples:
+        code = _adpcm_encode_sample(s, state)
+        if pending is None:
+            pending = code
+        else:
+            out.append((code << 4) | pending)
+            pending = None
+    if pending is not None:
+        out.append(pending)
+    return bytes(out)
+
+def _adpcm_decode_nibble(code, state):
+    step = _IMA_STEP_TABLE[state["index"]]
+    diffq = step >> 3
+    if code & 4: diffq += step
+    if code & 2: diffq += step >> 1
+    if code & 1: diffq += step >> 2
+    if code & 8:
+        state["predictor"] -= diffq
+    else:
+        state["predictor"] += diffq
+    state["predictor"] = max(-32768, min(32767, state["predictor"]))
+    state["index"] += _IMA_INDEX_TABLE[code]
+    state["index"] = max(0, min(88, state["index"]))
+    return state["predictor"]
+
+def decode_adpcm(data_bytes, state):
+    """Kehrt encode_adpcm() um - fuers eingehende Mikrofon-Audio vom Browser."""
+    out = []
+    for b in data_bytes:
+        out.append(_adpcm_decode_nibble(b & 0x0F, state))
+        out.append(_adpcm_decode_nibble((b >> 4) & 0x0F, state))
+    return out
+
+audio_cache = {"fft": [0.0] * FFT_BINS}
+audio_cache_lock = threading.Lock()
+_adpcm_state = {"predictor": 0, "index": 0}
+
+# =========================================================================
+# NEU: MIKROFON-SENDEN UEBERS WEB-UI (Browser-Mikro -> Mumble -> PipeWire -> Funkgeraet)
+# Direkte Steuerung zum Funkgeraet-Mikrofoneingang gibt's hier nicht - das laeuft
+# weiterhin ueber Mumble, wie bei der alten Bridge. Unterschied: eigener Bot direkt
+# in diesem Skript, getrennt von der Desktop-Mumble-App (die weiter fuers VOX-Mute laeuft).
+# =========================================================================
+MUMBLE_HOST = "127.0.0.1"
+MUMBLE_PORT = 64738
+MUMBLE_BOT_NAME = "WebUI-Mic-Bridge"
+mic_mumble_bot = None
+mic_mumble_lock = threading.Lock()
+_mic_adpcm_decode_state = {"predictor": 0, "index": 0}
+
+def ensure_mic_mumble_connected():
+    global mic_mumble_bot
+    if not PYMUMBLE_AVAILABLE:
+        return False
+    with mic_mumble_lock:
+        if mic_mumble_bot is not None and mic_mumble_bot.is_alive():
+            return True
+        try:
+            # NEU: eindeutiger Name pro Verbindungsversuch (statt immer "WebUI-Mic-Bridge") - falls der
+            # Mumble-Server doppelte Benutzernamen nicht zulaesst, koennte eine "Zombie"-Verbindung aus
+            # einem frueheren, abgestuerzten Testlauf die neue Verbindung sonst jedes Mal wieder rauswerfen.
+            unique_bot_name = f"{MUMBLE_BOT_NAME}-{int(time.time()) % 100000}"
+            mic_mumble_bot = pymumble.Mumble(MUMBLE_HOST, unique_bot_name, port=MUMBLE_PORT)
+
+            # NEU (Diagnose): pymumbles eigener Thread faengt Fehler offenbar intern ab, ohne sie
+            # hochzureichen - deshalb sahen wir nie einen Traceback, obwohl der Thread stirbt. Wir
+            # klinken uns direkt in die run()-Methode ein, um einen versteckten Fehler sichtbar zu machen.
+            _original_run = mic_mumble_bot.run
+            def _wrapped_run():
+                try:
+                    _original_run()
+                except Exception:
+                    import traceback
+                    print("[MIC FATAL] Der Mumble-Bot-Thread ist mit einer Exception abgestuerzt:")
+                    traceback.print_exc()
+            mic_mumble_bot.run = _wrapped_run
+
+            mic_mumble_bot.start()
+            mic_mumble_bot.is_ready()
+
+            # NEU (eigentlicher Fix, bekanntes pymumble-Problem/GitHub #138): is_ready() wird schon
+            # gruen, BEVOR die Codec-Aushandlung mit dem Server abgeschlossen ist. Wird waehrenddessen
+            # Audio geschickt, kracht's mit "NoneType * int" in soundoutput.py. Deshalb hier zusaetzlich
+            # kurz warten, bis encoder_framesize wirklich gesetzt ist (mit Timeout als Sicherheitsnetz).
+            wait_start = time.time()
+            while mic_mumble_bot.sound_output.encoder_framesize is None:
+                if time.time() - wait_start > 3.0:
+                    print("[MIC WARNUNG] Codec-Aushandlung (encoder_framesize) nach 3s immer noch nicht abgeschlossen - versuche trotzdem weiter.")
+                    break
+                time.sleep(0.05)
+
+            print("[MIC] Mumble-Bot fuers Browser-Mikrofon verbunden.")
+            return True
+        except Exception as e:
+            print(f"[MIC WARNUNG] Mumble-Verbindung fuers Mikrofon fehlgeschlagen: {e}")
+            mic_mumble_bot = None
+            return False
+
+def audio_stream_worker():
+    """Einziger, kontinuierlicher Leser der PyAudio-Streams. Liest im natuerlichen
+    Tempo der Hardware (blockierend), damit keine Luecken/Aussetzer entstehen -
+    unabhaengig davon, wie oft die Visualisierung ans Frontend gepusht wird."""
+    global _adpcm_state
+    while True:
+        try:
+            if getattr(radio, 'audio_mute', False):
+                time.sleep(0.05)
+                continue
+            if radio.is_tx or radio.is_device_sending:
+                raw_data = stream_rx.read(CHUNK, exception_on_overflow=False)
+                gain = radio.config.get("fft_tx_gain", 55000)
+                data = np.frombuffer(raw_data, dtype=np.int16)
+                fft_vals = (np.abs(np.fft.rfft(data))[:FFT_BINS] / gain).tolist()
+            else:
+                raw_data = stream_tx.read(CHUNK, exception_on_overflow=False)
+                gain = radio.config.get("fft_rx_gain", 25000)
+                data = np.frombuffer(raw_data, dtype=np.int16)
+                fft = np.abs(np.fft.rfft(data))[:FFT_BINS]
+                fft_clean = np.where(fft < 40000, 0, fft - 40000)
+                fft_vals = (fft_clean / gain).tolist()
+
+            with audio_cache_lock:
+                audio_cache["fft"] = fft_vals
+
+            # NEU: waehrend des Sendens (is_tx) liest dieser Worker bewusst den Eigen-Monitor
+            # (fuers Wasserfall-Pegel beim Senden) - das ist eure eigene Stimme, kein RX-Signal.
+            # Das nur fuers Wasserfall verwenden, aber NICHT ans "Listen"-Feature weiterschicken,
+            # sonst hoert man sich beim gleichzeitigen PTT+Mikro-Sprechen selbst zurueck.
+            if radio.config.get("webaudio_enabled", False) and not (radio.is_tx or radio.is_device_sending):
+                encoded = encode_adpcm(data, _adpcm_state)
+                # NEU: als Base64-Text statt roher Bytes verschickt - die auf dem Pi installierte
+                # python3-engineio-Version hat einen Bug beim Kodieren binaerer Pakete ueber die
+                # HTTP-Polling-Transportart (bevor auf WebSocket hochgestuft wurde). Text laeuft
+                # ueber den laengst bewaehrten Pfad, keine Bytes/String-Verwechslung mehr moeglich.
+                socketio.emit('audio_pcm', base64.b64encode(encoded).decode('ascii'))
+        except Exception:
+            time.sleep(0.1)
+
+threading.Thread(target=audio_stream_worker, daemon=True).start()
+
 @app.route('/api/audio')
 def get_audio():
-    try:
-        if getattr(radio, 'audio_mute', False): return jsonify([0] * FFT_BINS)
-        if radio.is_tx or radio.is_device_sending:
-            raw_data = stream_rx.read(CHUNK, exception_on_overflow=False)
-            gain = radio.config.get("fft_tx_gain", 55000)
-            data = np.frombuffer(raw_data, dtype=np.int16)
-            return jsonify((np.abs(np.fft.rfft(data))[:FFT_BINS] / gain).tolist())
-        else:
-            raw_data = stream_tx.read(CHUNK, exception_on_overflow=False)
-            gain = radio.config.get("fft_rx_gain", 25000)
-            data = np.frombuffer(raw_data, dtype=np.int16)
-            fft = np.abs(np.fft.rfft(data))[:FFT_BINS]
-            fft_clean = np.where(fft < 40000, 0, fft - 40000)
-            return jsonify((fft_clean / gain).tolist())
-    except: return jsonify([0] * FFT_BINS)
+    # Liest nur noch den Cache - das eigentliche Stream-Lesen macht ausschliesslich
+    # audio_stream_worker(), damit sich Visualisierung und Live-Audio nicht gegenseitig
+    # die Samples wegschnappen.
+    with audio_cache_lock:
+        return jsonify(audio_cache["fft"])
 
 
 @app.route('/api/rig/ptt/<int:state>')
@@ -1951,6 +2233,13 @@ def api_cmd(cmd):
                 radio.config[f"fft_{parts[1].lower()}_gain"] = int(parts[2])
                 radio.save_config() 
 
+        elif cmd == 'WEBAUDIO_TOGGLE':
+            radio.config["webaudio_enabled"] = not radio.config.get("webaudio_enabled", False)
+            radio.save_config()
+            _adpcm_state["predictor"] = 0
+            _adpcm_state["index"] = 0
+            print(f"[WEBAUDIO] {'aktiviert' if radio.config['webaudio_enabled'] else 'deaktiviert'}")
+
         elif cmd == 'MW_TOGGLE':
             radio.mw_active = not getattr(radio, 'mw_active', False)
             if radio.mw_active: 
@@ -2075,6 +2364,7 @@ def api_cmd(cmd):
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
         "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
+        "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
         "VFO_FREQ": radio.vfo_freq,
         "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
@@ -2142,6 +2432,7 @@ def api_config_override():
                 "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
                 "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
                 "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
+        "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
                 "CURRENT_BAND": radio.config.get("current_band", "EU"),
                 "VFO_FREQ": radio.vfo_freq,
                 "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
@@ -2259,6 +2550,49 @@ def handle_connect():
         pass
 
 
+@socketio.on('mic_start')
+def handle_mic_start():
+    # NEU: kein Mumble-Bot mehr - direkter PyAudio-Ausgabe-Stream statt dem Protokoll-Umweg.
+    _mic_adpcm_decode_state["predictor"] = 0
+    _mic_adpcm_decode_state["index"] = 0
+    while not mic_tx_queue.empty():
+        try: mic_tx_queue.get_nowait()
+        except queue.Empty: break
+    _mic_tx_leftover.clear()
+    ok = setup_mic_tx_stream()
+    if not ok:
+        print("[MIC] Start angefordert, aber Ausgabe-Stream nicht verfuegbar.")
+    return {"ok": ok}
+
+
+@socketio.on('mic_pcm')
+def handle_mic_pcm(b64str):
+    if mic_tx_stream is None:
+        print("[MIC DEBUG] Paket verworfen: Ausgabe-Stream nicht offen.")
+        return
+    try:
+        adpcm_bytes = base64.b64decode(b64str)
+        samples = decode_adpcm(adpcm_bytes, _mic_adpcm_decode_state)
+        pcm_bytes = struct.pack(f"{len(samples)}h", *samples)
+        # Gleiches Prinzip wie im Prototyp: bei vollem Puffer aeltestes Paket verwerfen,
+        # damit die Latenz nicht immer weiter anwaechst.
+        if mic_tx_queue.full():
+            try: mic_tx_queue.get_nowait()
+            except queue.Empty: pass
+        mic_tx_queue.put_nowait(pcm_bytes)
+    except Exception as e:
+        print(f"[MIC FEHLER] {e}")
+
+
+@socketio.on('mic_stop')
+def handle_mic_stop():
+    print("[MIC] Browser hat Mikrofon-Senden gestoppt.")
+    while not mic_tx_queue.empty():
+        try: mic_tx_queue.get_nowait()
+        except queue.Empty: break
+    _mic_tx_leftover.clear()
+
+
 def get_current_status_dict():
     rem = int(radio.config["ptt_timeout"] - (time.time() - radio.ptt_start_time)) if radio.is_tx else radio.config["ptt_timeout"]
     current_ch_str = str(radio.current_ch).zfill(2)
@@ -2299,6 +2633,7 @@ def get_current_status_dict():
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
         "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
+        "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
         "VFO_FREQ": radio.vfo_freq,
         "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
@@ -2306,6 +2641,82 @@ def get_current_status_dict():
 
 threading.Thread(target=auto_patch_streams, daemon=True).start()
 
+
+
+def ensure_valid_cert(domain, cert_path, key_path, renew_within_days=7):
+    """
+    Gleiche Logik wie in mumble_webrtc_audiobridge.py: prueft Gueltigkeit des
+    Tailscale-Zertifikats, stellt bei Bedarf automatisch ein neues aus
+    ('tailscale cert <domain>'), heilt den 'Access denied'-Sonderfall per
+    'sudo tailscale set --operator' selbst, prueft am Ende die Leserechte.
+    Gibt True zurueck, wenn ein gueltiges, lesbares Zertifikatspaar vorliegt.
+    """
+    from datetime import datetime
+
+    def read_expiry(path):
+        try:
+            result = subprocess.run(["openssl", "x509", "-enddate", "-noout", "-in", path],
+                                     capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                return None
+            end_str = result.stdout.strip().replace("notAfter=", "")
+            return datetime.strptime(end_str, "%b %d %H:%M:%S %Y %Z")
+        except Exception:
+            return None
+
+    needs_renewal = True
+    if os.path.exists(cert_path) and os.path.exists(key_path):
+        end_date = read_expiry(cert_path)
+        if end_date:
+            days_left = (end_date - datetime.utcnow()).days
+            if days_left > renew_within_days:
+                print(f"[SSL] Zertifikat fuer '{domain}' gueltig bis {end_date.strftime('%d.%m.%Y')} ({days_left} Tage) - OK.")
+                needs_renewal = False
+            else:
+                print(f"[SSL] Zertifikat laeuft in {days_left} Tag(en) ab - erneuere vorsorglich...")
+        else:
+            print(f"[SSL] Zertifikat fuer '{domain}' vorhanden, Ablaufdatum nicht lesbar - erneuere sicherheitshalber...")
+
+    if needs_renewal:
+        print(f"[SSL] Fordere neues Zertifikat fuer '{domain}' via Tailscale an...")
+        try:
+            result = subprocess.run(["tailscale", "cert", domain], capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                print("[SSL] Neues Zertifikat erfolgreich ausgestellt.")
+            elif "access denied" in result.stderr.lower() or "operator" in result.stderr.lower():
+                import getpass
+                user = getpass.getuser()
+                print(f"[SSL] Brauche einmalig root-Rechte. Versuche automatisch: sudo tailscale set --operator={user}")
+                print("[SSL] Falls jetzt ein Passwort-Prompt im Terminal erscheint: bitte das sudo-Passwort eingeben.")
+                try:
+                    op_result = subprocess.run(["sudo", "tailscale", "set", f"--operator={user}"], timeout=60)
+                    if op_result.returncode == 0:
+                        print("[SSL] Operator gesetzt - Tailscale braucht ab jetzt nie wieder sudo. Versuche Zertifikat erneut...")
+                        result = subprocess.run(["tailscale", "cert", domain], capture_output=True, text=True, timeout=30)
+                        if result.returncode == 0:
+                            print("[SSL] Neues Zertifikat erfolgreich ausgestellt.")
+                        else:
+                            print(f"[SSL WARNUNG] Immer noch fehlgeschlagen:\n{result.stderr.strip()}")
+                    else:
+                        print(f"[SSL WARNUNG] Bitte einmalig manuell ausfuehren: sudo tailscale set --operator={user}")
+                except Exception as e:
+                    print(f"[SSL WARNUNG] Konnte Operator nicht automatisch setzen ({e}).")
+            else:
+                print(f"[SSL WARNUNG] 'tailscale cert' meldete einen Fehler:\n{result.stderr.strip()}")
+        except FileNotFoundError:
+            print("[SSL WARNUNG] Befehl 'tailscale' nicht gefunden - ist Tailscale installiert und im PATH?")
+        except subprocess.TimeoutExpired:
+            print("[SSL WARNUNG] 'tailscale cert' hat zu lange gebraucht (Timeout).")
+        except Exception as e:
+            print(f"[SSL WARNUNG] Unerwarteter Fehler beim Erneuern: {e}")
+
+    if not (os.path.exists(cert_path) and os.path.exists(key_path)):
+        return False
+    for p in (cert_path, key_path):
+        if not os.access(p, os.R_OK):
+            print(f"[SSL FEHLER] '{p}' ist fuer diesen Nutzer nicht lesbar. Abhilfe: sudo chown $(whoami):$(whoami) {cert_path} {key_path}")
+            return False
+    return True
 
 
 if __name__ == '__main__':
@@ -2316,4 +2727,45 @@ if __name__ == '__main__':
         print("[STARTUP] UK-Modus-Matrix erfolgreich geladen.")
 
     print("AE5900 Remote V2 mit WebSocket gestartet")
+
+    # NEU: HTTP (Port 5000) und HTTPS (Port 5443) laufen jetzt gleichzeitig, nicht mehr entweder-oder.
+    # HTTP reicht fuer Steuerung + Zuhoeren (RX-Audio braucht kein HTTPS). Nur wer uebers Handy-Mikro
+    # senden oder den Wake-Lock nutzen will, braucht HTTPS - dafuer steht Port 5443 bereit, wenn ein
+    # Tailscale-Zertifikat verfuegbar ist (wird bei Bedarf automatisch ausgestellt/erneuert).
+    https_ssl_args = {}
+    https_available = False
+    try:
+        # NEU: '--self --json' statt Zeilen nach '.ts.net' zu durchsuchen - die alte Methode konnte
+        # bei mehreren Geraeten im selben Tailnet (Pi, Handy, ...) versehentlich ein FREMDES Geraet
+        # treffen statt der eigenen Maschine (genau das ist passiert: 'ae5900berry-2...' statt
+        # 'ae5900ctrl...'). '--self' liefert garantiert nur die lokale Maschine.
+        ts_self_json = subprocess.check_output(["tailscale", "status", "--self", "--json"], text=True)
+        ts_self_info = json.loads(ts_self_json)
+        ts_domain = ts_self_info.get("Self", {}).get("DNSName", "").rstrip(".")
+        if ts_domain:
+            cert_p, key_p = f"{ts_domain}.crt", f"{ts_domain}.key"
+            if ensure_valid_cert(ts_domain, cert_p, key_p):
+                # NEU: bei async_mode='threading' laeuft socketio.run() ueber Werkzeugs Dev-Server,
+                # der kennt keine separaten certfile/keyfile-Kwargs, nur ein fertiges ssl_context-Objekt.
+                # Mit certfile=/keyfile= direkt wurde das TLS-Handshake still ignoriert und der Port
+                # sprach am Ende Klartext-HTTP - daher "Bad request version" bei echten TLS-Verbindungen.
+                import ssl as _ssl
+                _ssl_ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+                _ssl_ctx.load_cert_chain(certfile=cert_p, keyfile=key_p)
+                https_ssl_args = {'ssl_context': _ssl_ctx}
+                https_available = True
+    except Exception:
+        pass
+
+    if https_available:
+        def _run_https():
+            try:
+                socketio.run(app, host='0.0.0.0', port=5443, debug=False, **https_ssl_args)
+            except Exception as e:
+                print(f"[HTTPS WARNUNG] HTTPS-Server konnte nicht starten: {e}")
+        threading.Thread(target=_run_https, daemon=True).start()
+        print("[HTTPS] Zusaetzlich erreichbar auf Port 5443 (fuer Mikrofon-Senden/Wake-Lock).")
+    else:
+        print("[HTTPS] Kein Zertifikat verfuegbar - nur HTTP auf Port 5000. Steuerung und RX-Zuhoeren funktionieren trotzdem vollstaendig.")
+
     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
