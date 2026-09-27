@@ -290,6 +290,14 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 Aktuell: V-251026 WFB
 
+1. Wasserfall angepasst
+2. Fehler beseitigt
+3. WebAudio integriert über https/port 5443. Die Schalter für das Webaudio befinden sich im Setup & Sync Bereeich.
+
+Zusatz: Bitte schaut euch im Setup & Sync um. Da sind neue Stellschrauben auch für den Wasserfall.
+
+Vorherige Version: V-251026 WFB
+
 TESTING! Ich muss selber erst sehen, ob mir das gefällt.
 
 1. Schüttel-Fehler in der Desktopansicht korrigiert.
