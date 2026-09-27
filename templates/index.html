@@ -742,10 +742,22 @@
             if (!socket) return;
             waMicPredictor = 0; waMicIndex = 0;
             if (btn) { btn.textContent = '🎤 Verbinde...'; btn.disabled = true; }
+            // NEU: Sicherheitsnetz - falls die Server-Bestaetigung mal verloren geht/haengt (z.B. nach
+            // langem Leerlauf mit kurzem Verbindungs-Haenger), bleibt der Button sonst dauerhaft
+            // deaktiviert, ohne dass man einen Fehler sieht. Nach 5s automatisch wieder freischalten.
+            let waMicAckReceived = false;
+            setTimeout(() => {
+                if (!waMicAckReceived && btn && btn.disabled) {
+                    btn.disabled = false;
+                    btn.textContent = '🎤 Talk (mic)';
+                    console.warn('[MIC] Keine Antwort vom Server nach 5s - Button zur Sicherheit wieder freigeschaltet.');
+                }
+            }, 5000);
             // NEU: erst auf die Bestaetigung warten (Ack-Callback), dass die Mumble-Verbindung wirklich
             // steht, BEVOR das Mikrofon geoeffnet und Pakete geschickt werden - vorher liefen beides
             // gleichzeitig los, und die ersten Pakete haben den Bot mitten im Verbindungsaufbau erwischt.
             socket.emit('mic_start', (resp) => {
+                waMicAckReceived = true;
                 if (btn) btn.disabled = false;
                 if (!resp || !resp.ok) {
                     alert('Mikrofon-Verbindung zu Mumble fehlgeschlagen - bitte im Server-Log (Terminal am Pi) nachsehen.');
@@ -974,7 +986,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-251026 WFB";
+                if (vInd) vInd.textContent = "V-271026 WFB";
             });
 
             socket.on('audio', (data) => { 
