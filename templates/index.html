@@ -454,6 +454,10 @@
 </div> <details class="setup-area">
     <summary>⚙ SETUP & SYNC</summary>
     <div style="background: #222; padding: 20px; border-radius: 10px;">
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <button onclick="toggleWebAudioListen()" id="waListenBtn" style="flex: 1; background: #003300;">🔈 Listen to RX audio</button>
+            <button onclick="toggleMicTalk()" id="waMicBtn" style="flex: 1; background: #330000; display: none;">🎤 Talk (mic)</button>
+        </div>
         <button id="syncBtn" class="hold-button"><span style="position:relative; z-index:2;">SUPER SYNC (CH 01 - Hold 3s)</span><div class="progress-bar" id="syncProgress"></div></button>
         <p>PTT Timeout: <input type="number" id="pttInput" value="{{ config.ptt_timeout }}" style="width: 60px;" onchange="updateTimeout()"> s</p>
         <p>Mode-Skip (FW v1.12): 
@@ -535,6 +539,7 @@
         </p>
         <p>FFT Gain RX: <input type="number" value="{{config.fft_rx_gain}}" onchange="send('SETGAIN_RX_' + this.value)" style="width:80px;"></p>
         <p>FFT Gain TX: <input type="number" value="{{config.fft_tx_gain}}" onchange="send('SETGAIN_TX_' + this.value)" style="width:80px;"></p>
+        <p>WebAudio streaming (server, ADPCM): <input type="checkbox" id="webaudioToggle" onchange="send('WEBAUDIO_TOGGLE')"></p>
         <p>Waterfall contrast (0.05-2.0): <input type="number" id="wfContrastInput" step="0.01" min="0.05" max="2" value="1.52" onchange="setWfContrast(this.value)" style="width:80px;"></p>
         <p>Waterfall adapt speed (0.01-1.0): <input type="number" id="wfSpeedInput" step="0.01" min="0.01" max="1" value="0.042" onchange="setWfSpeed(this.value)" style="width:80px;"></p>
         <p>PTT Hotkey (e.g. F6, Space, p): 
@@ -621,6 +626,195 @@
     const canvas = document.getElementById('audioVisualizer');
     const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
     let socket; let lastData = []; let currentBarColor = 'green';
+
+    // --- NEU: LIVE-WEBAUDIO (RX) DIREKT INTEGRIERT - IMA ADPCM ueber SocketIO ---
+    // Ersetzt die separate Mumble-Browser-Bruecke: kein zweiter Tab, kein zweites
+    // Zertifikat mehr noetig. Reines Zuhoeren braucht auch kein HTTPS.
+    const WEBAUDIO_SAMPLE_RATE = 22050; // muss zur RATE im Backend (PyAudio-Streams) passen
+    let waAudioContext = null;
+    let waIsListening = false;
+    let waNextStartTime = 0;
+    const WA_BUFFER_DELAY = 0.08;
+    let waPredictor = 0, waIndex = 0;
+    let waWakeLock = null;
+    const WA_IMA_INDEX_TABLE = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
+    const WA_IMA_STEP_TABLE = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767];
+
+    function waResetDecoder() { waPredictor = 0; waIndex = 0; }
+
+    function waDecodeNibble(code) {
+        const step = WA_IMA_STEP_TABLE[waIndex];
+        let diffq = step >> 3;
+        if (code & 4) diffq += step;
+        if (code & 2) diffq += step >> 1;
+        if (code & 1) diffq += step >> 2;
+        if (code & 8) waPredictor -= diffq; else waPredictor += diffq;
+        waPredictor = Math.max(-32768, Math.min(32767, waPredictor));
+        waIndex += WA_IMA_INDEX_TABLE[code];
+        waIndex = Math.max(0, Math.min(88, waIndex));
+        return waPredictor;
+    }
+
+    function waDecodeAdpcm(bytes) {
+        const out = new Int16Array(bytes.length * 2);
+        let oi = 0;
+        for (let i = 0; i < bytes.length; i++) {
+            const b = bytes[i];
+            out[oi++] = waDecodeNibble(b & 0x0F);
+            out[oi++] = waDecodeNibble((b >> 4) & 0x0F);
+        }
+        return out;
+    }
+
+    function waPlayChunk(int16Array) {
+        if (!waIsListening || !waAudioContext) return;
+        if (int16Array.length === 0) return;
+        const float32 = new Float32Array(int16Array.length);
+        for (let i = 0; i < int16Array.length; i++) float32[i] = int16Array[i] / 32768.0;
+
+        const buffer = waAudioContext.createBuffer(1, float32.length, WEBAUDIO_SAMPLE_RATE);
+        buffer.getChannelData(0).set(float32);
+        const source = waAudioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(waAudioContext.destination);
+
+        const currentTime = waAudioContext.currentTime;
+        if (waNextStartTime < currentTime) waNextStartTime = currentTime + WA_BUFFER_DELAY;
+        source.start(waNextStartTime);
+        waNextStartTime += buffer.duration;
+    }
+
+    async function waRequestWakeLock() {
+        // Wake Lock braucht einen sicheren Kontext (HTTPS) - unter HTTP erst gar nicht versuchen,
+        // manche Browser loggen den Versuch selbst schon in die Konsole, auch wenn er per catch() abgefangen wird.
+        if (location.protocol !== 'https:' || !('wakeLock' in navigator)) return;
+        try { waWakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+    }
+    document.addEventListener('visibilitychange', () => {
+        if (waIsListening && document.visibilityState === 'visible' && (!waWakeLock || waWakeLock.released)) {
+            waRequestWakeLock();
+        }
+    });
+
+    // --- NEU: MIKROFON-SENDEN UEBERS WEB-UI (Browser-Mikro -> Mumble -> Funkgeraet), braucht HTTPS ---
+    let waMicPredictor = 0, waMicIndex = 0;
+    let waMicStream = null, waMicProcessor = null, waMicAudioContext = null, waMicActive = false;
+
+    function waEncodeSample(sample) {
+        const step = WA_IMA_STEP_TABLE[waMicIndex];
+        let diff = sample - waMicPredictor;
+        let code = 0;
+        if (diff < 0) { code = 8; diff = -diff; }
+        let tmpStep = step;
+        let diffq = step >> 3;
+        if (diff >= tmpStep) { code |= 4; diff -= tmpStep; diffq += step; }
+        tmpStep >>= 1;
+        if (diff >= tmpStep) { code |= 2; diff -= tmpStep; diffq += step >> 1; }
+        tmpStep >>= 1;
+        if (diff >= tmpStep) { code |= 1; diffq += step >> 2; }
+        if (code & 8) waMicPredictor -= diffq; else waMicPredictor += diffq;
+        waMicPredictor = Math.max(-32768, Math.min(32767, waMicPredictor));
+        waMicIndex += WA_IMA_INDEX_TABLE[code];
+        waMicIndex = Math.max(0, Math.min(88, waMicIndex));
+        return code & 0x0F;
+    }
+    function waEncodeAdpcm(int16Array) {
+        const out = [];
+        let pending = null;
+        for (let i = 0; i < int16Array.length; i++) {
+            const code = waEncodeSample(int16Array[i]);
+            if (pending === null) pending = code;
+            else { out.push((code << 4) | pending); pending = null; }
+        }
+        if (pending !== null) out.push(pending);
+        return new Uint8Array(out);
+    }
+    function waBytesToBase64(bytes) {
+        let binStr = '';
+        for (let i = 0; i < bytes.length; i++) binStr += String.fromCharCode(bytes[i]);
+        return btoa(binStr);
+    }
+
+    function toggleMicTalk() {
+        const btn = document.getElementById('waMicBtn');
+        if (!waMicActive) {
+            if (location.protocol !== 'https:') { alert('Mikrofon-Senden braucht eine sichere Verbindung (HTTPS).'); return; }
+            if (!socket) return;
+            waMicPredictor = 0; waMicIndex = 0;
+            if (btn) { btn.textContent = '🎤 Verbinde...'; btn.disabled = true; }
+            // NEU: erst auf die Bestaetigung warten (Ack-Callback), dass die Mumble-Verbindung wirklich
+            // steht, BEVOR das Mikrofon geoeffnet und Pakete geschickt werden - vorher liefen beides
+            // gleichzeitig los, und die ersten Pakete haben den Bot mitten im Verbindungsaufbau erwischt.
+            socket.emit('mic_start', (resp) => {
+                if (btn) btn.disabled = false;
+                if (!resp || !resp.ok) {
+                    alert('Mikrofon-Verbindung zu Mumble fehlgeschlagen - bitte im Server-Log (Terminal am Pi) nachsehen.');
+                    if (btn) { btn.textContent = '🎤 Talk (mic)'; }
+                    return;
+                }
+                navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }
+                }).then(stream => {
+                    waMicStream = stream;
+                    // WICHTIG: 48000Hz, NICHT WEBAUDIO_SAMPLE_RATE (22050) - Mumble/pymumble erwartet fuers
+                    // Senden 48kHz-PCM, das war auch in der alten, funktionierenden Bridge schon so.
+                    waMicAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+                    const source = waMicAudioContext.createMediaStreamSource(stream);
+                    // Puffer vergroessert (2048 -> 8192): seltenere, dafuer groessere Pakete (~6/Sek. statt ~23/Sek.) -
+                    // verhindert, dass sich bei reinem HTTP-Polling (falls WebSocket nicht hochgestuft ist)
+                    // zu viele Pakete stauen und den Server-seitigen Payload-Grenzwert sprengen.
+                    waMicProcessor = waMicAudioContext.createScriptProcessor(8192, 1, 1);
+                    source.connect(waMicProcessor);
+                    waMicProcessor.connect(waMicAudioContext.destination);
+                    waMicProcessor.onaudioprocess = (e) => {
+                        if (!waMicActive) return;
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        const int16 = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            let s = Math.max(-1, Math.min(1, inputData[i]));
+                            int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }
+                        const encoded = waEncodeAdpcm(int16);
+                        if (socket) socket.emit('mic_pcm', waBytesToBase64(encoded));
+                    };
+                    waMicActive = true;
+                    if (btn) { btn.textContent = '🎤 Sending... (tap to stop)'; btn.style.background = '#660000'; }
+                }).catch(err => {
+                    alert('Mikrofon-Fehler: ' + err.message);
+                    if (btn) { btn.textContent = '🎤 Talk (mic)'; }
+                });
+            });
+        } else {
+            waMicActive = false;
+            if (waMicStream) waMicStream.getTracks().forEach(t => t.stop());
+            if (waMicProcessor) waMicProcessor.disconnect();
+            if (waMicAudioContext) waMicAudioContext.close();
+            waMicStream = null; waMicProcessor = null; waMicAudioContext = null;
+            if (socket) socket.emit('mic_stop');
+            if (btn) { btn.textContent = '🎤 Talk (mic)'; btn.style.background = ''; }
+        }
+    }
+
+    function toggleWebAudioListen() {
+        const btn = document.getElementById('waListenBtn');
+        if (!waIsListening) {
+            if (!waAudioContext) waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE });
+            if (waAudioContext.state === 'suspended') waAudioContext.resume();
+            waNextStartTime = 0;
+            waResetDecoder();
+            waIsListening = true;
+            if (btn) { btn.textContent = '🔊 Listening... (tap to stop)'; btn.style.background = '#006600'; }
+            waRequestWakeLock();
+            // NEU: Listen-Button aktiviert das Server-seitige Streaming automatisch mit, falls noch aus -
+            // vorher zwei getrennte Schalter fuer einen Vorgang, das war unnoetig fummelig.
+            const waCb = document.getElementById('webaudioToggle');
+            if (waCb && !waCb.checked) { send('WEBAUDIO_TOGGLE'); }
+        } else {
+            waIsListening = false;
+            if (btn) { btn.textContent = '🔈 Listen to RX audio'; btn.style.background = ''; }
+            if (waWakeLock) { waWakeLock.release(); waWakeLock = null; }
+        }
+    }
     let isWebUILocked = false; let radioConfigGlobal = { ptt_hotkey: 'F6' };
     let webuiQueue = []; let isWebUIBusy = false; let clarTimer = null; let currentClarOffset = 0;
     let currentSqTimeout = 0; let currentAsqTimeout = 0; let currentMuteTimeout = 0;
@@ -774,7 +968,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-251026 WFB";
+                if (vInd) vInd.textContent = "V-271026 AUD";
             });
 
             socket.on('audio', (data) => { 
@@ -783,6 +977,18 @@
                 else if (visualizerMode === 'both') drawSplit(data.data);
                 else drawAudioBars(data.data);
             });
+
+            socket.on('audio_pcm', (b64str) => {
+                // NEU: kommt jetzt als Base64-Text an (siehe Backend-Kommentar) statt als rohe Bytes -
+                // hier einmal dekodieren, Rest bleibt gleich.
+                if (!waIsListening || !waAudioContext) return;
+                if (waAudioContext.state === 'suspended') waAudioContext.resume();
+                const binStr = atob(b64str);
+                const bytes = new Uint8Array(binStr.length);
+                for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+                waPlayChunk(waDecodeAdpcm(bytes));
+            });
+
             
             socket.on('connect_error', (err) => {
                 console.warn("WebSocket auf Notebook blockiert, halte HTTP-Polling aktiv.", err);
@@ -792,6 +998,19 @@
             socket.on('disconnect', () => {
                 const vInd = document.getElementById('versionIndicator');
                 if (vInd) vInd.textContent = "CONNECTING...";
+                // NEU: Mikrofon-Senden hart stoppen, sobald die Verbindung abreisst - sonst nimmt
+                // getUserMedia() im Hintergrund unbeirrt weiter auf und versucht bei einer Server-
+                // Unterbrechung (z.B. Neustart) weiter zu senden. Beim Wiederverbinden kam dann ein
+                // ganzer Paket-Rueckstau auf einmal an und hat den Server-seitigen Grenzwert gesprengt.
+                if (waMicActive) {
+                    waMicActive = false;
+                    if (waMicStream) waMicStream.getTracks().forEach(t => t.stop());
+                    if (waMicProcessor) waMicProcessor.disconnect();
+                    if (waMicAudioContext) waMicAudioContext.close();
+                    waMicStream = null; waMicProcessor = null; waMicAudioContext = null;
+                    const micBtn = document.getElementById('waMicBtn');
+                    if (micBtn) { micBtn.textContent = '🎤 Talk (mic)'; micBtn.style.background = ''; }
+                }
             });
         }, 400); 
     }
@@ -827,6 +1046,8 @@
 
     function updateUI(data) {
         if (!data) return;
+        const waCb = document.getElementById('webaudioToggle');
+        if (waCb && typeof data.WEBAUDIO_ENABLED === 'boolean') waCb.checked = data.WEBAUDIO_ENABLED;
         if (data.MODE) currentMode = data.MODE.toUpperCase();
         if (data.CURRENT_BAND) { currentBandGlobal = data.CURRENT_BAND; freqs = bandMatrices[currentBandGlobal] || BASE_EU; }
         if (currentBandGlobal === "PL" && (currentMode === "USB" || currentMode === "LSB")) freqs = BASE_EU;
@@ -1217,7 +1438,14 @@
     }
 
     function pollStatus() { fetch('/api/cmd/STATUS').then(r => r.json()).then(data => { updateUI(data); setTimeout(pollStatus, 850); }).catch(e => { setTimeout(pollStatus, 1500); }); }
-    window.onload = function() { resizeCanvas(); initSocket(); pollStatus(); syncVzModeSelect(); syncWfInputs(); };
+    window.onload = function() {
+        resizeCanvas(); initSocket(); pollStatus(); syncVzModeSelect(); syncWfInputs();
+        // Mikrofon-Button nur unter HTTPS anzeigen - unter HTTP kann getUserMedia() ohnehin nicht funktionieren.
+        if (location.protocol === 'https:') {
+            const micBtn = document.getElementById('waMicBtn');
+            if (micBtn) micBtn.style.display = '';
+        }
+    };
 </script>
 </body>
 </html>
