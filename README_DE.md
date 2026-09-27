@@ -288,7 +288,7 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-251026 WFB
+Aktuell: V-271026 WBA
 
 1. Wasserfall angepasst
 2. Fehler beseitigt
