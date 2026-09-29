@@ -354,6 +354,7 @@
     </style>
 </head>
 <body>
+<audio id="waAudioElement" style="display:none;" playsinline></audio>
 <div class="ios-wakelock"></div>
 <div class="main-layout-wrapper">
     <div class="display">
@@ -632,8 +633,10 @@
     // Zertifikat mehr noetig. Reines Zuhoeren braucht auch kein HTTPS.
     const WEBAUDIO_SAMPLE_RATE = 22050; // muss zur RATE im Backend (PyAudio-Streams) passen
     let waAudioContext = null;
+    let waMediaStreamDest = null; // NEU: Ausgabeziel fuers versteckte <audio>-Element (Hintergrund-Wiedergabe)
     let waIsListening = false;
     let waNextStartTime = 0;
+    let waLastChunkWallTime = 0; // NEU: fuer die Ruckstau-Erkennung nach Display-Aus (echte Uhrzeit, nicht AudioContext-Zeit)
     const WA_BUFFER_DELAY = 0.08;
     let waPredictor = 0, waIndex = 0;
     let waWakeLock = null;
@@ -669,6 +672,12 @@
     function waPlayChunk(int16Array) {
         if (!waIsListening || !waAudioContext) return;
         if (int16Array.length === 0) return;
+        // NEU: laufende Rueckstau-Bremse, nicht nur einmalig beim ersten Paket nach einer Pause.
+        // Baut sich der geplante Vorlauf (waNextStartTime gegenueber der echten AudioContext-Zeit)
+        // auf mehr als 1 Sekunde auf - z.B. weil ein ganzer Rueckstau in schneller Folge nachkommt -
+        // wird dieses Paket komplett verworfen, statt brav hintenangehaengt zu werden. So kann sich
+        // nie wieder eine lange Verzoegerung aufbauen, egal wie gross der Rueckstau ist.
+        if (waNextStartTime - waAudioContext.currentTime > 1.0) return;
         const float32 = new Float32Array(int16Array.length);
         for (let i = 0; i < int16Array.length; i++) float32[i] = int16Array[i] / 32768.0;
 
@@ -676,7 +685,11 @@
         buffer.getChannelData(0).set(float32);
         const source = waAudioContext.createBufferSource();
         source.buffer = buffer;
-        source.connect(waAudioContext.destination);
+        // NEU: ueber ein verstecktes <audio>-Element ausgeben statt direkt auf audioContext.destination -
+        // Android/Chrome behandeln ein echtes <audio>-Element mit MediaSession eher als "richtige"
+        // Medienwiedergabe und drosseln sie bei ausgeschaltetem Display seltener als einen reinen
+        // WebAudio-Graphen. Falls das Element (noch) nicht bereit ist, Fallback auf direkte Ausgabe.
+        source.connect(waMediaStreamDest ? waMediaStreamDest : waAudioContext.destination);
 
         const currentTime = waAudioContext.currentTime;
         if (waNextStartTime < currentTime) waNextStartTime = currentTime + WA_BUFFER_DELAY;
@@ -740,8 +753,22 @@
         if (!waMicActive) {
             if (location.protocol !== 'https:') { alert('Mikrofon-Senden braucht eine sichere Verbindung (HTTPS).'); return; }
             if (!socket) return;
-            waMicPredictor = 0; waMicIndex = 0;
             if (btn) { btn.textContent = '🎤 Verbinde...'; btn.disabled = true; }
+            ensureSocketConnected((ok) => {
+                if (!ok) {
+                    alert('Keine Verbindung zum Server moeglich - bitte Seite neu laden.');
+                    if (btn) { btn.disabled = false; btn.textContent = '🎤 Talk (mic)'; }
+                    return;
+                }
+                _startMicTalk(btn);
+            });
+        } else {
+            _stopMicTalk(btn);
+        }
+    }
+
+    function _startMicTalk(btn) {
+            waMicPredictor = 0; waMicIndex = 0;
             // NEU: Sicherheitsnetz - falls die Server-Bestaetigung mal verloren geht/haengt (z.B. nach
             // langem Leerlauf mit kurzem Verbindungs-Haenger), bleibt der Button sonst dauerhaft
             // deaktiviert, ohne dass man einen Fehler sieht. Nach 5s automatisch wieder freischalten.
@@ -796,7 +823,9 @@
                     if (btn) { btn.textContent = '🎤 Talk (mic)'; }
                 });
             });
-        } else {
+    }
+
+    function _stopMicTalk(btn) {
             waMicActive = false;
             if (waMicStream) waMicStream.getTracks().forEach(t => t.stop());
             if (waMicProcessor) waMicProcessor.disconnect();
@@ -804,15 +833,81 @@
             waMicStream = null; waMicProcessor = null; waMicAudioContext = null;
             if (socket) socket.emit('mic_stop');
             if (btn) { btn.textContent = '🎤 Talk (mic)'; btn.style.background = ''; }
-        }
+    }
+
+    // NEU: prueft, ob das Socket wirklich noch verbunden ist, und erzwingt bei Bedarf eine neue
+    // Verbindung - vorher blieb ein Klick auf "Listen"/"Talk" wirkungslos, wenn die Verbindung im
+    // Hintergrund (z.B. nach laengerem Display-Aus) still gestorben war, weil derselbe kaputte
+    // Socket einfach weiterbenutzt wurde. Nur ein Seiten-Reload half - das sollte jetzt nicht mehr noetig sein.
+    function ensureSocketConnected(callback, timeoutMs) {
+        // War 4000ms - laut Testreihe erholt sich die Verbindung nach Display-an manchmal erst nach
+        // bis zu 30s von selbst (Socket.IOs eigene automatische Wiederverbindung). 4s hat vermutlich
+        // viel zu frueh aufgegeben, obwohl es sich von alleine geloest haette. Grosszuegiger warten.
+        timeoutMs = timeoutMs || 35000;
+        if (socket && socket.connected) { callback(true); return; }
+        if (!socket) { callback(false); return; }
+        let done = false;
+        const onConnect = () => { if (done) return; done = true; callback(true); };
+        socket.once('connect', onConnect);
+        socket.connect();
+        setTimeout(() => {
+            if (done) return;
+            done = true;
+            socket.off('connect', onConnect);
+            callback(false);
+        }, timeoutMs);
     }
 
     function toggleWebAudioListen() {
         const btn = document.getElementById('waListenBtn');
         if (!waIsListening) {
-            if (!waAudioContext) waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE });
+            if (btn) { btn.textContent = '🔊 Verbinde...'; btn.disabled = true; }
+            ensureSocketConnected((ok) => {
+                if (btn) btn.disabled = false;
+                if (!ok) {
+                    alert('Keine Verbindung zum Server moeglich - bitte Seite neu laden.');
+                    if (btn) btn.textContent = '🔈 Listen to RX audio';
+                    return;
+                }
+                _startWebAudioListen(btn);
+            });
+        } else {
+            _stopWebAudioListen(btn);
+        }
+    }
+
+    function _startWebAudioListen(btn) {
+            // NEU: pruefen ob der AudioContext wirklich noch lebt, nicht nur ob er existiert. Manche
+            // Browser schliessen einen AudioContext nach laengerer Zeit im Hintergrund komplett
+            // (Zustand 'closed', kein Zurueck ueber resume() moeglich) - ein "toter", aber noch
+            // referenzierter Context wurde bisher nie durch einen frischen ersetzt, genau das passt
+            // zu "nur ein Reload hilft".
+            if (!waAudioContext || waAudioContext.state === 'closed') {
+                waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE });
+                waMediaStreamDest = null; // an den neuen Context gebunden, muss neu aufgebaut werden
+            }
             if (waAudioContext.state === 'suspended') waAudioContext.resume();
+            // NEU: Ausgabe ueber ein verstecktes <audio>-Element route - Android/Chrome behandeln das
+            // eher als "richtige" Medienwiedergabe (Hintergrund-Ueberleben bei ausgeschaltetem Display).
+            if (!waMediaStreamDest) {
+                waMediaStreamDest = waAudioContext.createMediaStreamDestination();
+                const audioEl = document.getElementById('waAudioElement');
+                if (audioEl) audioEl.srcObject = waMediaStreamDest.stream;
+            }
+            // NEU: .play() jetzt IMMER hier, nicht nur beim (Neu-)Aufbau des Streams - beim einfachen
+            // Stop/Start (ohne dass waMediaStreamDest neu erstellt wird) blieb das <audio>-Element sonst
+            // dauerhaft pausiert, obwohl im Hintergrund schon wieder brav Audio eingeplant wurde: stumme
+            // Wiedergabe, "Erneutes Draufdruecken bringt das Audio nicht zurueck".
+            const waAudioElStart = document.getElementById('waAudioElement');
+            if (waAudioElStart) waAudioElStart.play().catch(() => {});
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({ title: 'AE-5900 Live RX Audio', artist: 'Funkgeraet-Fernsteuerung' });
+                navigator.mediaSession.playbackState = 'playing';
+                navigator.mediaSession.setActionHandler('play', () => { navigator.mediaSession.playbackState = 'playing'; });
+                navigator.mediaSession.setActionHandler('pause', () => { navigator.mediaSession.playbackState = 'playing'; });
+            }
             waNextStartTime = 0;
+            waLastChunkWallTime = 0;
             waResetDecoder();
             waIsListening = true;
             if (btn) { btn.textContent = '🔊 Listening... (tap to stop)'; btn.style.background = '#006600'; }
@@ -827,11 +922,15 @@
             // nur zufaellig, wenn WEBAUDIO_TOGGLE mit ausgeloest wurde - bei schon gesetztem Haken nicht,
             // was zu Encoder/Decoder-Drift (leiserer Start) fuehrte.
             if (socket) socket.emit('webaudio_listen_start');
-        } else {
+    }
+
+    function _stopWebAudioListen(btn) {
             waIsListening = false;
             if (btn) { btn.textContent = '🔈 Listen to RX audio'; btn.style.background = ''; }
             if (waWakeLock) { waWakeLock.release(); waWakeLock = null; }
-        }
+            if ('mediaSession' in navigator) { navigator.mediaSession.playbackState = 'none'; }
+            const audioEl = document.getElementById('waAudioElement');
+            if (audioEl) { audioEl.pause(); }
     }
     let isWebUILocked = false; let radioConfigGlobal = { ptt_hotkey: 'F6' };
     let webuiQueue = []; let isWebUIBusy = false; let clarTimer = null; let currentClarOffset = 0;
@@ -986,7 +1085,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-271026 WBA";
+                if (vInd) vInd.textContent = "V-290926 AFX";
             });
 
             socket.on('audio', (data) => { 
@@ -1001,6 +1100,16 @@
                 // hier einmal dekodieren, Rest bleibt gleich.
                 if (!waIsListening || !waAudioContext) return;
                 if (waAudioContext.state === 'suspended') waAudioContext.resume();
+                // NEU: erkennt eine groessere Zeitluecke seit dem letzten Paket (z.B. nach Display-Aus,
+                // wenn der Tab gedrosselt war und sich ein Rueckstau an Paketen aufgebaut hat). Statt den
+                // ganzen Rueckstand brav nachzuspielen ("Tonband-Effekt"), wird dann bewusst zu LIVE
+                // gesprungen - der Rueckstand wird verworfen, Wiedergabe startet sofort wieder in Echtzeit.
+                const nowWall = Date.now();
+                if (waLastChunkWallTime && (nowWall - waLastChunkWallTime) > 1500) {
+                    waNextStartTime = 0;
+                    waResetDecoder();
+                }
+                waLastChunkWallTime = nowWall;
                 const binStr = atob(b64str);
                 const bytes = new Uint8Array(binStr.length);
                 for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
