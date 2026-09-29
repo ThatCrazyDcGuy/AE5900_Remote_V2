@@ -288,7 +288,14 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-271026 WBA
+Aktuell: V-290926 AFX
+
+1. Audio Lautstärke Fix
+Laute Peaks beim Verbinden wurden entfernt 
+
+Zusatz: Bitte schaut euch im Setup & Sync um. Da sind neue Stellschrauben auch für den Wasserfall.
+
+Vorherige Version: V-271026 WBA
 
 1. Wasserfall angepasst
 2. Fehler beseitigt
