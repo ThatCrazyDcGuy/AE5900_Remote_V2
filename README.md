@@ -292,7 +292,14 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-271026 WBA
+Current: V-290926 AFX
+
+1. Audio volume fix
+Loud spikes upon connecting have been removed.
+
+Note: Please take a look at the "Setup & Sync" section. There are new settings available there, including options for the waterfall display.
+
+Previous version: V-271026 WBA
 
 1. Waterfall adjusted
 2. Bug fixes
