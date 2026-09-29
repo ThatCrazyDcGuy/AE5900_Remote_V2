@@ -1028,6 +1028,7 @@ def decode_adpcm(data_bytes, state):
 audio_cache = {"fft": [0.0] * FFT_BINS}
 audio_cache_lock = threading.Lock()
 _adpcm_state = {"predictor": 0, "index": 0}
+_adpcm_flush = {"countdown": 0}  # NEU: siehe webaudio_listen_start - kurze automatische Stille beim Zuhoer-Start
 
 # =========================================================================
 # NEU: MIKROFON-SENDEN UEBERS WEB-UI (Browser-Mikro -> Mumble -> PipeWire -> Funkgeraet)
@@ -1121,12 +1122,22 @@ def audio_stream_worker():
             # Das nur fuers Wasserfall verwenden, aber NICHT ans "Listen"-Feature weiterschicken,
             # sonst hoert man sich beim gleichzeitigen PTT+Mikro-Sprechen selbst zurueck.
             if radio.config.get("webaudio_enabled", False) and not (radio.is_tx or radio.is_device_sending):
-                encoded = encode_adpcm(data, _adpcm_state)
-                # NEU: als Base64-Text statt roher Bytes verschickt - die auf dem Pi installierte
-                # python3-engineio-Version hat einen Bug beim Kodieren binaerer Pakete ueber die
-                # HTTP-Polling-Transportart (bevor auf WebSocket hochgestuft wurde). Text laeuft
-                # ueber den laengst bewaehrten Pfad, keine Bytes/String-Verwechslung mehr moeglich.
-                socketio.emit('audio_pcm', base64.b64encode(encoded).decode('ascii'))
+                # NEU: kurz nach dem Start des Zuhoerens automatisch ein paar Lese-Zyklen ueberspringen
+                # (nicht das Lesen selbst, nur das Kodieren/Verschicken) - bildet nach, was manuell per
+                # Mute/PTT/Modus-Tastendruck den gemeldeten "kreischenden Peak" zuverlaessig behoben hat.
+                # Vermutlich ein Encoder-Kaltstart-Effekt nach langem Hintergrundlauf; das ist der
+                # pragmatische Workaround dafuer, statt in der ADPCM-Zustandslogik selbst zu graben.
+                if _adpcm_flush["countdown"] > 0:
+                    _adpcm_flush["countdown"] -= 1
+                    _adpcm_state["predictor"] = 0
+                    _adpcm_state["index"] = 0
+                else:
+                    encoded = encode_adpcm(data, _adpcm_state)
+                    # Als Base64-Text statt roher Bytes verschickt - die auf dem Pi installierte
+                    # python3-engineio-Version hat einen Bug beim Kodieren binaerer Pakete ueber die
+                    # HTTP-Polling-Transportart (bevor auf WebSocket hochgestuft wurde). Text laeuft
+                    # ueber den laengst bewaehrten Pfad, keine Bytes/String-Verwechslung mehr moeglich.
+                    socketio.emit('audio_pcm', base64.b64encode(encoded).decode('ascii'))
         except Exception:
             time.sleep(0.1)
 
@@ -2557,6 +2568,21 @@ def handle_webaudio_listen_start():
     # ohne diesen Reset klang der Start leiser/verzerrt, wenn "WebAudio streaming" schon vorher an war.
     _adpcm_state["predictor"] = 0
     _adpcm_state["index"] = 0
+    # ~10 Lese-Zyklen (~230ms) lang gar nichts verschicken, bevor der frische Encoder zum Zug kommt.
+    _adpcm_flush["countdown"] = 10
+    # NEU (der eigentliche Fix): das Standard-Eingabegeraet kurz stumm schalten und wieder freigeben -
+    # exakt der manuelle pavucontrol-Trick, nur automatisiert. Setzt vermutlich tiefer an als unser
+    # Software-Encoder-Reset (Treiber-/Hardware-Puffer), daher lief der Software-Reset allein nicht.
+    # '@DEFAULT_SOURCE@' ist ein symbolischer PulseAudio/PipeWire-Platzhalter - kein Hardware-Name,
+    # funktioniert unabhaengig von der jeweils verbauten Soundkarte.
+    def _mute_blip():
+        try:
+            subprocess.run(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "1"], timeout=3)
+            time.sleep(0.15)
+            subprocess.run(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"], timeout=3)
+        except Exception as e:
+            print(f"[WEBAUDIO] Mute-Blip fehlgeschlagen: {e}")
+    threading.Thread(target=_mute_blip, daemon=True).start()
 
 
 @socketio.on('mic_start')
