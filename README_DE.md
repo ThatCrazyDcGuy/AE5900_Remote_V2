@@ -39,6 +39,7 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 13. Ländercodes müssen im WebUI und am Gerät eingestellt werden.
 14. Hamlib/Rigctl kompatibel (flrig, fldigi, rigctl, grig, openwebrx, js8call & wsjt-cb).
 15. Wenn man sich traut das Gerät zu öffnen und zu löten ist nun ein extrenes S-METER per Bluetooth möglich.
+16. Web-Audio HTTP nur RX / HTTPS RX und TX
 
 
 Hier werden verschiedene Funktionen demonstriert. Die Bedienung ist über mehrere Softwareprogramme und Geräte gleichzeitig möglich. Außerdem sind rigctl und hamlib sowie ein Bluetooth-S-Meter implementiert.
@@ -288,7 +289,13 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-290926 AFX
+Aktuell: V-300926 AWX
+
+1. RX Audio - rebuild. Läuft auch im Hintergrund weiter.
+
+Zusatz: Bitte schaut euch im Setup & Sync um. Da sind neue Stellschrauben auch für den Wasserfall.
+
+Vorherige Version: V-290926 AFX
 
 1. Audio Lautstärke Fix
 Laute Peaks beim Verbinden wurden entfernt 
