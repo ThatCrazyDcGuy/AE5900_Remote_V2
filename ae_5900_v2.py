@@ -987,8 +987,20 @@ def _adpcm_encode_sample(sample, state):
     state['index'] = index
     return code & 0x0F
 
-def encode_adpcm(samples, state):
-    """samples: numpy int16 Array. Gibt die ADPCM-Bytes zurueck (2 Nibbles pro Byte)."""
+def encode_adpcm(samples):
+    """samples: numpy int16 Array. Gibt die ADPCM-Bytes zurueck (2 Nibbles pro Byte).
+    NEU: jedes Paket ist jetzt vollkommen eigenstaendig - der Encoder startet bei JEDEM
+    Aufruf frisch bei predictor=0/index=0, kein Zustand wird mehr ueber Pakete hinweg
+    mitgeschleppt. Inspiriert von OpenWebRX' periodischem Sync-Wort im Stream - da wir
+    aber diskrete Pakete (keinen durchgehenden Byte-Strom) verschicken, reicht bei uns
+    ein Reset pro Paket, ganz ohne Sync-Header uebertragen zu muessen: beide Seiten
+    kennen den Startzustand ja ohnehin (immer Null). Kostet ein winziges bisschen
+    Kompressionseffizienz am Anfang jedes Pakets (paar Samples Einschwingzeit), macht
+    dafuer jegliches Zustands-Auseinanderdriften zwischen Encoder/Decoder strukturell
+    unmoeglich - genau das Problem, das frueher Flush-Countdown und Mute-Blip nur
+    behelfsmaessig kaschiert haben.
+    """
+    state = {"predictor": 0, "index": 0}
     out = bytearray()
     pending = None
     for s in samples:
@@ -1017,8 +1029,10 @@ def _adpcm_decode_nibble(code, state):
     state["index"] = max(0, min(88, state["index"]))
     return state["predictor"]
 
-def decode_adpcm(data_bytes, state):
-    """Kehrt encode_adpcm() um - fuers eingehende Mikrofon-Audio vom Browser."""
+def decode_adpcm(data_bytes):
+    """Kehrt encode_adpcm() um - fuers eingehende Mikrofon-Audio vom Browser. Startet
+    genau wie der Encoder bei JEDEM Paket frisch bei predictor=0/index=0."""
+    state = {"predictor": 0, "index": 0}
     out = []
     for b in data_bytes:
         out.append(_adpcm_decode_nibble(b & 0x0F, state))
@@ -1027,8 +1041,6 @@ def decode_adpcm(data_bytes, state):
 
 audio_cache = {"fft": [0.0] * FFT_BINS}
 audio_cache_lock = threading.Lock()
-_adpcm_state = {"predictor": 0, "index": 0}
-_adpcm_flush = {"countdown": 0}  # NEU: siehe webaudio_listen_start - kurze automatische Stille beim Zuhoer-Start
 
 # =========================================================================
 # NEU: MIKROFON-SENDEN UEBERS WEB-UI (Browser-Mikro -> Mumble -> PipeWire -> Funkgeraet)
@@ -1041,7 +1053,6 @@ MUMBLE_PORT = 64738
 MUMBLE_BOT_NAME = "WebUI-Mic-Bridge"
 mic_mumble_bot = None
 mic_mumble_lock = threading.Lock()
-_mic_adpcm_decode_state = {"predictor": 0, "index": 0}
 
 def ensure_mic_mumble_connected():
     global mic_mumble_bot
@@ -1095,7 +1106,6 @@ def audio_stream_worker():
     """Einziger, kontinuierlicher Leser der PyAudio-Streams. Liest im natuerlichen
     Tempo der Hardware (blockierend), damit keine Luecken/Aussetzer entstehen -
     unabhaengig davon, wie oft die Visualisierung ans Frontend gepusht wird."""
-    global _adpcm_state
     while True:
         try:
             if getattr(radio, 'audio_mute', False):
@@ -1122,22 +1132,14 @@ def audio_stream_worker():
             # Das nur fuers Wasserfall verwenden, aber NICHT ans "Listen"-Feature weiterschicken,
             # sonst hoert man sich beim gleichzeitigen PTT+Mikro-Sprechen selbst zurueck.
             if radio.config.get("webaudio_enabled", False) and not (radio.is_tx or radio.is_device_sending):
-                # NEU: kurz nach dem Start des Zuhoerens automatisch ein paar Lese-Zyklen ueberspringen
-                # (nicht das Lesen selbst, nur das Kodieren/Verschicken) - bildet nach, was manuell per
-                # Mute/PTT/Modus-Tastendruck den gemeldeten "kreischenden Peak" zuverlaessig behoben hat.
-                # Vermutlich ein Encoder-Kaltstart-Effekt nach langem Hintergrundlauf; das ist der
-                # pragmatische Workaround dafuer, statt in der ADPCM-Zustandslogik selbst zu graben.
-                if _adpcm_flush["countdown"] > 0:
-                    _adpcm_flush["countdown"] -= 1
-                    _adpcm_state["predictor"] = 0
-                    _adpcm_state["index"] = 0
-                else:
-                    encoded = encode_adpcm(data, _adpcm_state)
-                    # Als Base64-Text statt roher Bytes verschickt - die auf dem Pi installierte
-                    # python3-engineio-Version hat einen Bug beim Kodieren binaerer Pakete ueber die
-                    # HTTP-Polling-Transportart (bevor auf WebSocket hochgestuft wurde). Text laeuft
-                    # ueber den laengst bewaehrten Pfad, keine Bytes/String-Verwechslung mehr moeglich.
-                    socketio.emit('audio_pcm', base64.b64encode(encoded).decode('ascii'))
+                # NEU: encode_adpcm() setzt sich jetzt selbst pro Paket zurueck (siehe dort) - kein
+                # Flush-Countdown/Mute-Blip mehr noetig, das Problem ist strukturell nicht mehr moeglich.
+                encoded = encode_adpcm(data)
+                # Als Base64-Text statt roher Bytes verschickt - die auf dem Pi installierte
+                # python3-engineio-Version hat einen Bug beim Kodieren binaerer Pakete ueber die
+                # HTTP-Polling-Transportart (bevor auf WebSocket hochgestuft wurde). Text laeuft
+                # ueber den laengst bewaehrten Pfad, keine Bytes/String-Verwechslung mehr moeglich.
+                socketio.emit('audio_pcm', base64.b64encode(encoded).decode('ascii'))
         except Exception:
             time.sleep(0.1)
 
@@ -2247,8 +2249,6 @@ def api_cmd(cmd):
         elif cmd == 'WEBAUDIO_TOGGLE':
             radio.config["webaudio_enabled"] = not radio.config.get("webaudio_enabled", False)
             radio.save_config()
-            _adpcm_state["predictor"] = 0
-            _adpcm_state["index"] = 0
             print(f"[WEBAUDIO] {'aktiviert' if radio.config['webaudio_enabled'] else 'deaktiviert'}")
 
         elif cmd == 'MW_TOGGLE':
@@ -2561,35 +2561,12 @@ def handle_connect():
         pass
 
 
-@socketio.on('webaudio_listen_start')
-def handle_webaudio_listen_start():
-    # NEU: setzt den ADPCM-Kodierer synchron zum frisch zurueckgesetzten Browser-Decoder zurueck.
-    # Der Kodierer laeuft sonst durchgehend im Hintergrund weiter (auch ohne Zuhoerer) und "altert" -
-    # ohne diesen Reset klang der Start leiser/verzerrt, wenn "WebAudio streaming" schon vorher an war.
-    _adpcm_state["predictor"] = 0
-    _adpcm_state["index"] = 0
-    # ~10 Lese-Zyklen (~230ms) lang gar nichts verschicken, bevor der frische Encoder zum Zug kommt.
-    _adpcm_flush["countdown"] = 10
-    # NEU (der eigentliche Fix): das Standard-Eingabegeraet kurz stumm schalten und wieder freigeben -
-    # exakt der manuelle pavucontrol-Trick, nur automatisiert. Setzt vermutlich tiefer an als unser
-    # Software-Encoder-Reset (Treiber-/Hardware-Puffer), daher lief der Software-Reset allein nicht.
-    # '@DEFAULT_SOURCE@' ist ein symbolischer PulseAudio/PipeWire-Platzhalter - kein Hardware-Name,
-    # funktioniert unabhaengig von der jeweils verbauten Soundkarte.
-    def _mute_blip():
-        try:
-            subprocess.run(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "1"], timeout=3)
-            time.sleep(0.15)
-            subprocess.run(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"], timeout=3)
-        except Exception as e:
-            print(f"[WEBAUDIO] Mute-Blip fehlgeschlagen: {e}")
-    threading.Thread(target=_mute_blip, daemon=True).start()
-
 
 @socketio.on('mic_start')
 def handle_mic_start():
     # NEU: kein Mumble-Bot mehr - direkter PyAudio-Ausgabe-Stream statt dem Protokoll-Umweg.
-    _mic_adpcm_decode_state["predictor"] = 0
-    _mic_adpcm_decode_state["index"] = 0
+    # ADPCM-Zustand muss hier nicht mehr zurueckgesetzt werden - decode_adpcm() startet jetzt
+    # pro Paket selbst frisch (siehe dort).
     while not mic_tx_queue.empty():
         try: mic_tx_queue.get_nowait()
         except queue.Empty: break
@@ -2607,7 +2584,7 @@ def handle_mic_pcm(b64str):
         return
     try:
         adpcm_bytes = base64.b64decode(b64str)
-        samples = decode_adpcm(adpcm_bytes, _mic_adpcm_decode_state)
+        samples = decode_adpcm(adpcm_bytes)
         pcm_bytes = struct.pack(f"{len(samples)}h", *samples)
         # Gleiches Prinzip wie im Prototyp: bei vollem Puffer aeltestes Paket verwerfen,
         # damit die Latenz nicht immer weiter anwaechst.
