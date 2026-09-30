@@ -631,70 +631,170 @@
     // --- NEU: LIVE-WEBAUDIO (RX) DIREKT INTEGRIERT - IMA ADPCM ueber SocketIO ---
     // Ersetzt die separate Mumble-Browser-Bruecke: kein zweiter Tab, kein zweites
     // Zertifikat mehr noetig. Reines Zuhoeren braucht auch kein HTTPS.
+    //
+    // NEU (2. Anlauf, nach Analyse von OpenWebRX' echtem Quellcode): kompletter Umbau der
+    // Wiedergabe-Engine auf einen Ringpuffer (AudioWorklet unter HTTPS, ScriptProcessor-Fallback
+    // unter HTTP) statt einzeln geplanter AudioBufferSourceNodes. Ein Ringpuffer fester Groesse
+    // loest das "Tonband-Nachspiel"-Problem strukturell: laeuft er voll, werden alte, noch nicht
+    // abgespielte Daten automatisch ueberschrieben - keine manuelle Rueckstau-Erkennung/Deckelung
+    // mehr noetig. Zusammen mit dem jetzt pro-Paket-selbststaendigen ADPCM (siehe Backend) sind
+    // damit alle bisherigen Workarounds (Flush-Countdown, Mute-Blip, Listen-Start-Reset,
+    // Wanduhr-Ruckstau-Erkennung) ueberfluessig geworden und wurden entfernt.
     const WEBAUDIO_SAMPLE_RATE = 22050; // muss zur RATE im Backend (PyAudio-Streams) passen
     let waAudioContext = null;
-    let waMediaStreamDest = null; // NEU: Ausgabeziel fuers versteckte <audio>-Element (Hintergrund-Wiedergabe)
+    let waMediaStreamDest = null; // Ausgabeziel fuers versteckte <audio>-Element (Hintergrund-Wiedergabe)
     let waIsListening = false;
-    let waNextStartTime = 0;
-    let waLastChunkWallTime = 0; // NEU: fuer die Ruckstau-Erkennung nach Display-Aus (echte Uhrzeit, nicht AudioContext-Zeit)
-    const WA_BUFFER_DELAY = 0.08;
-    let waPredictor = 0, waIndex = 0;
     let waWakeLock = null;
+    let waGainNode = null;
+    let waEngineStarted = false; // wie OpenWebRX' "started"-Flag: die Audio-Graph-Knoten nur EINMAL aufbauen
+    let waUseWorklet = false;
+    let waWorkletNode = null;
+    let waScriptNode = null;
+    let waFallbackQueue = []; // nur fuers ScriptProcessor-Fallback (kein eingebauter Ringpuffer dort)
     const WA_IMA_INDEX_TABLE = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
     const WA_IMA_STEP_TABLE = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767];
 
-    function waResetDecoder() { waPredictor = 0; waIndex = 0; }
-
-    function waDecodeNibble(code) {
-        const step = WA_IMA_STEP_TABLE[waIndex];
-        let diffq = step >> 3;
-        if (code & 4) diffq += step;
-        if (code & 2) diffq += step >> 1;
-        if (code & 1) diffq += step >> 2;
-        if (code & 8) waPredictor -= diffq; else waPredictor += diffq;
-        waPredictor = Math.max(-32768, Math.min(32767, waPredictor));
-        waIndex += WA_IMA_INDEX_TABLE[code];
-        waIndex = Math.max(0, Math.min(88, waIndex));
-        return waPredictor;
-    }
-
+    // NEU: der Decoder setzt sich jetzt bei JEDEM Paket selbst frisch zurueck (predictor=0/index=0) -
+    // spiegelt den Backend-Encoder, der genauso pro Paket neu startet. Kein externer Reset-Aufruf mehr noetig.
     function waDecodeAdpcm(bytes) {
+        let predictor = 0, index = 0;
         const out = new Int16Array(bytes.length * 2);
         let oi = 0;
         for (let i = 0; i < bytes.length; i++) {
             const b = bytes[i];
-            out[oi++] = waDecodeNibble(b & 0x0F);
-            out[oi++] = waDecodeNibble((b >> 4) & 0x0F);
+            for (let half = 0; half < 2; half++) {
+                const code = half === 0 ? (b & 0x0F) : ((b >> 4) & 0x0F);
+                const step = WA_IMA_STEP_TABLE[index];
+                let diffq = step >> 3;
+                if (code & 4) diffq += step;
+                if (code & 2) diffq += step >> 1;
+                if (code & 1) diffq += step >> 2;
+                if (code & 8) predictor -= diffq; else predictor += diffq;
+                predictor = Math.max(-32768, Math.min(32767, predictor));
+                index += WA_IMA_INDEX_TABLE[code];
+                index = Math.max(0, Math.min(88, index));
+                out[oi++] = predictor;
+            }
         }
         return out;
     }
 
-    function waPlayChunk(int16Array) {
-        if (!waIsListening || !waAudioContext) return;
-        if (int16Array.length === 0) return;
-        // NEU: laufende Rueckstau-Bremse, nicht nur einmalig beim ersten Paket nach einer Pause.
-        // Baut sich der geplante Vorlauf (waNextStartTime gegenueber der echten AudioContext-Zeit)
-        // auf mehr als 1 Sekunde auf - z.B. weil ein ganzer Rueckstau in schneller Folge nachkommt -
-        // wird dieses Paket komplett verworfen, statt brav hintenangehaengt zu werden. So kann sich
-        // nie wieder eine lange Verzoegerung aufbauen, egal wie gross der Rueckstau ist.
-        if (waNextStartTime - waAudioContext.currentTime > 1.0) return;
+    // AudioWorkletProcessor-Code als Inline-String (per Blob-URL geladen, kein separates JS-File
+    // noetig) - Ringpuffer-Prinzip direkt uebernommen aus OpenWebRX' AudioProcessor.js.
+    const AE_WORKLET_CODE = `
+        class Ae5900RingProcessor extends AudioWorkletProcessor {
+            constructor(options) {
+                super(options);
+                this.bufferSize = Math.round(options.processorOptions.maxBufferSize / 128) * 128;
+                this.buffer = new Float32Array(this.bufferSize);
+                this.inPos = 0;
+                this.outPos = 0;
+                this.port.onmessage = (m) => {
+                    const data = m.data;
+                    if (this.inPos + data.length <= this.bufferSize) {
+                        this.buffer.set(data, this.inPos);
+                    } else {
+                        const remaining = this.bufferSize - this.inPos;
+                        this.buffer.set(data.subarray(0, remaining), this.inPos);
+                        this.buffer.set(data.subarray(remaining), 0);
+                    }
+                    this.inPos = (this.inPos + data.length) % this.bufferSize;
+                };
+            }
+            remaining() {
+                const mod = (this.inPos - this.outPos) % this.bufferSize;
+                return mod >= 0 ? mod : mod + this.bufferSize;
+            }
+            process(inputs, outputs) {
+                const output = outputs[0][0];
+                if (!output) return true;
+                if (this.remaining() < output.length) { output.fill(0); return true; }
+                for (let i = 0; i < output.length; i++) {
+                    output[i] = this.buffer[this.outPos];
+                    this.outPos = (this.outPos + 1) % this.bufferSize;
+                }
+                return true;
+            }
+        }
+        registerProcessor('ae5900-audio-processor', Ae5900RingProcessor);
+    `;
+
+    // NEU: wird ueber audioContext.onstatechange angestossen (wie bei OpenWebRX), nicht direkt beim
+    // Klick - laeuft also auch automatisch an, wenn der Context nach einer Unterbrechung von selbst
+    // wieder in den Zustand 'running' wechselt. Das "started"-Flag sorgt dafuer, dass der Audio-Graph
+    // trotzdem nur EINMAL pro Context aufgebaut wird.
+    function _waEngineStart() {
+        if (waEngineStarted || !waAudioContext || waAudioContext.state !== 'running') return;
+        waEngineStarted = true;
+
+        waGainNode = waAudioContext.createGain();
+        waGainNode.connect(waMediaStreamDest || waAudioContext.destination);
+
+        if (location.protocol === 'https:' && waAudioContext.audioWorklet) {
+            const blob = new Blob([AE_WORKLET_CODE], { type: 'application/javascript' });
+            const url = URL.createObjectURL(blob);
+            waAudioContext.audioWorklet.addModule(url).then(() => {
+                const maxBufferSize = Math.round((WEBAUDIO_SAMPLE_RATE * 2) / 128) * 128; // ~2s Ringpuffer
+                waWorkletNode = new AudioWorkletNode(waAudioContext, 'ae5900-audio-processor', {
+                    numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+                    processorOptions: { maxBufferSize: maxBufferSize }
+                });
+                waWorkletNode.connect(waGainNode);
+                waUseWorklet = true;
+                console.log('[WEBAUDIO] AudioWorklet-Ringpuffer aktiv.');
+            }).catch((e) => {
+                console.warn('[WEBAUDIO] AudioWorklet fehlgeschlagen, Fallback auf ScriptProcessor:', e);
+                _waSetupScriptFallback();
+            });
+        } else {
+            _waSetupScriptFallback();
+        }
+    }
+
+    function _waSetupScriptFallback() {
+        waUseWorklet = false;
+        waFallbackQueue = [];
+        const bufferSize = 4096;
+        waScriptNode = waAudioContext.createScriptProcessor(bufferSize, 0, 1);
+        waScriptNode.onaudioprocess = (e) => {
+            const out = e.outputBuffer.getChannelData(0);
+            let total = 0;
+            while (waFallbackQueue.length && total < out.length) {
+                const b = waFallbackQueue[0];
+                const need = out.length - total;
+                if (b.length > need) {
+                    out.set(b.subarray(0, need), total);
+                    waFallbackQueue[0] = b.subarray(need);
+                    total += need;
+                } else {
+                    out.set(b, total);
+                    total += b.length;
+                    waFallbackQueue.shift();
+                }
+            }
+            if (total < out.length) out.fill(0, total); // Rest mit Stille auffuellen statt alten Kram nachzuspielen
+        };
+        waScriptNode.connect(waGainNode);
+        console.log('[WEBAUDIO] ScriptProcessor-Fallback aktiv (kein AudioWorklet/kein HTTPS).');
+    }
+
+    // Nimmt dekodierte Samples entgegen und fuettert je nach Engine den Worklet-Ringpuffer oder
+    // (Fallback) die einfache Warteschlange - inklusive Deckelung dort, da sie keinen eingebauten
+    // Ringpuffer hat.
+    function waPushAudio(int16Array) {
+        if (!waIsListening || int16Array.length === 0) return;
         const float32 = new Float32Array(int16Array.length);
         for (let i = 0; i < int16Array.length; i++) float32[i] = int16Array[i] / 32768.0;
-
-        const buffer = waAudioContext.createBuffer(1, float32.length, WEBAUDIO_SAMPLE_RATE);
-        buffer.getChannelData(0).set(float32);
-        const source = waAudioContext.createBufferSource();
-        source.buffer = buffer;
-        // NEU: ueber ein verstecktes <audio>-Element ausgeben statt direkt auf audioContext.destination -
-        // Android/Chrome behandeln ein echtes <audio>-Element mit MediaSession eher als "richtige"
-        // Medienwiedergabe und drosseln sie bei ausgeschaltetem Display seltener als einen reinen
-        // WebAudio-Graphen. Falls das Element (noch) nicht bereit ist, Fallback auf direkte Ausgabe.
-        source.connect(waMediaStreamDest ? waMediaStreamDest : waAudioContext.destination);
-
-        const currentTime = waAudioContext.currentTime;
-        if (waNextStartTime < currentTime) waNextStartTime = currentTime + WA_BUFFER_DELAY;
-        source.start(waNextStartTime);
-        waNextStartTime += buffer.duration;
+        if (waUseWorklet && waWorkletNode) {
+            waWorkletNode.port.postMessage(float32);
+        } else {
+            waFallbackQueue.push(float32);
+            let total = 0;
+            for (let i = 0; i < waFallbackQueue.length; i++) total += waFallbackQueue[i].length;
+            while (total > WEBAUDIO_SAMPLE_RATE * 1.5 && waFallbackQueue.length > 1) {
+                total -= waFallbackQueue.shift().length;
+            }
+        }
     }
 
     async function waRequestWakeLock() {
@@ -710,32 +810,32 @@
     });
 
     // --- NEU: MIKROFON-SENDEN UEBERS WEB-UI (Browser-Mikro -> Mumble -> Funkgeraet), braucht HTTPS ---
-    let waMicPredictor = 0, waMicIndex = 0;
     let waMicStream = null, waMicProcessor = null, waMicAudioContext = null, waMicActive = false;
 
-    function waEncodeSample(sample) {
-        const step = WA_IMA_STEP_TABLE[waMicIndex];
-        let diff = sample - waMicPredictor;
-        let code = 0;
-        if (diff < 0) { code = 8; diff = -diff; }
-        let tmpStep = step;
-        let diffq = step >> 3;
-        if (diff >= tmpStep) { code |= 4; diff -= tmpStep; diffq += step; }
-        tmpStep >>= 1;
-        if (diff >= tmpStep) { code |= 2; diff -= tmpStep; diffq += step >> 1; }
-        tmpStep >>= 1;
-        if (diff >= tmpStep) { code |= 1; diffq += step >> 2; }
-        if (code & 8) waMicPredictor -= diffq; else waMicPredictor += diffq;
-        waMicPredictor = Math.max(-32768, Math.min(32767, waMicPredictor));
-        waMicIndex += WA_IMA_INDEX_TABLE[code];
-        waMicIndex = Math.max(0, Math.min(88, waMicIndex));
-        return code & 0x0F;
-    }
+    // NEU: genau wie beim RX-Decoder setzt sich der Mikro-Encoder jetzt pro Paket selbst zurueck
+    // (predictor=0/index=0) statt Zustand ueber Aufrufe hinweg mitzuschleppen - spiegelt das neue
+    // Backend-decode_adpcm(). Kein externer Reset (waMicPredictor=0 etc.) mehr noetig.
     function waEncodeAdpcm(int16Array) {
+        let predictor = 0, index = 0;
         const out = [];
         let pending = null;
         for (let i = 0; i < int16Array.length; i++) {
-            const code = waEncodeSample(int16Array[i]);
+            const step = WA_IMA_STEP_TABLE[index];
+            let diff = int16Array[i] - predictor;
+            let code = 0;
+            if (diff < 0) { code = 8; diff = -diff; }
+            let tmpStep = step;
+            let diffq = step >> 3;
+            if (diff >= tmpStep) { code |= 4; diff -= tmpStep; diffq += step; }
+            tmpStep >>= 1;
+            if (diff >= tmpStep) { code |= 2; diff -= tmpStep; diffq += step >> 1; }
+            tmpStep >>= 1;
+            if (diff >= tmpStep) { code |= 1; diffq += step >> 2; }
+            if (code & 8) predictor -= diffq; else predictor += diffq;
+            predictor = Math.max(-32768, Math.min(32767, predictor));
+            index += WA_IMA_INDEX_TABLE[code];
+            index = Math.max(0, Math.min(88, index));
+            code = code & 0x0F;
             if (pending === null) pending = code;
             else { out.push((code << 4) | pending); pending = null; }
         }
@@ -768,7 +868,6 @@
     }
 
     function _startMicTalk(btn) {
-            waMicPredictor = 0; waMicIndex = 0;
             // NEU: Sicherheitsnetz - falls die Server-Bestaetigung mal verloren geht/haengt (z.B. nach
             // langem Leerlauf mit kurzem Verbindungs-Haenger), bleibt der Button sonst dauerhaft
             // deaktiviert, ohne dass man einen Fehler sieht. Nach 5s automatisch wieder freischalten.
@@ -885,8 +984,13 @@
             if (!waAudioContext || waAudioContext.state === 'closed') {
                 waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE });
                 waMediaStreamDest = null; // an den neuen Context gebunden, muss neu aufgebaut werden
+                waEngineStarted = false; // neuer Context -> Audio-Graph muss auch neu aufgebaut werden
+                // NEU (wie OpenWebRX): _waEngineStart() haengt am state-Wechsel, nicht am Klick direkt -
+                // laeuft also auch automatisch an, wenn der Context sich spaeter mal selbst wieder aus
+                // 'suspended' erholt, nicht nur beim allerersten Start.
+                waAudioContext.onstatechange = _waEngineStart;
             }
-            if (waAudioContext.state === 'suspended') waAudioContext.resume();
+            waAudioContext.resume();
             // NEU: Ausgabe ueber ein verstecktes <audio>-Element route - Android/Chrome behandeln das
             // eher als "richtige" Medienwiedergabe (Hintergrund-Ueberleben bei ausgeschaltetem Display).
             if (!waMediaStreamDest) {
@@ -906,22 +1010,16 @@
                 navigator.mediaSession.setActionHandler('play', () => { navigator.mediaSession.playbackState = 'playing'; });
                 navigator.mediaSession.setActionHandler('pause', () => { navigator.mediaSession.playbackState = 'playing'; });
             }
-            waNextStartTime = 0;
-            waLastChunkWallTime = 0;
-            waResetDecoder();
             waIsListening = true;
             if (btn) { btn.textContent = '🔊 Listening... (tap to stop)'; btn.style.background = '#006600'; }
             waRequestWakeLock();
+            // Falls der Context schon 'running' ist (z.B. weil er von einer vorherigen Session noch
+            // existiert), feuert onstatechange u.U. nicht erneut - direkt pruefen als Sicherheitsnetz.
+            _waEngineStart();
             // NEU: Listen-Button aktiviert das Server-seitige Streaming automatisch mit, falls noch aus -
             // vorher zwei getrennte Schalter fuer einen Vorgang, das war unnoetig fummelig.
             const waCb = document.getElementById('webaudioToggle');
             if (waCb && !waCb.checked) { send('WEBAUDIO_TOGGLE'); }
-            // NEU: immer separat signalisieren, dass JETZT wirklich zugehoert wird (unabhaengig davon,
-            // ob der Haken schon gesetzt war) - der Server setzt daraufhin seinen ADPCM-Kodierer
-            // zurueck, damit er zum frisch zurueckgesetzten Browser-Decoder passt. Vorher passierte das
-            // nur zufaellig, wenn WEBAUDIO_TOGGLE mit ausgeloest wurde - bei schon gesetztem Haken nicht,
-            // was zu Encoder/Decoder-Drift (leiserer Start) fuehrte.
-            if (socket) socket.emit('webaudio_listen_start');
     }
 
     function _stopWebAudioListen(btn) {
@@ -1085,7 +1183,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-290926 AFX";
+                if (vInd) vInd.textContent = "V-300926 AWX";
             });
 
             socket.on('audio', (data) => { 
@@ -1096,24 +1194,15 @@
             });
 
             socket.on('audio_pcm', (b64str) => {
-                // NEU: kommt jetzt als Base64-Text an (siehe Backend-Kommentar) statt als rohe Bytes -
-                // hier einmal dekodieren, Rest bleibt gleich.
+                // Kommt als Base64-Text an (siehe Backend-Kommentar) statt als rohe Bytes.
+                // NEU: keine Rueckstau-/Zeitluecken-Erkennung mehr noetig - der Ringpuffer in der
+                // Wiedergabe-Engine kuemmert sich strukturell darum (siehe waPushAudio/_waEngineStart).
                 if (!waIsListening || !waAudioContext) return;
                 if (waAudioContext.state === 'suspended') waAudioContext.resume();
-                // NEU: erkennt eine groessere Zeitluecke seit dem letzten Paket (z.B. nach Display-Aus,
-                // wenn der Tab gedrosselt war und sich ein Rueckstau an Paketen aufgebaut hat). Statt den
-                // ganzen Rueckstand brav nachzuspielen ("Tonband-Effekt"), wird dann bewusst zu LIVE
-                // gesprungen - der Rueckstand wird verworfen, Wiedergabe startet sofort wieder in Echtzeit.
-                const nowWall = Date.now();
-                if (waLastChunkWallTime && (nowWall - waLastChunkWallTime) > 1500) {
-                    waNextStartTime = 0;
-                    waResetDecoder();
-                }
-                waLastChunkWallTime = nowWall;
                 const binStr = atob(b64str);
                 const bytes = new Uint8Array(binStr.length);
                 for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
-                waPlayChunk(waDecodeAdpcm(bytes));
+                waPushAudio(waDecodeAdpcm(bytes));
             });
 
             
