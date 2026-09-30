@@ -88,6 +88,8 @@ key_codes = {'0':'01', '1':'02', '2':'03', '3':'04', '4':'05', '5':'06', '6':'07
 
 # --- AUDIO CONFIG ---
 CHUNK = 512
+SW_SCAN_GRACE_SECONDS = 3.0  # NEU: Gnadenfrist fuer S-SCAN/MW nach Signalverlust, bevor weitergesucht wird
+STEP_INTERVAL_SECONDS = 4.0  # NEU: fester Takt fuer den "Kanal-Blaetterer" (Longpress S-SCAN/MW) - ignoriert die Rauschsperre komplett, reines Weiterschalten zum Nebenbei-Mithoeren
 stream_rx = None
 stream_tx = None
 
@@ -225,6 +227,7 @@ class RadioInterface:
         self.force_rx = False
         self.is_scanning = False
         self.sw_scan_active = False
+        self.sw_step_active = False  # NEU: "Kanal-Blaetterer" (Longpress S-SCAN) - stur, ignoriert Rauschsperre
         self.ptt_start_time = 0
         self.key_buffer = ""
         self.scan_dir = 1 
@@ -808,21 +811,54 @@ class RadioInterface:
 
     def sw_scan_loop(self):
         print("Software-Scan gestartet.")
+        # NEU: statt blockierend "solange Signal da ist" zu warten und beim Verschwinden sofort
+        # weiterzuspringen, wird jetzt der Zeitpunkt des letzten Signals gemerkt. Erst wenn seit
+        # diesem Zeitpunkt wirklich SW_SCAN_GRACE_SECONDS OHNE Signal vergangen sind, geht's weiter -
+        # gibt der Gegenstation Zeit zu antworten, statt nur das Ende eines Durchgangs zu erwischen.
+        # Funktioniert identisch, egal ob die Rauschsperre schon beim Start offen war oder erst
+        # waehrend des Scans aufgeht - kein Sonderfall mehr noetig.
+        last_signal_time = None
         while self.sw_scan_active:
-            if not self.is_rx and not self.is_tx:
-                self.current_ch = (self.current_ch % 40) + 1
-                self.send_cmd("4100010010000006", "4100000010000006")
-                self.shadow_config = self.save_config() # Failsafe Fix
-            time.sleep(self.config.get("scan_speed", 0.5))
-            while self.is_rx and self.sw_scan_active:
+            if self.is_tx:
+                self.sw_scan_active = False
+                break
+            if self.is_rx:
+                last_signal_time = time.time()
                 time.sleep(0.2)
-                if self.is_tx:
-                    self.sw_scan_active = False
-                    break
+                continue
+            if last_signal_time is not None and (time.time() - last_signal_time) < SW_SCAN_GRACE_SECONDS:
+                time.sleep(0.2)
+                continue
+            # kein Signal mehr, Gnadenfrist abgelaufen (oder nie eins gehabt) -> naechster Kanal
+            self.current_ch = (self.current_ch % 40) + 1
+            self.send_cmd("4100010010000006", "4100000010000006")
+            self.shadow_config = self.save_config() # Failsafe Fix
+            last_signal_time = None
+            time.sleep(self.config.get("scan_speed", 0.5))
         print("Software-Scan beendet.")
 
     def stop_sw_scan(self):
         self.sw_scan_active = False
+
+    def sw_step_loop(self):
+        # NEU: "Kanal-Blaetterer" - kein echter Scan, ignoriert die Rauschsperre komplett. Fuer alle,
+        # die nebenbei arbeiten, nicht den Finger am Knopf haben und einfach nur ueber die Kanaele
+        # mithoeren wollen, ohne dass irgendwas auf ein Signal wartet.
+        print("Kanal-Blaetterer (S-SCAN Longpress) gestartet.")
+        while self.sw_step_active:
+            if self.is_tx:
+                self.sw_step_active = False
+                break
+            self.current_ch = (self.current_ch % 40) + 1
+            self.send_cmd("4100010010000006", "4100000010000006")
+            self.shadow_config = self.save_config()
+            waited = 0.0
+            while waited < STEP_INTERVAL_SECONDS:
+                if not self.sw_step_active or self.is_tx:
+                    break
+                time.sleep(0.2)
+                waited += 0.2
+        print("Kanal-Blaetterer (S-SCAN) beendet.")
 
     def super_sync(self):
         self.ignore_until = time.time() + 1.2
@@ -852,9 +888,6 @@ def mw_scan_loop(radio):
 
         for ch in channels:
             if not radio.mw_active: break
-            while radio.is_rx and radio.mw_active:
-                time.sleep(0.2)
-            if not radio.mw_active: break
 
             # --- KANAL PHYSISCH ANSTEUERN ---
             print(f"MW schaltet auf Kanal: {ch}")
@@ -877,14 +910,59 @@ def mw_scan_loop(radio):
             if ziffer2 in key_codes:
                 radio.send_cmd(f"41000100{key_codes[ziffer2]}000006", f"41000000{key_codes[ziffer2]}000006")
             
-            # 1 Sekunde auf diesem Kanal lauschen (Taktzeit)
-            for _ in range(10):
-                if not radio.mw_active or radio.is_rx:
+            # NEU: gleiches Prinzip wie bei sw_scan_loop() - Zeitpunkt des letzten Signals merken,
+            # erst SW_SCAN_GRACE_SECONDS nach dessen Verschwinden zum naechsten Kanal weiterziehen.
+            # Ohne je ein Signal gehabt zu haben, bleibt die normale ~1s "Taktzeit" pro Kanal bestehen.
+            last_signal_time = None
+            dwell_start = time.time()
+            while radio.mw_active:
+                if radio.is_rx:
+                    last_signal_time = time.time()
+                elif last_signal_time is not None:
+                    if (time.time() - last_signal_time) >= SW_SCAN_GRACE_SECONDS:
+                        break
+                elif (time.time() - dwell_start) >= 1.0:
                     break
                 time.sleep(0.1)
     print("Multi-Watch (MW) beendet.")
 
+def mw_step_loop(radio):
+    # NEU: "Kanal-Blaetterer" fuer die MW-Kanalliste - kein echter Scan, ignoriert die Rauschsperre
+    # komplett, schaltet stur im festen Takt durch die konfigurierten Kanaele.
+    print("Kanal-Blaetterer (MW Longpress) gestartet.")
+    while radio.mw_step_active:
+        ch_string = radio.config.get("mw_label", "09, 19")
+        try:
+            channels = [c.strip().zfill(2) for c in ch_string.split(",") if c.strip()]
+        except Exception:
+            radio.mw_step_active = False
+            break
+        if not channels:
+            radio.mw_step_active = False
+            break
+
+        for ch in channels:
+            if not radio.mw_step_active: break
+
+            radio.current_ch = int(ch)
+            ziffer1 = ch[0]
+            ziffer2 = ch[1]
+            if ziffer1 in key_codes:
+                radio.send_cmd(f"41000100{key_codes[ziffer1]}000006", f"41000000{key_codes[ziffer1]}000006")
+            time.sleep(0.120)
+            if ziffer2 in key_codes:
+                radio.send_cmd(f"41000100{key_codes[ziffer2]}000006", f"41000000{key_codes[ziffer2]}000006")
+
+            waited = 0.0
+            while waited < STEP_INTERVAL_SECONDS:
+                if not radio.mw_step_active:
+                    break
+                time.sleep(0.2)
+                waited += 0.2
+    print("Kanal-Blaetterer (MW) beendet.")
+
 radio = RadioInterface()
+radio.mw_step_active = False  # NEU: "Kanal-Blaetterer" (Longpress MW)
 LAST_BROWSER_HEARTBEAT = time.time()
 
 def play_roger_beep():
@@ -1188,12 +1266,27 @@ def api_cmd(cmd):
     # Sicherstellen, dass 'val' sicher ausgelesen wird, BEVOR der Thread-Lock greift
     val = request.args.get('val')
 
-    if cmd not in ['STATUS', 'MW_TOGGLE', 'SSCAN'] and not cmd.startswith('SETSPEED_'):
+    # NEU: die vier Such-/Blaetter-Modi (S-SCAN, MW, und die beiden neuen Longpress-"Blaetterer")
+    # schliessen sich gegenseitig aus - jeder Modus-Start/jeder andere Tastendruck raeumt zuerst
+    # alle anderen drei auf, damit nie zwei gleichzeitig um den Kanal konkurrieren.
+    SCAN_MODE_CMDS = ('STATUS', 'MW_TOGGLE', 'SSCAN', 'SSCAN_STEP_TOGGLE', 'MW_STEP_TOGGLE')
+    if cmd not in SCAN_MODE_CMDS and not cmd.startswith('SETSPEED_'):
         radio.stop_sw_scan()
         if hasattr(radio, 'mw_active') and radio.mw_active: 
             radio.mw_active = False 
-    if cmd == 'SSCAN' and hasattr(radio, 'mw_active') and radio.mw_active: 
-        radio.mw_active = False
+        radio.sw_step_active = False
+        if hasattr(radio, 'mw_step_active') and radio.mw_step_active:
+            radio.mw_step_active = False
+    if cmd in ('SSCAN', 'MW_TOGGLE'):
+        if hasattr(radio, 'mw_active') and radio.mw_active and cmd == 'SSCAN':
+            radio.mw_active = False
+        radio.sw_step_active = False
+        if hasattr(radio, 'mw_step_active') and radio.mw_step_active:
+            radio.mw_step_active = False
+    if cmd in ('SSCAN_STEP_TOGGLE', 'MW_STEP_TOGGLE'):
+        radio.stop_sw_scan()
+        if hasattr(radio, 'mw_active') and radio.mw_active:
+            radio.mw_active = False
 
     p_codes = {'P1':'1A', 'P2':'1B', 'P3':'1C', 'P4':'1D'}
     
@@ -1464,6 +1557,21 @@ def api_cmd(cmd):
                 
                 # Jetzt erst das Suchlauf-Triebwerk im Hintergrund-Thread zünden
                 threading.Thread(target=radio.sw_scan_loop, daemon=True).start()
+
+        elif cmd == 'SSCAN_STEP_TOGGLE':
+            # NEU: "Kanal-Blaetterer" per Longpress auf S-SCAN - kein echter Scan, ignoriert die
+            # Rauschsperre, schaltet stur im festen Takt (STEP_INTERVAL_SECONDS) weiter.
+            radio.sw_step_active = not radio.sw_step_active
+            if radio.sw_step_active:
+                threading.Thread(target=radio.sw_step_loop, daemon=True).start()
+
+        elif cmd == 'MW_STEP_TOGGLE':
+            # NEU: "Kanal-Blaetterer" per Longpress auf MW - dasselbe Prinzip, nur ueber die
+            # konfigurierte MW-Kanalliste statt fortlaufend von 1-40.
+            radio.mw_step_active = not getattr(radio, 'mw_step_active', False)
+            if radio.mw_step_active:
+                threading.Thread(target=mw_step_loop, args=(radio,), daemon=True).start()
+
         elif cmd.startswith('SETSPEED_'):
             radio.config["scan_speed"] = float(cmd.split('_')[1]) / 1000.0
             radio.save_config()
@@ -2360,6 +2468,8 @@ def api_cmd(cmd):
         "CLAR_OFFSET": current_channel_offset,
         "LOCK_ENABLED": radio.config.get("lock_enabled", False), 
         "MW_SCAN": getattr(radio, 'mw_active', False), 
+        "SW_STEP": getattr(radio, 'sw_step_active', False), 
+        "MW_STEP": getattr(radio, 'mw_step_active', False), 
         "KEY_BUF": radio.key_buffer,
         "PTT_HOTKEY": radio.config.get("ptt_hotkey", "F6"), 
         "CURRENT_BEEP": radio.config.get("current_beep", "None"),
@@ -2429,6 +2539,8 @@ def api_config_override():
                 "CLAR_OFFSET": radio.config["clar_offsets"].get(current_ch_str, 0), 
                 "LOCK_ENABLED": radio.config.get("lock_enabled", False), 
                 "MW_SCAN": getattr(radio, 'mw_active', False), 
+        "SW_STEP": getattr(radio, 'sw_step_active', False), 
+        "MW_STEP": getattr(radio, 'mw_step_active', False), 
                 "KEY_BUF": radio.key_buffer, 
                 "PTT_HOTKEY": radio.config.get("ptt_hotkey", "F6"), 
                 "CURRENT_BEEP": radio.config.get("current_beep", "None"),
@@ -2630,6 +2742,8 @@ def get_current_status_dict():
         "VOL": radio.config.get("vol", 50), 
         "LOCK_ENABLED": radio.config.get("lock_enabled", False), 
         "MW_SCAN": getattr(radio, 'mw_active', False), 
+        "SW_STEP": getattr(radio, 'sw_step_active', False), 
+        "MW_STEP": getattr(radio, 'mw_step_active', False), 
         "CLAR_STEP": radio.config.get("clar_step", "STEP"), 
         "CLAR_OFFSET": radio.config["clar_offsets"].get(current_ch_str, 0),
         "PTT_HOTKEY": radio.config.get("ptt_hotkey", "F6"), 
