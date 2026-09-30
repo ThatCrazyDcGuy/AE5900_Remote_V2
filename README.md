@@ -293,9 +293,10 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-300926 AWX
+Current: V-300926 SWX
 
-1. RX Audio – rebuilt. Continues running in the background.
+1. RX audio rebuilt; continues running in the background.
+2. SCROLL function added to S-SCAN / MW (channel scanning with squelch open). To activate, press and hold the S-SCAN or MW button.
 
 Note: Please take a look at the Setup & Sync section. There are new settings available, including for the waterfall.
 
