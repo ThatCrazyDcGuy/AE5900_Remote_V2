@@ -162,6 +162,13 @@
             min-height: 45px;        
             white-space: nowrap;     
             overflow: hidden;        
+            /* NEU: verhindert Textmarkierung, das iOS "Antippen-und-Halten"-Kontextmenue und
+               Browser-eigene Touch-Gesten bei laengerem Gedrueckthalten - noetig fuer sauberes
+               Longpress auf S-SCAN/MW, ohne dass Android/iOS dazwischenfunkt. */
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            touch-action: manipulation;
         }
         button:disabled { 
             background: #1a1a1a; 
@@ -419,8 +426,8 @@
         <button onclick="send('MUTECOMBBTN')">MUTE</button>
 
         <button onclick="send('VOX_TOGGLE')">VOX</button>
-        <button onclick="send('SSCAN')" id="scanBtn">S-SCAN</button>
-        <button onclick="send('MW_TOGGLE')" id="mwBtn">MW</button>
+        <button id="scanBtn">S-SCAN</button>
+        <button id="mwBtn">MW</button>
         <button onclick="send('LOCKDEV')">LOCK</button>
 
         <button onclick="send('SQUELCHUP')">A/SQ +</button>
@@ -1183,7 +1190,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-300926 AWX";
+                if (vInd) vInd.textContent = "V-300926 SWX";
             });
 
             socket.on('audio', (data) => { 
@@ -1370,9 +1377,19 @@
             btn.classList.toggle('active', data.PTT === "ON");
         }
         
-        if (sBtn) { if(data.SW_SCAN) { sBtn.style.background = "#004444"; sBtn.style.boxShadow = "0 0 10px #00ffff"; sBtn.innerText = "SCAN..."; } else { sBtn.style.background = ""; sBtn.style.boxShadow = "none"; sBtn.innerText = "S-SCAN"; } }
+        // NEU: SW_STEP (Longpress-"Blaetterer") bekommt eine eigene, unterscheidbare Farbe/Beschriftung,
+        // damit auf einen Blick klar ist, welcher der beiden Modi gerade laeuft.
+        if (sBtn) {
+            if (data.SW_STEP) { sBtn.style.background = "#663300"; sBtn.style.boxShadow = "0 0 10px #ffaa00"; sBtn.innerText = "SCROLL..."; }
+            else if (data.SW_SCAN) { sBtn.style.background = "#004444"; sBtn.style.boxShadow = "0 0 10px #00ffff"; sBtn.innerText = "SCAN..."; }
+            else { sBtn.style.background = ""; sBtn.style.boxShadow = "none"; sBtn.innerText = "S-SCAN"; }
+        }
         const mwBtn = document.getElementById('mwBtn');
-        if (mwBtn) { if(data.MW_SCAN) { mwBtn.style.background = "#004444"; mwBtn.style.boxShadow = "0 0 10px #00ffff"; mwBtn.innerText = "MW..."; } else { mwBtn.style.background = ""; mwBtn.style.boxShadow = "none"; mwBtn.innerText = "MW"; } }
+        if (mwBtn) {
+            if (data.MW_STEP) { mwBtn.style.background = "#663300"; mwBtn.style.boxShadow = "0 0 10px #ffaa00"; mwBtn.innerText = "SCROLL..."; }
+            else if (data.MW_SCAN) { mwBtn.style.background = "#004444"; mwBtn.style.boxShadow = "0 0 10px #00ffff"; mwBtn.innerText = "MW..."; }
+            else { mwBtn.style.background = ""; mwBtn.style.boxShadow = "none"; mwBtn.innerText = "MW"; }
+        }
 
         const voiceButtons = [document.getElementById('btn-rec'), document.getElementById('btn-rplay'), document.getElementById('btn-cqrec'), document.getElementById('btn-cqcall')];
         if (data.PTT === "ON" && data.ACTIVE_P_BLOCK === "voice") { voiceButtons.forEach(b => { if (b) { b.classList.add('click-blocked'); b.style.opacity = "0.3"; } }); }
@@ -1470,7 +1487,8 @@
                 if (oc.includes('CLARHZ') && (currentMode !== "CW" && currentMode !== "USB" && currentMode !== "LSB")) { b.disabled = true; return; }
                 
                 // 1. GEMEINSAME SPERRE FÜR SCAN UND MW IM VFO-MODUS
-                if (currentBandGlobal === "VFO" && (oc.includes('SSCAN') || oc.includes('MW_TOGGLE') || oc.includes('CLARUP') || oc.includes('CLARDN') || oc.includes('CLARHZ') )) {
+                // NEU: scanBtn/mwBtn haben kein onclick mehr (Longpress-Umstellung) - hier ueber die ID pruefen.
+                if (currentBandGlobal === "VFO" && (b.id === 'scanBtn' || b.id === 'mwBtn' || oc.includes('CLARUP') || oc.includes('CLARDN') || oc.includes('CLARHZ') )) {
                     b.disabled = true;
                     b.style.opacity = "0.4";
                     return;
@@ -1654,8 +1672,54 @@
     }
 
     function pollStatus() { fetch('/api/cmd/STATUS').then(r => r.json()).then(data => { updateUI(data); setTimeout(pollStatus, 850); }).catch(e => { setTimeout(pollStatus, 1500); }); }
+    // NEU: robuste Longpress-Erkennung per Pointer Events (vereinheitlicht Maus/Touch/Stift in einem
+    // Satz Listener). Kurzer Druck -> normale Funktion, langes Halten -> zweite Funktion (Kanal-
+    // Blaetterer). Bewegt sich der Finger beim Halten zu weit weg, wird abgebrochen (kein versehentliches
+    // Ausloesen beim Scrollen). contextmenu wird unterdrueckt, damit auf Android/Desktop kein
+    // Kontextmenue aufpoppt - zusammen mit dem CSS (user-select:none etc.) sollte das robust sein.
+    function attachLongPress(el, shortFn, longFn, holdMs) {
+        if (!el) return;
+        holdMs = holdMs || 600;
+        let timer = null;
+        let firedLong = false;
+        let startX = 0, startY = 0;
+        const MOVE_TOLERANCE = 15;
+
+        function clearTimer() { if (timer) { clearTimeout(timer); timer = null; } }
+
+        el.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return; // nur linke Maustaste
+            firedLong = false;
+            startX = e.clientX; startY = e.clientY;
+            clearTimer();
+            timer = setTimeout(() => {
+                firedLong = true;
+                timer = null;
+                if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
+                longFn();
+            }, holdMs);
+        });
+        el.addEventListener('pointermove', (e) => {
+            if (!timer) return;
+            const dx = e.clientX - startX, dy = e.clientY - startY;
+            if (Math.sqrt(dx * dx + dy * dy) > MOVE_TOLERANCE) clearTimer();
+        });
+        el.addEventListener('pointerup', () => {
+            const wasLong = firedLong;
+            clearTimer();
+            if (!wasLong) shortFn();
+        });
+        el.addEventListener('pointercancel', clearTimer);
+        el.addEventListener('pointerleave', clearTimer);
+        el.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
     window.onload = function() {
         resizeCanvas(); initSocket(); pollStatus(); syncVzModeSelect(); syncWfInputs();
+        // NEU: S-SCAN/MW - kurz = normaler Suchlauf (mit Verweilen), lang = "Kanal-Blaetterer"
+        // (ignoriert Rauschsperre, fester Takt, fuers Nebenbei-Mithoeren).
+        attachLongPress(document.getElementById('scanBtn'), () => send('SSCAN'), () => send('SSCAN_STEP_TOGGLE'));
+        attachLongPress(document.getElementById('mwBtn'), () => send('MW_TOGGLE'), () => send('MW_STEP_TOGGLE'));
         // Mikrofon-Button nur unter HTTPS anzeigen - unter HTTP kann getUserMedia() ohnehin nicht funktionieren.
         if (location.protocol === 'https:') {
             const micBtn = document.getElementById('waMicBtn');
