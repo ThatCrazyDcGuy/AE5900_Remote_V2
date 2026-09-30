@@ -289,9 +289,10 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-300926 AWX
+Aktuell: V-300926 SWX
 
 1. RX Audio - rebuild. Läuft auch im Hintergrund weiter.
+2. S-SCAN / MW um SCROLL-Funktion erweitert. (Kanaldurchlauf bei offenem Squelch) Dazu lange auf die S-SCAN oder MW Taste drücken.
 
 Zusatz: Bitte schaut euch im Setup & Sync um. Da sind neue Stellschrauben auch für den Wasserfall.
 
