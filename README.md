@@ -39,6 +39,7 @@ Flexible solutions provide better access. And that's exactly what this project s
 13. Country codes must be set in the web interface and on the device.
 14. Hamlib/Rigctl compatible (flrig, fldigi, rigctl, grig, openwebrx, js8call & wsjt-cb)
 15. If you decide to open and solder the device, extrenal S-METER can now be used via Bluetooth.
+16. Web Audio HTTP RX only / HTTPS RX and TX
 
 
 - Various features are demonstrated here. Operable via multiple software and devices simultaneously. Also rigctl and hamlib is implemented and a bluetooth s-meter.
@@ -292,7 +293,13 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-290926 AFX
+Current: V-300926 AWX
+
+1. RX Audio – rebuilt. Continues running in the background.
+
+Note: Please take a look at the Setup & Sync section. There are new settings available, including for the waterfall.
+
+Previous version: V-290926 AFX
 
 1. Audio volume fix
 Loud spikes upon connecting have been removed.
