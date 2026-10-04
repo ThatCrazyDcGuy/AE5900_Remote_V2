@@ -1409,7 +1409,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-041026 KBD";
+                if (vInd) vInd.textContent = "V-041026 RMF";
             });
 
             socket.on('audio', (data) => { 
