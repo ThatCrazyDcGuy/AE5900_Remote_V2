@@ -293,7 +293,18 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-300926 SWX
+Current: V-041026 RMF *MILESTONE UPDATE*
+
+1. New audio engine: smoother, lower latency, self-correcting. Rate and buffer settings are adjustable in "Setup & Sync."
+2. New sound card detection: now works with most USB sound cards, not just C-Media devices.
+3. S-SCAN / MW: waits 3 seconds after the signal ends before resuming the search. SCROLL speed is adjustable.
+4. Key and control box support (optional; disabled by default): U/D = Channel, M = Mode, A = ASQ, S = Scan (long press = Scroll), F7/F8 = TX on/off.
+5. Reduced data traffic for the waterfall display.
+6. New installer (install.sh): starts automatically on boot; Mumble is now optional.
+
+Note: Please update ae_5900_v2.py, index.html, and install.sh, then restart the program. You can find new configuration options in "Setup & Sync."
+
+Previous version: V-300926 SWX
 
 1. RX audio rebuilt; continues running in the background.
 2. SCROLL function added to S-SCAN / MW (channel scanning with squelch open). To activate, press and hold the S-SCAN or MW button.
