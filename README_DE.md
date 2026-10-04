@@ -289,7 +289,18 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-300926 SWX
+Aktuell: V-041026 RMF *MEILENSTEIN UPDATE*
+
+1. Neue Audio-Engine: ruhiger, weniger Verzögerung, korrigiert sich selbst. Rate und Puffer sind im Setup & Sync einstellbar.
+2. Neue Soundkarten-Erkennung: funktioniert jetzt mit den meisten USB-Soundkarten, nicht nur mit C-Media.
+3. S-SCAN / MW wartet nach Signalende 3 Sekunden, bevor es weitersucht. Das Tempo von SCROLL ist einstellbar.
+4. Tasten- und Boxsteuerung (optional, standardmäßig aus): U/D = Kanal, M = Mode, A = ASQ, S = Scan (lang = Scroll), F7/F8 = Senden an/aus.
+5. Weniger Datenverkehr beim Wasserfall.
+6. Neuer Installer (install.sh): startet automatisch beim Booten, Mumble ist jetzt optional.
+
+Zusatz: Bitte ae_5900_v2.py, index.html und install.sh aktualisieren und das Programm neu starten. Neue Stellschrauben findet ihr im Setup & Sync.
+
+Vorherige Version: V-300926 SWX
 
 1. RX Audio - rebuild. Läuft auch im Hintergrund weiter.
 2. S-SCAN / MW um SCROLL-Funktion erweitert. (Kanaldurchlauf bei offenem Squelch) Dazu lange auf die S-SCAN oder MW Taste drücken.
