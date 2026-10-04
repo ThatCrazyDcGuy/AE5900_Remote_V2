@@ -13,30 +13,6 @@ import base64
 import queue
 import ssl
 
-# NEU: Kompatibilitaets-Shim - pymumble_py3 ruft noch das alte ssl.wrap_socket() auf, das ab
-# Python 3.12 komplett entfernt wurde (ihr lauft auf 3.13). Baut die alte Funktion mit dem
-# modernen SSLContext nach, ohne die Bibliothek selbst anzufassen. CERT_NONE/check_hostname=False
-# entspricht dem alten Standardverhalten von wrap_socket (Mumble-Server nutzen meist eh nur ein
-# selbstsigniertes Zertifikat fuer die reine Transportverschluesselung, keine echte CA-Pruefung).
-if not hasattr(ssl, 'wrap_socket'):
-    def _legacy_wrap_socket_shim(sock, keyfile=None, certfile=None, server_side=False,
-                                  cert_reqs=ssl.CERT_NONE, ssl_version=None, ca_certs=None,
-                                  do_handshake_on_connect=True, suppress_ragged_eofs=True, ciphers=None):
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER if server_side else ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        if certfile:
-            ctx.load_cert_chain(certfile=certfile, keyfile=keyfile)
-        return ctx.wrap_socket(sock, server_side=server_side, do_handshake_on_connect=do_handshake_on_connect,
-                                suppress_ragged_eofs=suppress_ragged_eofs)
-    ssl.wrap_socket = _legacy_wrap_socket_shim
-
-try:
-    import pymumble_py3 as pymumble
-    PYMUMBLE_AVAILABLE = True
-except ImportError:
-    PYMUMBLE_AVAILABLE = False
-    print("[MIC] pymumble_py3 nicht gefunden - Mikrofon-Senden uebers Web-UI bleibt deaktiviert (RX/Zuhoeren funktioniert trotzdem).")
 import subprocess
 import socket
 import sys
@@ -87,27 +63,111 @@ key_codes = {'0':'01', '1':'02', '2':'03', '3':'04', '4':'05', '5':'06', '6':'07
 
 
 # --- AUDIO CONFIG ---
-CHUNK = 512
 SW_SCAN_GRACE_SECONDS = 3.0  # NEU: Gnadenfrist fuer S-SCAN/MW nach Signalverlust, bevor weitergesucht wird
 STEP_INTERVAL_SECONDS = 4.0  # NEU: fester Takt fuer den "Kanal-Blaetterer" (Longpress S-SCAN/MW) - ignoriert die Rauschsperre komplett, reines Weiterschalten zum Nebenbei-Mithoeren
 stream_rx = None
 stream_tx = None
 
-def setup_audio():
-    global stream_rx, stream_tx
+# NEU: Abtastrate der RX-Capture-Streams ist jetzt einstellbar (Setup & Sync -> config.json).
+# Chunk-Groesse und Anzahl der FFT-Bins werden aus der Rate abgeleitet, damit Chunk-Dauer (~22 ms)
+# und der dargestellte Frequenzbereich des Wasserfalls (~0-5,5 kHz) bei jeder Rate gleich bleiben.
+VALID_AUDIO_RATES = (16000, 22050, 24000, 32000, 44100, 48000)
+
+def compute_audio_params(rate):
+    chunk = 512 if rate <= 32000 else 1024
+    bins = int(round(5500.0 * chunk / rate))
+    bins = max(32, min(chunk // 2, bins))
+    return chunk, bins
+
+def _read_boot_audio_rate():
+    # setup_audio() laeuft beim Import, BEVOR das radio-Objekt (und damit die Config) existiert -
+    # darum hier die Rate direkt aus der config.json lesen.
     try:
-        os.environ['PULSE_PROP'] = 'node.description="AE_RX" node.name="AE_RX"'
-        pa_rx = pyaudio.PyAudio()
-        stream_rx = pa_rx.open(format=pyaudio.paInt16, channels=1, rate=22050, input=True, frames_per_buffer=CHUNK)
-        
-        os.environ['PULSE_PROP'] = 'node.description="AE_TX" node.name="AE_TX"'
-        pa_tx = pyaudio.PyAudio()
-        stream_tx = pa_tx.open(format=pyaudio.paInt16, channels=1, rate=22050, input=True, frames_per_buffer=CHUNK)
-        
-        os.environ.pop('PULSE_PROP', None)
-        print("--- Audio-Streams AE_RX und AE_TX bereit ---")
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                r = int(json.load(f).get("webaudio_rate", 22050))
+            if r in VALID_AUDIO_RATES:
+                return r
+    except Exception:
+        pass
+    return 22050
+
+AUDIO_RATE = _read_boot_audio_rate()
+CHUNK, FFT_BINS = compute_audio_params(AUDIO_RATE)
+
+audio_stream_lock = threading.Lock()  # schuetzt read() im Worker gegen das Neu-Oeffnen der Streams bei Rate-Wechsel
+_pa_rx = None
+_pa_tx = None
+
+def _open_capture_streams(rate, chunk):
+    global stream_rx, stream_tx, _pa_rx, _pa_tx
+    os.environ['PULSE_PROP'] = 'node.description="AE_RX" node.name="AE_RX"'
+    if _pa_rx is None: _pa_rx = pyaudio.PyAudio()
+    stream_rx = _pa_rx.open(format=pyaudio.paInt16, channels=1, rate=rate, input=True, frames_per_buffer=chunk)
+
+    os.environ['PULSE_PROP'] = 'node.description="AE_TX" node.name="AE_TX"'
+    if _pa_tx is None: _pa_tx = pyaudio.PyAudio()
+    stream_tx = _pa_tx.open(format=pyaudio.paInt16, channels=1, rate=rate, input=True, frames_per_buffer=chunk)
+
+    os.environ.pop('PULSE_PROP', None)
+
+def setup_audio():
+    global AUDIO_RATE, CHUNK, FFT_BINS
+    try:
+        _open_capture_streams(AUDIO_RATE, CHUNK)
+        print(f"--- Audio-Streams AE_RX und AE_TX bereit ({AUDIO_RATE} Hz, CHUNK={CHUNK}, FFT_BINS={FFT_BINS}) ---")
     except Exception as e:
-        print(f"Audio-Setup Fehler: {e}")
+        print(f"Audio-Setup Fehler bei {AUDIO_RATE} Hz: {e}")
+        os.environ.pop('PULSE_PROP', None)
+        if AUDIO_RATE != 22050:
+            # Sicherheitsnetz: eine in der config.json gespeicherte, von der Hardware nicht
+            # unterstuetzte Rate darf nicht dazu fuehren, dass die App ganz ohne Audio startet.
+            try:
+                AUDIO_RATE = 22050
+                CHUNK, FFT_BINS = compute_audio_params(AUDIO_RATE)
+                _open_capture_streams(AUDIO_RATE, CHUNK)
+                print("--- Fallback: Audio-Streams mit 22050 Hz geoeffnet ---")
+            except Exception as e2:
+                print(f"Audio-Setup Fallback fehlgeschlagen: {e2}")
+
+def reopen_audio_streams(new_rate):
+    """Oeffnet die beiden Capture-Streams live mit einer neuen Rate (Wechsel in Setup & Sync).
+    Gibt True bei Erfolg zurueck. Bei Fehler wird die alte Rate wiederhergestellt."""
+    global stream_rx, stream_tx, AUDIO_RATE, CHUNK, FFT_BINS
+    if new_rate == AUDIO_RATE:
+        return True
+    if not audio_stream_lock.acquire(timeout=3.0):
+        print("[AUDIO] Rate-Wechsel abgebrochen: Audio-Worker antwortet nicht (Lock-Timeout).")
+        return False
+    ok = False
+    try:
+        for s in (stream_rx, stream_tx):
+            try:
+                s.stop_stream()
+                s.close()
+            except Exception:
+                pass
+        stream_rx = None
+        stream_tx = None
+        try:
+            chunk, bins = compute_audio_params(new_rate)
+            _open_capture_streams(new_rate, chunk)
+            AUDIO_RATE, CHUNK, FFT_BINS = new_rate, chunk, bins
+            print(f"[AUDIO] Capture-Streams mit {new_rate} Hz neu geoeffnet (CHUNK={chunk}, FFT_BINS={bins}).")
+            ok = True
+        except Exception as e:
+            print(f"[AUDIO] Rate-Wechsel auf {new_rate} Hz fehlgeschlagen: {e} - stelle {AUDIO_RATE} Hz wieder her.")
+            os.environ.pop('PULSE_PROP', None)
+            try:
+                _open_capture_streams(AUDIO_RATE, CHUNK)
+            except Exception as e2:
+                print(f"[AUDIO] Wiederherstellung fehlgeschlagen: {e2}")
+    finally:
+        audio_stream_lock.release()
+    # Der PipeWire-Patcher ist ein Einmal-Lauf und erkennt die Streams an der Rate - nach dem
+    # Neu-Oeffnen muss er also erneut laufen, sonst haengen die neuen Streams an den falschen Quellen.
+    threading.Thread(target=auto_patch_streams, kwargs={"delay": 1.5}, daemon=True).start()
+    return ok
 
 setup_audio()
 
@@ -175,44 +235,112 @@ def setup_mic_tx_stream():
         mic_tx_stream = None
         return False
 
-def auto_patch_streams():
-    time.sleep(6) 
+# --- AUDIO-ROLLEN: die USB-Soundkarte nach ROLLE finden, nicht nach Hersteller- oder Profilname -------------------
+# Frueher suchte der Patcher fest nach "analog-stereo.monitor" und "mono-fallback" - das trifft nur Karten, die sich
+# so melden (z.B. C-Media mit Mono-Eingang). Jetzt: ein USB-Geraet, das AUSGABE (sink) und AUFNAHME-Eingang (source)
+# derselben Karte hat. Daraus ergeben sich die drei Rollen: Ausgabe (zum Funkgeraet), deren Monitor (RX-Wasserfall beim
+# Senden) und Aufnahme-Eingang (Empfangsaudio vom Funkgeraet). Die alten Namen bleiben als Rueckfall fuer Nicht-USB-Karten.
+_roles_cache = {"t": 0.0, "v": None, "busy": False}
+
+def _pactl_names(kind):
+    """[(index, name), ...] aus 'pactl list short <kind>' (Spalten: Index, Name, Treiber, Spec, Zustand)."""
+    try:
+        out = subprocess.run(["pactl", "list", "short", kind], capture_output=True, text=True, timeout=3).stdout
+    except Exception:
+        return []
+    return [(p[0], p[1]) for p in (l.split() for l in out.splitlines()) if len(p) >= 2]
+
+def find_audio_roles(match=""):
+    """Gibt {'card','sink','input','monitor','via'} zurueck oder None, wenn keine passende Karte da ist.
+    match: optionaler Namensteil (nur noetig bei mehreren USB-Audiogeraeten, z.B. Headset + Funkkarte)."""
+    sinks = _pactl_names("sinks")
+    sources = _pactl_names("sources")
+    source_names = [n for _, n in sources]
+    cards = []
+    for sink in (n for _, n in sinks if n.startswith("alsa_output.usb")):
+        key = sink[len("alsa_output."):].rsplit(".", 1)[0]          # z.B. 'usb-C-Media_..._USB_Audio_Device-00'
+        for inp in (n for n in source_names if n.startswith("alsa_input.usb")):
+            if inp[len("alsa_input."):].rsplit(".", 1)[0] == key and (sink + ".monitor") in source_names:
+                cards.append({"card": key, "sink": sink, "input": inp, "monitor": sink + ".monitor", "via": "USB-Rollen"})
+    if match:
+        wanted = [c for c in cards if match.lower() in c["card"].lower()]
+        if wanted:
+            cards = wanted
+    if cards:
+        return cards[0]
+    # Rueckfall (z.B. I2S-Codec-HATs): die frueher fest eingebauten Namen
+    mon = next((n for n in source_names if "analog-stereo.monitor" in n.lower()), None)
+    inp = next((n for n in source_names if "mono-fallback" in n.lower() and "monitor" not in n.lower()), None)
+    snk = next((n for _, n in sinks if "analog-stereo" in n.lower()), None)
+    if mon and inp:
+        return {"card": "(ohne USB-Namen)", "sink": snk, "input": inp, "monitor": mon, "via": "alte Standardnamen"}
+    return None
+
+def get_audio_roles(fresh=False, max_age=30.0):
+    """Zwischengespeicherte Rollen. fresh=True oder allererster Aufruf: sofort neu suchen; sonst nach max_age im
+    Hintergrund auffrischen (der Aufrufer wartet nie auf pactl - wichtig z.B. beim Roger-Beep nach dem Senden)."""
+    try:
+        match = radio.config.get("audio_card_match", "")
+    except Exception:
+        match = ""
+    if fresh or _roles_cache["t"] == 0.0:
+        v = find_audio_roles(match)
+        _roles_cache.update(t=time.time(), v=v)
+        return v
+    if time.time() - _roles_cache["t"] > max_age and not _roles_cache["busy"]:
+        _roles_cache["busy"] = True
+        def _bg():
+            try:
+                _roles_cache.update(t=time.time(), v=find_audio_roles(match))
+            finally:
+                _roles_cache["busy"] = False
+        threading.Thread(target=_bg, daemon=True).start()
+    return _roles_cache["v"]
+
+def audio_sink_name():
+    """Ausgabegeraet fuer Roger-Beep, CQ usw. (frueher fest 'mono-fallback'); ohne erkannte Karte wie bisher."""
+    r = get_audio_roles()
+    return r["sink"] if r and r.get("sink") else "mono-fallback"
+
+def auto_patch_streams(delay=6):
+    time.sleep(delay) 
     try:
         print("[AUTOMATISCHER PIPEWIRE-WEICHENSTELLER GESTARTET]")
-        res = subprocess.run(["pactl", "list", "short"], capture_output=True, text=True).stdout
-        lines = [l.strip() for l in res.split('\n') if l.strip()]
-        
-        stereo_target = None
-        mono_target = None
-        python_node_ids = []
-        
-        for line in lines:
-            line_lower = line.lower()
-            parts = line.split()
-            if len(parts) >= 2:
-                if "analog-stereo.monitor" in line_lower:
-                    stereo_target = parts[0]
-                elif "mono-fallback" in line_lower and "monitor" not in line_lower:
-                    mono_target = parts[0]
-                if "22050hz" in line_lower:
-                    node_id = parts[0]
-                    if node_id.isdigit() and node_id not in python_node_ids:
-                        python_node_ids.append(node_id)
+        roles = get_audio_roles(fresh=True)
+        if not roles:
+            print("[AUDIO-ROUTING] Keine passende USB-Soundkarte gefunden (gesucht: ein USB-Geraet mit Ausgabe UND Aufnahme-Eingang). "
+                  "Zuordnung uebersprungen - 'pactl list short sources' zeigt, was vorhanden ist.")
+            return
+        print(f"[AUDIO-ROUTING] Karte: {roles['card']} (erkannt ueber {roles['via']}) | RX-Monitor: {roles['monitor']} | Eingang: {roles['input']}")
 
-        if len(python_node_ids) >= 2 and stereo_target and mono_target:
-            rx_node = str(python_node_ids[0])
-            tx_node = str(python_node_ids[1])
-            
-            subprocess.run(["pactl", "move-source-output", rx_node, stereo_target], check=False)
-            subprocess.run(["pactl", "move-source-output", tx_node, mono_target], check=False)
-            
-            mumble_source = "Mumble:output_FL"
-            res_links = subprocess.run(["pw-link", "-i"], capture_output=True, text=True).stdout
-            python_ports = [l.strip() for l in res_links.split('\n') if "python" in l.lower() or "alsa_capture" in l.lower()]
-            if len(python_ports) >= 2:
-                target = python_ports[1]
-                subprocess.run(["pw-link", mumble_source, target], check=False)
-            print("[SYSTEM-WEICHE PERFEKT REBOOT-SICHER EINGESTELLT]")
+        # Die beiden Python-Capture-Streams werden an der aktuell konfigurierten Rate erkannt - und nur in der Liste
+        # der Capture-Streams (source-outputs), damit z.B. der Mikrofon-Ausgabestream (48 kHz) nicht mitgezaehlt wird.
+        python_node_ids = []
+        res_so = subprocess.run(["pactl", "list", "short", "source-outputs"], capture_output=True, text=True).stdout
+        rate_tag = f"{AUDIO_RATE}hz"
+        for line in [l.strip() for l in res_so.split('\n') if l.strip()]:
+            parts = line.split()
+            if len(parts) >= 2 and rate_tag in line.lower():
+                node_id = parts[0]
+                if node_id.isdigit() and node_id not in python_node_ids:
+                    python_node_ids.append(node_id)
+
+        if len(python_node_ids) < 2:
+            print(f"[AUDIO-ROUTING] Nur {len(python_node_ids)} Capture-Stream(s) mit {AUDIO_RATE} Hz gefunden (erwartet: 2) - nichts verschoben.")
+            return
+
+        rx_node = str(python_node_ids[0])
+        tx_node = str(python_node_ids[1])
+        subprocess.run(["pactl", "move-source-output", rx_node, roles["monitor"]], check=False)
+        subprocess.run(["pactl", "move-source-output", tx_node, roles["input"]], check=False)
+
+        mumble_source = "Mumble:output_FL"
+        res_links = subprocess.run(["pw-link", "-i"], capture_output=True, text=True).stdout
+        python_ports = [l.strip() for l in res_links.split('\n') if "python" in l.lower() or "alsa_capture" in l.lower()]
+        if len(python_ports) >= 2:
+            target = python_ports[1]
+            subprocess.run(["pw-link", mumble_source, target], check=False)
+        print("[SYSTEM-WEICHE PERFEKT REBOOT-SICHER EINGESTELLT]")
     except Exception as e:
         print(f"Patch-Fehler in auto_patch_streams: {e}")
 
@@ -305,6 +433,14 @@ class RadioInterface:
             "max_asq_steps": 9, "current_sq_level": 0, "current_asq_level": 1, "full_sync_active": False,
             "bt_mac_address": "00:00:00:00:00:00",
             "webaudio_enabled": False,
+            # NEU: WebAudio-Feintuning (Setup & Sync) - liegt wie alle anderen Einstellungen in der
+            # config.json und gilt damit geraeteuebergreifend fuer alle Browser.
+            "webaudio_rate": 22050,          # Abtastrate der RX-Capture-Streams UND der Browser-Wiedergabe (Hz)
+            "webaudio_buffer_ms": 200,       # Ziel-Puffer (Jitter-Puffer) im Browser in ms
+            "webaudio_buffer_max_ms": 600,   # harte Obergrenze: darueber wird alter Rueckstau verworfen
+            "webaudio_drift_permille": 5,    # max. Tempo-Korrektur zum Halten des Ziel-Puffers (5 = 0,5%), 0 = aus
+            "scroll_interval_s": 4.0,         # NEU: Takt des Kanal-Blaetterers (Longpress S-SCAN/MW) in Sekunden
+            "audio_card_match": "",          # NEU: nur bei MEHREREN USB-Audiogeraeten: Teil des Kartennamens (z.B. "C-Media"), die verwendet werden soll
             
             # --- NEU: VFO DEFAULTS FÜR DEN HARDWARE-SYNC ---
             "vfo_freq": 27555000,      # Default Startfrequenz in Hz (27.555 MHz)
@@ -853,7 +989,7 @@ class RadioInterface:
             self.send_cmd("4100010010000006", "4100000010000006")
             self.shadow_config = self.save_config()
             waited = 0.0
-            while waited < STEP_INTERVAL_SECONDS:
+            while waited < self.config.get("scroll_interval_s", STEP_INTERVAL_SECONDS):
                 if not self.sw_step_active or self.is_tx:
                     break
                 time.sleep(0.2)
@@ -954,7 +1090,7 @@ def mw_step_loop(radio):
                 radio.send_cmd(f"41000100{key_codes[ziffer2]}000006", f"41000000{key_codes[ziffer2]}000006")
 
             waited = 0.0
-            while waited < STEP_INTERVAL_SECONDS:
+            while waited < radio.config.get("scroll_interval_s", STEP_INTERVAL_SECONDS):
                 if not radio.mw_step_active:
                     break
                 time.sleep(0.2)
@@ -975,7 +1111,7 @@ def play_roger_beep():
             def run_paplay_beep():
                 print(f"ROGERBEEP: Spiele {chosen_beep} starr auf dem Mono-TX-Kanal ab...")
                 env = os.environ.copy()
-                env['PULSE_SINK'] = 'mono-fallback' 
+                env['PULSE_SINK'] = audio_sink_name() 
                 subprocess.run(["paplay", "--latency-msec=1", beep_path], env=env, check=False)
                 print("ROGERBEEP: Erfolgreich moduliert und abgeschlossen.")
                 
@@ -1009,7 +1145,7 @@ def index():
                            beeps_list=radio.beeps_list, 
                            lang=erkannte_sprache)
 
-FFT_BINS = 128  # NEU: von 32 auf 128 erhoeht - deckt bei 22050Hz/CHUNK=512 das ganze Sprachband (bis ~5.5kHz) feiner aufgeloest ab
+# FFT_BINS wird jetzt oben aus der konfigurierten Abtastrate abgeleitet (compute_audio_params) - bei 22050 Hz weiterhin 128.
 
 # =========================================================================
 # NEU: LIVE-WEBAUDIO DIREKT IM HAUPTSKRIPT (IMA ADPCM, ~4:1 komprimiert)
@@ -1030,65 +1166,60 @@ _IMA_STEP_TABLE = [
     15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
 ]
 
-def _adpcm_encode_sample(sample, state):
-    predictor = state['predictor']
-    index = state['index']
-    step = _IMA_STEP_TABLE[index]
-    diff = int(sample) - predictor
-    code = 0
-    if diff < 0:
-        code = 8
-        diff = -diff
-    tmp_step = step
-    diffq = step >> 3
-    if diff >= tmp_step:
-        code |= 4
-        diff -= tmp_step
-        diffq += step
-    tmp_step >>= 1
-    if diff >= tmp_step:
-        code |= 2
-        diff -= tmp_step
-        diffq += step >> 1
-    tmp_step >>= 1
-    if diff >= tmp_step:
-        code |= 1
-        diffq += step >> 2
-    if code & 8:
-        predictor -= diffq
-    else:
-        predictor += diffq
-    predictor = max(-32768, min(32767, predictor))
-    index += _IMA_INDEX_TABLE[code]
-    index = max(0, min(88, index))
-    state['predictor'] = predictor
-    state['index'] = index
-    return code & 0x0F
-
+# NEU: Encoder ohne Funktionsaufruf pro Sample, mit lokalen Variablen statt Dict-Zugriffen - liefert
+# bitgenau dieselben Bytes wie die bisherige Version (per Test gegen die alte Implementierung geprueft),
+# ist aber ~3x schneller. Das verschafft dem Audio-Worker auf einem ausgelasteten Pi Reserve: bekommt er
+# seine ~22 ms pro Chunk nicht hin, laeuft der Eingangspuffer ueber und es entsteht Knistern.
+# JEDES Paket startet frisch bei predictor=0/index=0 (siehe Erklaerung weiter oben im Projekt: kein
+# Zustand ueber Pakete hinweg, Encoder und Decoder koennen strukturell nicht auseinanderlaufen).
 def encode_adpcm(samples):
-    """samples: numpy int16 Array. Gibt die ADPCM-Bytes zurueck (2 Nibbles pro Byte).
-    NEU: jedes Paket ist jetzt vollkommen eigenstaendig - der Encoder startet bei JEDEM
-    Aufruf frisch bei predictor=0/index=0, kein Zustand wird mehr ueber Pakete hinweg
-    mitgeschleppt. Inspiriert von OpenWebRX' periodischem Sync-Wort im Stream - da wir
-    aber diskrete Pakete (keinen durchgehenden Byte-Strom) verschicken, reicht bei uns
-    ein Reset pro Paket, ganz ohne Sync-Header uebertragen zu muessen: beide Seiten
-    kennen den Startzustand ja ohnehin (immer Null). Kostet ein winziges bisschen
-    Kompressionseffizienz am Anfang jedes Pakets (paar Samples Einschwingzeit), macht
-    dafuer jegliches Zustands-Auseinanderdriften zwischen Encoder/Decoder strukturell
-    unmoeglich - genau das Problem, das frueher Flush-Countdown und Mute-Blip nur
-    behelfsmaessig kaschiert haben.
-    """
-    state = {"predictor": 0, "index": 0}
+    steps = _IMA_STEP_TABLE
+    idx_tab = _IMA_INDEX_TABLE
+    predictor = 0
+    index = 0
     out = bytearray()
-    pending = None
-    for s in samples:
-        code = _adpcm_encode_sample(s, state)
-        if pending is None:
+    pending = -1
+    values = samples.tolist() if hasattr(samples, "tolist") else samples
+    for s in values:
+        step = steps[index]
+        diff = s - predictor
+        code = 0
+        if diff < 0:
+            code = 8
+            diff = -diff
+        diffq = step >> 3
+        if diff >= step:
+            code |= 4
+            diff -= step
+            diffq += step
+        half = step >> 1
+        if diff >= half:
+            code |= 2
+            diff -= half
+            diffq += half
+        quarter = step >> 2
+        if diff >= quarter:
+            code |= 1
+            diffq += quarter
+        if code & 8:
+            predictor -= diffq
+        else:
+            predictor += diffq
+        if predictor > 32767:
+            predictor = 32767
+        elif predictor < -32768:
+            predictor = -32768
+        index += idx_tab[code]
+        if index < 0:
+            index = 0
+        elif index > 88:
+            index = 88
+        if pending < 0:
             pending = code
         else:
             out.append((code << 4) | pending)
-            pending = None
-    if pending is not None:
+            pending = -1
+    if pending >= 0:
         out.append(pending)
     return bytes(out)
 
@@ -1126,59 +1257,63 @@ audio_cache_lock = threading.Lock()
 # weiterhin ueber Mumble, wie bei der alten Bridge. Unterschied: eigener Bot direkt
 # in diesem Skript, getrennt von der Desktop-Mumble-App (die weiter fuers VOX-Mute laeuft).
 # =========================================================================
-MUMBLE_HOST = "127.0.0.1"
-MUMBLE_PORT = 64738
-MUMBLE_BOT_NAME = "WebUI-Mic-Bridge"
-mic_mumble_bot = None
-mic_mumble_lock = threading.Lock()
+# NEU: Mumble nimmt auf dem Pi mit 48 kHz auf. Bei 48000 Hz zaehlt der PipeWire-Patcher diesen Stream als
+# einen der beiden Python-Streams mit - dann haengt unser AE_RX am falschen Eingang und der TX-Wasserfall
+# bleibt leer. Pragmatische Loesung: 48000 im WebUI sperren/warnen, solange Mumble mit 48 kHz aufnimmt.
+_mumble_cache = {"t": 0.0, "v": False, "busy": False}
 
-def ensure_mic_mumble_connected():
-    global mic_mumble_bot
-    if not PYMUMBLE_AVAILABLE:
+def _compute_mumble_48k():
+    try:
+        so = subprocess.run(["pactl", "list", "short", "source-outputs"], capture_output=True, text=True, timeout=2).stdout
+        cl = subprocess.run(["pactl", "list", "short", "clients"], capture_output=True, text=True, timeout=2).stdout
+    except Exception:
         return False
-    with mic_mumble_lock:
-        if mic_mumble_bot is not None and mic_mumble_bot.is_alive():
+    mumble_ids = set()
+    for line in cl.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and "mumble" in line.lower():
+            mumble_ids.add(parts[0])
+    for line in so.splitlines():
+        parts = line.split()
+        # Spalten: ID, Quelle, Client-ID, Treiber, Sample-Spec (z.B. "s16le 1ch 48000Hz")
+        if len(parts) >= 5 and parts[2] in mumble_ids and "48000hz" in line.lower():
             return True
-        try:
-            # NEU: eindeutiger Name pro Verbindungsversuch (statt immer "WebUI-Mic-Bridge") - falls der
-            # Mumble-Server doppelte Benutzernamen nicht zulaesst, koennte eine "Zombie"-Verbindung aus
-            # einem frueheren, abgestuerzten Testlauf die neue Verbindung sonst jedes Mal wieder rauswerfen.
-            unique_bot_name = f"{MUMBLE_BOT_NAME}-{int(time.time()) % 100000}"
-            mic_mumble_bot = pymumble.Mumble(MUMBLE_HOST, unique_bot_name, port=MUMBLE_PORT)
+    return False
 
-            # NEU (Diagnose): pymumbles eigener Thread faengt Fehler offenbar intern ab, ohne sie
-            # hochzureichen - deshalb sahen wir nie einen Traceback, obwohl der Thread stirbt. Wir
-            # klinken uns direkt in die run()-Methode ein, um einen versteckten Fehler sichtbar zu machen.
-            _original_run = mic_mumble_bot.run
-            def _wrapped_run():
-                try:
-                    _original_run()
-                except Exception:
-                    import traceback
-                    print("[MIC FATAL] Der Mumble-Bot-Thread ist mit einer Exception abgestuerzt:")
-                    traceback.print_exc()
-            mic_mumble_bot.run = _wrapped_run
+def mumble_uses_48k(fresh=False):
+    """fresh=True: sofort neu pruefen (bei einem Rate-Wunsch). Sonst Zwischenspeicher (~8 s), im
+    Hintergrund aufgefrischt - der Status-Abruf wartet nie auf pactl."""
+    if fresh:
+        v = _compute_mumble_48k()
+        _mumble_cache.update(t=time.time(), v=v)
+        return v
+    if time.time() - _mumble_cache["t"] > 8.0 and not _mumble_cache["busy"]:
+        _mumble_cache["busy"] = True
+        def _bg():
+            try:
+                _mumble_cache.update(t=time.time(), v=_compute_mumble_48k())
+            finally:
+                _mumble_cache["busy"] = False
+        threading.Thread(target=_bg, daemon=True).start()
+    return _mumble_cache["v"]
 
-            mic_mumble_bot.start()
-            mic_mumble_bot.is_ready()
+# NEU: Messwerte des Audio-Workers (fuer die Live-Anzeige in Setup & Sync). Zeigt, ob der Pi mit der
+# Verarbeitung pro Chunk (FFT + ADPCM + Versand) hinterherkommt: Ueberschreitet sie die Chunk-Dauer, laeuft
+# der Eingangspuffer ueber, Samples gehen verloren und es knistert - unabhaengig von jeder Abtastrate.
+audio_worker_stats = {"load": 0.0, "peak": 0.0, "behind": 0}
 
-            # NEU (eigentlicher Fix, bekanntes pymumble-Problem/GitHub #138): is_ready() wird schon
-            # gruen, BEVOR die Codec-Aushandlung mit dem Server abgeschlossen ist. Wird waehrenddessen
-            # Audio geschickt, kracht's mit "NoneType * int" in soundoutput.py. Deshalb hier zusaetzlich
-            # kurz warten, bis encoder_framesize wirklich gesetzt ist (mit Timeout als Sicherheitsnetz).
-            wait_start = time.time()
-            while mic_mumble_bot.sound_output.encoder_framesize is None:
-                if time.time() - wait_start > 3.0:
-                    print("[MIC WARNUNG] Codec-Aushandlung (encoder_framesize) nach 3s immer noch nicht abgeschlossen - versuche trotzdem weiter.")
-                    break
-                time.sleep(0.05)
-
-            print("[MIC] Mumble-Bot fuers Browser-Mikrofon verbunden.")
-            return True
-        except Exception as e:
-            print(f"[MIC WARNUNG] Mumble-Verbindung fuers Mikrofon fehlgeschlagen: {e}")
-            mic_mumble_bot = None
-            return False
+def webaudio_status_fields():
+    return {
+        "SCROLL_INTERVAL_S": radio.config.get("scroll_interval_s", STEP_INTERVAL_SECONDS),  # Takt des Kanal-Blaetterers
+        "WEBAUDIO_RATE": AUDIO_RATE,  # die TATSAECHLICH laufende Rate (nicht nur der Config-Wert)
+        "WEBAUDIO_MUMBLE48": mumble_uses_48k(),  # True = Mumble nimmt mit 48 kHz auf (48000 im WebUI sperren/warnen)
+        "WEBAUDIO_BUF_MS": radio.config.get("webaudio_buffer_ms", 200),
+        "WEBAUDIO_BUF_MAX_MS": radio.config.get("webaudio_buffer_max_ms", 600),
+        "WEBAUDIO_DRIFT": radio.config.get("webaudio_drift_permille", 5),
+        "WEBAUDIO_SRV_LOAD": round(audio_worker_stats["load"], 1),
+        "WEBAUDIO_SRV_PEAK": round(audio_worker_stats["peak"], 1),
+        "WEBAUDIO_SRV_BEHIND": audio_worker_stats["behind"],
+    }
 
 def audio_stream_worker():
     """Einziger, kontinuierlicher Leser der PyAudio-Streams. Liest im natuerlichen
@@ -1189,18 +1324,37 @@ def audio_stream_worker():
             if getattr(radio, 'audio_mute', False):
                 time.sleep(0.05)
                 continue
-            if radio.is_tx or radio.is_device_sending:
-                raw_data = stream_rx.read(CHUNK, exception_on_overflow=False)
+            tx_state = radio.is_tx or radio.is_device_sending
+
+            # Lesen unter Lock: ein Rate-Wechsel (reopen_audio_streams) darf die Streams nicht mitten
+            # in einem read() schliessen. CHUNK/FFT_BINS/AUDIO_RATE werden dabei konsistent mitgelesen.
+            with audio_stream_lock:
+                s = stream_rx if tx_state else stream_tx
+                if s is None:
+                    time.sleep(0.05)
+                    continue
+                chunk = CHUNK
+                bins = FFT_BINS
+                rate = AUDIO_RATE
+                raw_data = s.read(chunk, exception_on_overflow=False)
+            t0 = time.perf_counter()
+
+            data = np.frombuffer(raw_data, dtype=np.int16)
+            # NEU: FFT-Werte auf 3 Nachkommastellen gerundet - die Frames gehen ~24x pro Sekunde an JEDEN Client und
+            # waren mit voller Float-Genauigkeit der groesste Datenposten (mehr als das Audio). 3 Stellen sparen je nach
+            # Lage ~20-55 % und sind unsichtbar; bewusst NICHT weniger: der Wasserfall dehnt den Wertebereich jedes Frames
+            # auf die volle Farbskala, bei schwachen Signalen (Bereich ~0,05) wuerden 2 Stellen nur 6 statt 51 Stufen lassen.
+            # Skalierung auf die urspruengliche 512er-Chunk-Laenge, damit Wasserfall-/Balkenpegel und die
+            # FFT-Gain-Einstellungen bei jeder Rate vergleichbar bleiben (FFT-Betraege wachsen mit der Laenge).
+            fft_scale = 512.0 / chunk
+            if tx_state:
                 gain = radio.config.get("fft_tx_gain", 55000)
-                data = np.frombuffer(raw_data, dtype=np.int16)
-                fft_vals = (np.abs(np.fft.rfft(data))[:FFT_BINS] / gain).tolist()
+                fft_vals = np.round(np.abs(np.fft.rfft(data))[:bins] * fft_scale / gain, 3).tolist()
             else:
-                raw_data = stream_tx.read(CHUNK, exception_on_overflow=False)
                 gain = radio.config.get("fft_rx_gain", 25000)
-                data = np.frombuffer(raw_data, dtype=np.int16)
-                fft = np.abs(np.fft.rfft(data))[:FFT_BINS]
+                fft = np.abs(np.fft.rfft(data))[:bins] * fft_scale
                 fft_clean = np.where(fft < 40000, 0, fft - 40000)
-                fft_vals = (fft_clean / gain).tolist()
+                fft_vals = np.round(fft_clean / gain, 3).tolist()
 
             with audio_cache_lock:
                 audio_cache["fft"] = fft_vals
@@ -1209,15 +1363,26 @@ def audio_stream_worker():
             # (fuers Wasserfall-Pegel beim Senden) - das ist eure eigene Stimme, kein RX-Signal.
             # Das nur fuers Wasserfall verwenden, aber NICHT ans "Listen"-Feature weiterschicken,
             # sonst hoert man sich beim gleichzeitigen PTT+Mikro-Sprechen selbst zurueck.
-            if radio.config.get("webaudio_enabled", False) and not (radio.is_tx or radio.is_device_sending):
-                # NEU: encode_adpcm() setzt sich jetzt selbst pro Paket zurueck (siehe dort) - kein
-                # Flush-Countdown/Mute-Blip mehr noetig, das Problem ist strukturell nicht mehr moeglich.
+            if radio.config.get("webaudio_enabled", False) and not tx_state:
+                # encode_adpcm() setzt sich pro Paket selbst zurueck (siehe dort).
                 encoded = encode_adpcm(data)
                 # Als Base64-Text statt roher Bytes verschickt - die auf dem Pi installierte
                 # python3-engineio-Version hat einen Bug beim Kodieren binaerer Pakete ueber die
                 # HTTP-Polling-Transportart (bevor auf WebSocket hochgestuft wurde). Text laeuft
                 # ueber den laengst bewaehrten Pfad, keine Bytes/String-Verwechslung mehr moeglich.
                 socketio.emit('audio_pcm', base64.b64encode(encoded).decode('ascii'))
+
+            # --- Lastmessung: Anteil der Chunk-Dauer, den die Verarbeitung gebraucht hat ---
+            chunk_seconds = chunk / float(rate)
+            load = (time.perf_counter() - t0) / chunk_seconds * 100.0
+            audio_worker_stats["load"] += (load - audio_worker_stats["load"]) * 0.05
+            audio_worker_stats["peak"] = max(load, audio_worker_stats["peak"] * 0.995)
+            try:
+                # liegt schon wieder mehr als ein ganzer Chunk bereit, hinken wir hinterher
+                if s.get_read_available() >= 2 * chunk:
+                    audio_worker_stats["behind"] += 1
+            except Exception:
+                pass
         except Exception:
             time.sleep(0.1)
 
@@ -1270,7 +1435,7 @@ def api_cmd(cmd):
     # schliessen sich gegenseitig aus - jeder Modus-Start/jeder andere Tastendruck raeumt zuerst
     # alle anderen drei auf, damit nie zwei gleichzeitig um den Kanal konkurrieren.
     SCAN_MODE_CMDS = ('STATUS', 'MW_TOGGLE', 'SSCAN', 'SSCAN_STEP_TOGGLE', 'MW_STEP_TOGGLE')
-    if cmd not in SCAN_MODE_CMDS and not cmd.startswith('SETSPEED_'):
+    if cmd not in SCAN_MODE_CMDS and not cmd.startswith('SETSPEED_') and not cmd.startswith('SETSCROLL_') and not cmd.startswith('SETWA_'):
         radio.stop_sw_scan()
         if hasattr(radio, 'mw_active') and radio.mw_active: 
             radio.mw_active = False 
@@ -1484,26 +1649,33 @@ def api_cmd(cmd):
                 time.sleep(0.08)
                 radio.ser.write(bytes.fromhex("410000000D000006"))
 
-        elif cmd == 'P':
-            was_transmitting = radio.is_tx
-            radio.is_tx = not radio.is_tx
-            radio.force_rx = False 
-            if was_transmitting:
-                print("PTT-RELEASE: Sende Rogerbeep aktiv ueber den Aether...")
-                chosen_beep = radio.config.get("current_beep", "None")
-                if chosen_beep != "None" and radio.config.get("roger_beep_enabled", True):
-                    beep_path = os.path.join(SCRIPT_DIR, "beeps", chosen_beep)
-                    if os.path.exists(beep_path):
-                        env = os.environ.copy()
-                        env['PULSE_SINK'] = 'mono-fallback'
-                        subprocess.run(["paplay", beep_path], env=env, check=False)
-                        print("PTT-RELEASE: Beep-Modulation abgeschlossen.")
-                time.sleep(0.050)             
-            code = "4101000000000006" if radio.is_tx else "4100000000000006"
-            if radio.ser: 
-                radio.ser.write(bytes.fromhex(code))
-            radio.ptt_start_time = time.time()
-            radio.save_config()
+        elif cmd in ('P', 'PTT_ON', 'PTT_OFF'):
+            # NEU: PTT_ON / PTT_OFF sind eindeutige Varianten des Umschalters 'P' (fuer die Hardware-Tasten-Box):
+            # gleiche Wirkung, aber nur wenn der Zustand wirklich wechselt. Das verhindert, dass eine Box, deren
+            # eigener PTT-Zustand nach Timeout/Notabschaltung/Touch-Bedienung vom Geraet abweicht, den Sender
+            # versehentlich EIN statt aus schaltet - ein Befehl, der schon erfuellt ist, tut einfach nichts.
+            if (cmd == 'PTT_ON' and radio.is_tx) or (cmd == 'PTT_OFF' and not radio.is_tx):
+                pass
+            else:
+                was_transmitting = radio.is_tx
+                radio.is_tx = not radio.is_tx
+                radio.force_rx = False 
+                if was_transmitting:
+                    print("PTT-RELEASE: Sende Rogerbeep aktiv ueber den Aether...")
+                    chosen_beep = radio.config.get("current_beep", "None")
+                    if chosen_beep != "None" and radio.config.get("roger_beep_enabled", True):
+                        beep_path = os.path.join(SCRIPT_DIR, "beeps", chosen_beep)
+                        if os.path.exists(beep_path):
+                            env = os.environ.copy()
+                            env['PULSE_SINK'] = audio_sink_name()
+                            subprocess.run(["paplay", beep_path], env=env, check=False)
+                            print("PTT-RELEASE: Beep-Modulation abgeschlossen.")
+                    time.sleep(0.050)             
+                code = "4101000000000006" if radio.is_tx else "4100000000000006"
+                if radio.ser: 
+                    radio.ser.write(bytes.fromhex(code))
+                radio.ptt_start_time = time.time()
+                radio.save_config()
         # === UNIVERSAL DIGIMODE TRIGGER FOR JS8CALL ===
         # Use: curl -s http://127.0.0.1:5000/api/cmd/TX?state=%1
         elif cmd == 'TX':
@@ -1572,6 +1744,14 @@ def api_cmd(cmd):
             if radio.mw_step_active:
                 threading.Thread(target=mw_step_loop, args=(radio,), daemon=True).start()
 
+        elif cmd.startswith('SETSCROLL_'):
+            # NEU: Takt des Kanal-Blaetterers in ms (wie SETSPEED_). Untergrenze 500 ms: pro Schritt gehen
+            # ein bis zwei Tastendruecke per Seriell an das Funkgeraet, das braucht Zeit zum Einrasten.
+            try:
+                radio.config["scroll_interval_s"] = max(0.5, min(30.0, float(cmd.split('_')[1]) / 1000.0))
+                radio.save_config()
+            except (ValueError, IndexError):
+                pass
         elif cmd.startswith('SETSPEED_'):
             radio.config["scan_speed"] = float(cmd.split('_')[1]) / 1000.0
             radio.save_config()
@@ -1983,7 +2163,7 @@ def api_cmd(cmd):
                     
                     # --- SIGNAL-REPORT VOM PAPAGEI ABSPIELEN ---
                     env = os.environ.copy()
-                    env['PULSE_SINK'] = 'mono-fallback'
+                    env['PULSE_SINK'] = audio_sink_name()
                     subprocess.run(["paplay", "--latency-msec=1", play_path], env=env, check=False)
                     
                     # --- ROGERBEEP ANKOPPELN ---
@@ -2126,7 +2306,7 @@ def api_cmd(cmd):
                     
                     # --- CQ-KONSERVE ABSPIELEN ---
                     env = os.environ.copy()
-                    env['PULSE_SINK'] = 'mono-fallback' 
+                    env['PULSE_SINK'] = audio_sink_name() 
                     subprocess.run(["paplay", "--latency-msec=1", play_path], env=env, check=False)
                     
                     # --- ROGERBEEP ANKOPPELN ---
@@ -2359,6 +2539,43 @@ def api_cmd(cmd):
             radio.save_config()
             print(f"[WEBAUDIO] {'aktiviert' if radio.config['webaudio_enabled'] else 'deaktiviert'}")
 
+        elif cmd.startswith('SETWA_'):
+            # NEU: WebAudio-Feintuning aus Setup & Sync (SETWA_RATE_22050, SETWA_BUF_200, SETWA_BUFMAX_800,
+            # SETWA_DRIFT_5). Alles landet in der config.json und gilt damit fuer alle Geraete.
+            parts = cmd.split('_')
+            if len(parts) == 3:
+                wa_key = parts[1]
+                try:
+                    wa_val = int(float(parts[2]))
+                except ValueError:
+                    wa_val = None
+                if wa_val is not None:
+                    if wa_key == 'RATE':
+                        if wa_val == 48000 and wa_val != AUDIO_RATE and mumble_uses_48k(fresh=True):
+                            print("[AUDIO] 48000 Hz abgelehnt: Mumble nimmt ebenfalls mit 48 kHz auf (PipeWire-Zuordnung wuerde kollidieren).")
+                        elif wa_val in VALID_AUDIO_RATES and wa_val != AUDIO_RATE:
+                            # Streams neu oeffnen dauert bis ~1s - nicht unter radio.lock, sonst haengen
+                            # solange alle anderen Befehle (PTT!). Gespeichert wird erst nach Erfolg.
+                            def _apply_rate(new_rate=wa_val):
+                                if reopen_audio_streams(new_rate):
+                                    with radio.lock:
+                                        radio.config["webaudio_rate"] = new_rate
+                                        radio.save_config()
+                            threading.Thread(target=_apply_rate, daemon=True).start()
+                    elif wa_key == 'BUF':
+                        wa_val = max(50, min(2000, wa_val))
+                        radio.config["webaudio_buffer_ms"] = wa_val
+                        if radio.config.get("webaudio_buffer_max_ms", 600) < wa_val + 100:
+                            radio.config["webaudio_buffer_max_ms"] = min(3000, wa_val + 100)
+                        radio.save_config()
+                    elif wa_key == 'BUFMAX':
+                        wa_val = max(radio.config.get("webaudio_buffer_ms", 200) + 100, min(3000, wa_val))
+                        radio.config["webaudio_buffer_max_ms"] = min(3000, wa_val)
+                        radio.save_config()
+                    elif wa_key == 'DRIFT':
+                        radio.config["webaudio_drift_permille"] = max(0, min(20, wa_val))
+                        radio.save_config()
+
         elif cmd == 'MW_TOGGLE':
             radio.mw_active = not getattr(radio, 'mw_active', False)
             if radio.mw_active: 
@@ -2470,6 +2687,7 @@ def api_cmd(cmd):
         "MW_SCAN": getattr(radio, 'mw_active', False), 
         "SW_STEP": getattr(radio, 'sw_step_active', False), 
         "MW_STEP": getattr(radio, 'mw_step_active', False), 
+        **webaudio_status_fields(), 
         "KEY_BUF": radio.key_buffer,
         "PTT_HOTKEY": radio.config.get("ptt_hotkey", "F6"), 
         "CURRENT_BEEP": radio.config.get("current_beep", "None"),
@@ -2541,6 +2759,7 @@ def api_config_override():
                 "MW_SCAN": getattr(radio, 'mw_active', False), 
         "SW_STEP": getattr(radio, 'sw_step_active', False), 
         "MW_STEP": getattr(radio, 'mw_step_active', False), 
+        **webaudio_status_fields(), 
                 "KEY_BUF": radio.key_buffer, 
                 "PTT_HOTKEY": radio.config.get("ptt_hotkey", "F6"), 
                 "CURRENT_BEEP": radio.config.get("current_beep", "None"),
@@ -2744,6 +2963,7 @@ def get_current_status_dict():
         "MW_SCAN": getattr(radio, 'mw_active', False), 
         "SW_STEP": getattr(radio, 'sw_step_active', False), 
         "MW_STEP": getattr(radio, 'mw_step_active', False), 
+        **webaudio_status_fields(), 
         "CLAR_STEP": radio.config.get("clar_step", "STEP"), 
         "CLAR_OFFSET": radio.config["clar_offsets"].get(current_ch_str, 0),
         "PTT_HOTKEY": radio.config.get("ptt_hotkey", "F6"), 
