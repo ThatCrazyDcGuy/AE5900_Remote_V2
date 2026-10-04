@@ -358,6 +358,7 @@
                 box-sizing: border-box;
             }
         }
+            .key-flash { box-shadow: 0 0 14px #00ffff !important; }
     </style>
 </head>
 <body>
@@ -420,9 +421,9 @@
     </div>
 
     <div class="controls">
-        <button onclick="send('M')">MODE</button>
-        <button onclick="send('U')">UP ▲</button>
-        <button onclick="send('D')">DOWN ▼</button>
+        <button onclick="send('M')" id="btnMode">MODE</button>
+        <button onclick="send('U')" id="btnUp">UP ▲</button>
+        <button onclick="send('D')" id="btnDown">DOWN ▼</button>
         <button onclick="send('MUTECOMBBTN')">MUTE</button>
 
         <button onclick="send('VOX_TOGGLE')">VOX</button>
@@ -534,6 +535,7 @@
         {% endif %}
 
         <p>Scan Speed (ms): <input type="number" id="scanSpeedInput" value="{{ config.scan_speed * 1000 | int }}" style="width: 70px;" onchange="send('SETSPEED_' + this.value)"> </p>
+        <p>Scroll interval (ms): <input type="number" id="scrollIntervalInput" min="500" max="30000" step="100" value="{{ (config.scroll_interval_s * 1000) | int }}" style="width: 70px;" onchange="send('SETSCROLL_' + this.value)" title="Step time of the long-press channel scroll (S-SCAN / MW). Minimum 500 ms."> </p>
         <p>VFO freq. step: 
             <select onchange="fetch('/api/cmd/SET_VFO_STEP?val=' + this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
                 <option value="10" {% if config.vfo_step == 10 %}selected{% endif %}>10 Hz</option>
@@ -548,12 +550,26 @@
         <p>FFT Gain RX: <input type="number" value="{{config.fft_rx_gain}}" onchange="send('SETGAIN_RX_' + this.value)" style="width:80px;"></p>
         <p>FFT Gain TX: <input type="number" value="{{config.fft_tx_gain}}" onchange="send('SETGAIN_TX_' + this.value)" style="width:80px;"></p>
         <p>WebAudio streaming (server, ADPCM): <input type="checkbox" id="webaudioToggle" onchange="send('WEBAUDIO_TOGGLE')"></p>
+        <p>WebAudio rate (Hz): <select id="waRateSel" onchange="send('SETWA_RATE_' + this.value)" title="Capture rate on the server AND playback rate in the browser. Changing it re-opens the audio streams (~1 s).">
+            <option value="16000" {% if config.webaudio_rate == 16000 %}selected{% endif %}>16000</option>
+            <option value="22050" {% if config.webaudio_rate == 22050 %}selected{% endif %}>22050 (Default)</option>
+            <option value="24000" {% if config.webaudio_rate == 24000 %}selected{% endif %}>24000</option>
+            <option value="32000" {% if config.webaudio_rate == 32000 %}selected{% endif %}>32000</option>
+            <option value="44100" {% if config.webaudio_rate == 44100 %}selected{% endif %}>44100</option>
+            <option value="48000" {% if config.webaudio_rate == 48000 %}selected{% endif %}>48000</option>
+        </select></p>
+        <p id="waRateHint" style="display:none; color:#ffaa00; font-size:0.85em; margin-top:-6px;"></p>
+        <p>WebAudio buffer target (ms): <input type="number" id="waBufInput" min="50" max="2000" step="10" value="{{config.webaudio_buffer_ms}}" onchange="send('SETWA_BUF_' + this.value)" style="width:80px;" title="Higher = more robust against network jitter, but more delay."></p>
+        <p>WebAudio buffer max (ms): <input type="number" id="waBufMaxInput" min="150" max="3000" step="50" value="{{config.webaudio_buffer_max_ms}}" onchange="send('SETWA_BUFMAX_' + this.value)" style="width:80px;" title="Above this the backlog is dropped and playback jumps back to the target."></p>
+        <p>WebAudio drift correction (&permil;, 0 = off): <input type="number" id="waDriftInput" min="0" max="20" step="1" value="{{config.webaudio_drift_permille}}" onchange="send('SETWA_DRIFT_' + this.value)" style="width:80px;" title="Maximum playback-speed adjustment used to keep the buffer at its target (5 = 0.5 %). A large backlog is caught up faster, at up to 2 %."></p>
+        <p style="font-size:0.8em; color:#9a9; margin-top:-6px;">Live: <span id="waStats">not listening</span><br><span id="waSrvStats">-</span></p>
         <p>Waterfall contrast (0.05-2.0): <input type="number" id="wfContrastInput" step="0.01" min="0.05" max="2" value="1.52" onchange="setWfContrast(this.value)" style="width:80px;"></p>
         <p>Waterfall adapt speed (0.01-1.0): <input type="number" id="wfSpeedInput" step="0.01" min="0.01" max="1" value="0.042" onchange="setWfSpeed(this.value)" style="width:80px;"></p>
         <p>PTT Hotkey (e.g. F6, Space, p): 
             <input type="text" id="pttHotkeyInput" value="{{ config.ptt_hotkey if config.ptt_hotkey else 'F6' }}" style="width:100px;" readonly>
             <button onclick="changePTTHotkey()" style="padding: 2px 8px; font-size: 0.8em; background: #575757;">Change button</button>
         </p>
+        <p>Keyboard shortcuts on this device (U/D channel, M mode, A ASQ, S scan, hold S scroll): <input type="checkbox" id="kbdShortcutsToggle" onchange="setKbdShortcuts(this.checked)" title="Off by default. Can also be switched on once with the address ?keys=1 (off again with ?keys=0)."></p>
 
         <p>Rogerbeep:
             <select id="rogerbeepSelect" onchange="send('SET_BEEP?val=' + this.value)" style="width:100px;">
@@ -647,7 +663,11 @@
     // mehr noetig. Zusammen mit dem jetzt pro-Paket-selbststaendigen ADPCM (siehe Backend) sind
     // damit alle bisherigen Workarounds (Flush-Countdown, Mute-Blip, Listen-Start-Reset,
     // Wanduhr-Ruckstau-Erkennung) ueberfluessig geworden und wurden entfernt.
-    const WEBAUDIO_SAMPLE_RATE = 22050; // muss zur RATE im Backend (PyAudio-Streams) passen
+    // NEU: Rate und Puffer-Einstellungen kommen vom Server (config.json, Setup & Sync) und gelten damit fuer
+    // alle Geraete. Startwerte nur bis das erste Status-Update eintrifft.
+    let WEBAUDIO_SAMPLE_RATE = 22050; // muss zur laufenden Capture-Rate im Backend passen
+    let waBufTargetMs = 200, waBufMaxMs = 600, waDriftPermille = 5;
+    let waCfgSig = '';
     let waAudioContext = null;
     let waMediaStreamDest = null; // Ausgabeziel fuers versteckte <audio>-Element (Hintergrund-Wiedergabe)
     let waIsListening = false;
@@ -657,7 +677,7 @@
     let waUseWorklet = false;
     let waWorkletNode = null;
     let waScriptNode = null;
-    let waFallbackQueue = []; // nur fuers ScriptProcessor-Fallback (kein eingebauter Ringpuffer dort)
+    let waRing = null; // Jitter-Puffer im Hauptthread - nur fuer den ScriptProcessor-Fallback (der Worklet hat seinen eigenen)
     const WA_IMA_INDEX_TABLE = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
     const WA_IMA_STEP_TABLE = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767];
 
@@ -686,50 +706,173 @@
         return out;
     }
 
-    // AudioWorkletProcessor-Code als Inline-String (per Blob-URL geladen, kein separates JS-File
-    // noetig) - Ringpuffer-Prinzip direkt uebernommen aus OpenWebRX' AudioProcessor.js.
-    const AE_WORKLET_CODE = `
+    // NEU: Jitter-Puffer mit sanfter Drift-Regelung - EINE Implementierung fuer beide Wege (AudioWorklet
+    // unter HTTPS, ScriptProcessor-Fallback unter HTTP). Der Klassen-Quelltext wird per toString() in den
+    // Worklet-Code uebernommen, deshalb darf die Klasse auf nichts ausserhalb von sich selbst zugreifen.
+    //  - Wiedergabe startet erst, wenn der Ziel-Puffer gefuellt ist ("Vorfuellen"). Laeuft er leer, wird
+    //    EINMAL sauber neu aufgefuellt, statt in vielen Mini-Luecken zu knistern.
+    //  - Ein stark geglaetteter Fuellstand steuert das Abspieltempo minimal (max. +-driftMax), so wachsen
+    //    oder schrumpfen Latenz und Puffer bei leicht unterschiedlichen Uhren von Pi und Handy nicht mehr
+    //    ueber Stunden. Innerhalb eines Totbereichs um das Ziel wird gar nicht eingegriffen.
+    //  - Ueberschreitet der Fuellstand die harte Obergrenze (z.B. Rueckstau nach Display-aus), wird der
+    //    alte Rueckstand verworfen und direkt auf den Ziel-Fuellstand gesprungen.
+    class AeJitterRing {
+        constructor(capacity, rate, blockSize) {
+            this.cap = capacity;
+            this.buf = new Float32Array(capacity);
+            this.wpos = 0;
+            this.rpos = 0;
+            this.playing = false;
+            this.ratio = 1.0;
+            this.avgFill = 0;
+            this.underruns = 0;
+            this.skips = 0;
+            this.minTarget = Math.ceil((blockSize || 128) * 1.5);
+            this.time = 0;          // abgespielte Zeit in s (fuer das Zusammenfassen von Spruengen)
+            this.lastSkipTime = -10;
+            this.setConfig(rate, 200, 600, 5);
+        }
+        setConfig(rate, targetMs, maxMs, driftPermille) {
+            const oldTarget = this.target;
+            this.rate = rate;
+            this.target = Math.max(this.minTarget, Math.round(targetMs * rate / 1000));
+            this.maxFill = Math.max(this.target + Math.round(0.1 * rate), Math.round(maxMs * rate / 1000));
+            this.maxFill = Math.min(this.maxFill, this.cap - 8192);
+            this.driftMax = Math.max(0, driftPermille) / 1000;
+            this.deadband = Math.max(0.15 * this.target, 0.02 * rate);
+            // Wird das Ziel waehrend der Wiedergabe deutlich geaendert, wuerde die sanfte Tempo-Korrektur
+            // Minuten brauchen, bis man es hoert - wer den Wert verstellt, will den Effekt sofort.
+            // Darum direkt neu ausrichten: zu voll -> auf das neue Ziel kuerzen, zu leer -> neu vorfuellen.
+            if (oldTarget !== undefined && this.playing && Math.abs(this.target - oldTarget) > 0.1 * oldTarget) {
+                const f = this.fill();
+                if (f > this.target * 1.1) this._skipToTarget();
+                else if (f < this.target * 0.9) this.playing = false;
+            }
+        }
+        _skipToTarget() {
+            let r = this.wpos - this.target;
+            if (r < 0) r += this.cap;
+            this.rpos = r;
+            // Ein Schwall wird ueber mehrere Takte hinweg gekuerzt - als EIN Ereignis zaehlen (Anzeige "skips")
+            if (this.time - this.lastSkipTime > 1.0) this.skips++;
+            this.lastSkipTime = this.time;
+            this.avgFill = this.target;
+        }
+        fill() {
+            let f = this.wpos - this.rpos;
+            if (f < 0) f += this.cap;
+            return f;
+        }
+        push(data) {
+            const n = data.length;
+            const cap = this.cap, buf = this.buf;
+            let w = this.wpos;
+            for (let i = 0; i < n; i++) { buf[w] = data[i]; if (++w === cap) w = 0; }
+            this.wpos = w;
+            // Nur Schutz gegen Ueberschreiben ungelesener Daten bei riesigen Schwaellen (z.B. wenn der Browser
+            // eingefroren war). Die eigentliche Obergrenze (maxFill) wird in pull() durchgesetzt: so wird ein
+            // ganzer Schwall von Paketen, der auf einmal eintrifft, am ENDE sauber auf den Ziel-Stand gekuerzt
+            // - und nicht schon mittendrin, wo der Rest des Schwalls den Puffer gleich wieder auffuellen wuerde.
+            if (this.fill() > this.cap - 4096) this._skipToTarget();
+        }
+        pull(out) {
+            const N = out.length;
+            this.time += N / this.rate;
+            let f = this.fill();
+            if (f > this.maxFill) { this._skipToTarget(); f = this.fill(); }
+            if (!this.playing) {
+                if (f >= this.target) { this.playing = true; this.avgFill = f; this.ratio = 1.0; }
+                else { out.fill(0); return; }
+            }
+            this.avgFill += (f - this.avgFill) * (1 - Math.exp(-N / (this.rate * 3.0)));
+            let want = 1.0;
+            if (this.driftMax > 0) {
+                const err = this.avgFill - this.target;
+                if (Math.abs(err) > this.deadband) {
+                    // k = 1 bei 50 % Abweichung vom Ziel (+ Totbereich). Bis dahin regelt der eingestellte
+                    // Maximalwert (Normalbetrieb, Uhren-Drift). Darueber hinaus (grosser Rueckstau, z.B. nach
+                    // einem Schwall bei Display-aus) wird das Tempo kraeftiger bis max. 2 % angehoben, damit
+                    // der Abbau Sekunden statt Minuten dauert - klingt dann kurz minimal schneller/langsamer.
+                    const k = Math.abs(err - Math.sign(err) * this.deadband) / (0.5 * this.target);
+                    const catchMax = Math.max(0.02, this.driftMax);
+                    const dev = k <= 1 ? k * this.driftMax : this.driftMax + Math.min(1, (k - 1) / 3) * (catchMax - this.driftMax);
+                    want = 1.0 + Math.sign(err) * dev;
+                }
+            }
+            this.ratio += (want - this.ratio) * Math.min(1, N / (this.rate * 0.5));
+            // Ist die Korrektur abgeschlossen, Tempo exakt auf 1,0 setzen. Der Lesezeiger wird dabei bewusst
+            // NICHT auf eine ganze Position gerundet (das waere ein hoerbarer Mini-Sprung) - er laeuft mit
+            // dem verbliebenen Bruchteil einfach glatt weiter.
+            if (want === 1.0 && Math.abs(this.ratio - 1.0) < 1e-5) this.ratio = 1.0;
+            const r = this.ratio;
+            if (f < N * r + 4) {
+                out.fill(0);
+                this.playing = false;
+                this.underruns++;
+                return;
+            }
+            const cap = this.cap, buf = this.buf;
+            let pos = this.rpos;
+            if (r === 1.0 && pos === Math.floor(pos)) {
+                let idx = pos | 0;
+                for (let i = 0; i < N; i++) { out[i] = buf[idx]; if (++idx === cap) idx = 0; }
+                pos = idx;
+            } else {
+                for (let i = 0; i < N; i++) {
+                    const i1 = pos | 0;
+                    const mu = pos - i1;
+                    const y0 = buf[i1 === 0 ? cap - 1 : i1 - 1];
+                    const y1 = buf[i1];
+                    const y2 = buf[i1 + 1 >= cap ? i1 + 1 - cap : i1 + 1];
+                    const y3 = buf[i1 + 2 >= cap ? i1 + 2 - cap : i1 + 2];
+                    const c1 = 0.5 * (y2 - y0);
+                    const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+                    const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+                    out[i] = ((c3 * mu + c2) * mu + c1) * mu + y1;
+                    pos += r;
+                    if (pos >= cap) pos -= cap;
+                }
+            }
+            this.rpos = pos;
+        }
+        getStats() {
+            return { fill: this.fill(), avg: this.avgFill, ratio: this.ratio, underruns: this.underruns,
+                     skips: this.skips, playing: this.playing, rate: this.rate };
+        }
+    }
+
+    // AudioWorkletProcessor-Code als Inline-String (per Blob-URL geladen, kein separates JS-File noetig).
+    const AE_WORKLET_CODE = AeJitterRing.toString() + `
         class Ae5900RingProcessor extends AudioWorkletProcessor {
             constructor(options) {
                 super(options);
-                this.bufferSize = Math.round(options.processorOptions.maxBufferSize / 128) * 128;
-                this.buffer = new Float32Array(this.bufferSize);
-                this.inPos = 0;
-                this.outPos = 0;
+                const o = options.processorOptions;
+                this.ring = new AeJitterRing(o.capacity, o.rate, 128);
+                this.ring.setConfig(o.rate, o.targetMs, o.maxMs, o.driftPermille);
+                this.blocks = 0;
                 this.port.onmessage = (m) => {
-                    const data = m.data;
-                    if (this.inPos + data.length <= this.bufferSize) {
-                        this.buffer.set(data, this.inPos);
-                    } else {
-                        const remaining = this.bufferSize - this.inPos;
-                        this.buffer.set(data.subarray(0, remaining), this.inPos);
-                        this.buffer.set(data.subarray(remaining), 0);
-                    }
-                    this.inPos = (this.inPos + data.length) % this.bufferSize;
+                    const d = m.data;
+                    if (d instanceof Float32Array) { this.ring.push(d); }
+                    else if (d && d.cmd === 'cfg') { this.ring.setConfig(d.rate, d.targetMs, d.maxMs, d.driftPermille); }
                 };
             }
-            remaining() {
-                const mod = (this.inPos - this.outPos) % this.bufferSize;
-                return mod >= 0 ? mod : mod + this.bufferSize;
-            }
             process(inputs, outputs) {
-                const output = outputs[0][0];
-                if (!output) return true;
-                if (this.remaining() < output.length) { output.fill(0); return true; }
-                for (let i = 0; i < output.length; i++) {
-                    output[i] = this.buffer[this.outPos];
-                    this.outPos = (this.outPos + 1) % this.bufferSize;
-                }
+                const out = outputs[0][0];
+                if (!out) return true;
+                this.ring.pull(out);
+                if ((++this.blocks % 100) === 0) { this.port.postMessage(this.ring.getStats()); }
                 return true;
             }
         }
         registerProcessor('ae5900-audio-processor', Ae5900RingProcessor);
     `;
 
-    // NEU: wird ueber audioContext.onstatechange angestossen (wie bei OpenWebRX), nicht direkt beim
-    // Klick - laeuft also auch automatisch an, wenn der Context nach einer Unterbrechung von selbst
-    // wieder in den Zustand 'running' wechselt. Das "started"-Flag sorgt dafuer, dass der Audio-Graph
-    // trotzdem nur EINMAL pro Context aufgebaut wird.
+    function waCapacity() { return Math.ceil(WEBAUDIO_SAMPLE_RATE * 4 / 128) * 128; } // ~4 s Platz im Ringpuffer
+
+    // Wird ueber audioContext.onstatechange angestossen (wie bei OpenWebRX), nicht direkt beim Klick -
+    // laeuft also auch automatisch an, wenn der Context nach einer Unterbrechung von selbst wieder in
+    // den Zustand 'running' wechselt. Das "started"-Flag sorgt dafuer, dass der Audio-Graph trotzdem nur
+    // EINMAL pro Context aufgebaut wird.
     function _waEngineStart() {
         if (waEngineStarted || !waAudioContext || waAudioContext.state !== 'running') return;
         waEngineStarted = true;
@@ -737,21 +880,26 @@
         waGainNode = waAudioContext.createGain();
         waGainNode.connect(waMediaStreamDest || waAudioContext.destination);
 
-        if (location.protocol === 'https:' && waAudioContext.audioWorklet) {
+        // Bezug festhalten: bei einem Raten-Wechsel wird waAudioContext ersetzt - spaet eintreffende
+        // Promises duerfen dann nicht am neuen Context herumbauen.
+        const ctx = waAudioContext;
+        if (location.protocol === 'https:' && ctx.audioWorklet) {
             const blob = new Blob([AE_WORKLET_CODE], { type: 'application/javascript' });
             const url = URL.createObjectURL(blob);
-            waAudioContext.audioWorklet.addModule(url).then(() => {
-                const maxBufferSize = Math.round((WEBAUDIO_SAMPLE_RATE * 2) / 128) * 128; // ~2s Ringpuffer
-                waWorkletNode = new AudioWorkletNode(waAudioContext, 'ae5900-audio-processor', {
+            ctx.audioWorklet.addModule(url).then(() => {
+                if (ctx !== waAudioContext) return;
+                waWorkletNode = new AudioWorkletNode(ctx, 'ae5900-audio-processor', {
                     numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
-                    processorOptions: { maxBufferSize: maxBufferSize }
+                    processorOptions: { capacity: waCapacity(), rate: WEBAUDIO_SAMPLE_RATE,
+                        targetMs: waBufTargetMs, maxMs: waBufMaxMs, driftPermille: waDriftPermille }
                 });
+                waWorkletNode.port.onmessage = (e) => waOnStats(e.data);
                 waWorkletNode.connect(waGainNode);
                 waUseWorklet = true;
-                console.log('[WEBAUDIO] AudioWorklet-Ringpuffer aktiv.');
+                console.log('[WEBAUDIO] AudioWorklet-Jitterpuffer aktiv (' + WEBAUDIO_SAMPLE_RATE + ' Hz).');
             }).catch((e) => {
                 console.warn('[WEBAUDIO] AudioWorklet fehlgeschlagen, Fallback auf ScriptProcessor:', e);
-                _waSetupScriptFallback();
+                if (ctx === waAudioContext) _waSetupScriptFallback();
             });
         } else {
             _waSetupScriptFallback();
@@ -760,48 +908,111 @@
 
     function _waSetupScriptFallback() {
         waUseWorklet = false;
-        waFallbackQueue = [];
-        const bufferSize = 4096;
-        waScriptNode = waAudioContext.createScriptProcessor(bufferSize, 0, 1);
+        const block = 2048;
+        waRing = new AeJitterRing(waCapacity(), WEBAUDIO_SAMPLE_RATE, block);
+        waRing.setConfig(WEBAUDIO_SAMPLE_RATE, waBufTargetMs, waBufMaxMs, waDriftPermille);
+        waScriptNode = waAudioContext.createScriptProcessor(block, 0, 1);
+        let n = 0;
         waScriptNode.onaudioprocess = (e) => {
-            const out = e.outputBuffer.getChannelData(0);
-            let total = 0;
-            while (waFallbackQueue.length && total < out.length) {
-                const b = waFallbackQueue[0];
-                const need = out.length - total;
-                if (b.length > need) {
-                    out.set(b.subarray(0, need), total);
-                    waFallbackQueue[0] = b.subarray(need);
-                    total += need;
-                } else {
-                    out.set(b, total);
-                    total += b.length;
-                    waFallbackQueue.shift();
-                }
-            }
-            if (total < out.length) out.fill(0, total); // Rest mit Stille auffuellen statt alten Kram nachzuspielen
+            waRing.pull(e.outputBuffer.getChannelData(0));
+            if ((++n % 6) === 0) waOnStats(waRing.getStats());
         };
         waScriptNode.connect(waGainNode);
-        console.log('[WEBAUDIO] ScriptProcessor-Fallback aktiv (kein AudioWorklet/kein HTTPS).');
+        console.log('[WEBAUDIO] ScriptProcessor-Fallback aktiv (kein AudioWorklet/kein HTTPS, ' + WEBAUDIO_SAMPLE_RATE + ' Hz).');
     }
 
-    // Nimmt dekodierte Samples entgegen und fuettert je nach Engine den Worklet-Ringpuffer oder
-    // (Fallback) die einfache Warteschlange - inklusive Deckelung dort, da sie keinen eingebauten
-    // Ringpuffer hat.
+    // Nimmt dekodierte Samples entgegen und gibt sie je nach Engine an den Worklet-Ringpuffer oder den
+    // Fallback-Puffer weiter. Ist die Engine noch im Aufbau, werden die Pakete einfach verworfen.
     function waPushAudio(int16Array) {
         if (!waIsListening || int16Array.length === 0) return;
         const float32 = new Float32Array(int16Array.length);
         for (let i = 0; i < int16Array.length; i++) float32[i] = int16Array[i] / 32768.0;
-        if (waUseWorklet && waWorkletNode) {
-            waWorkletNode.port.postMessage(float32);
-        } else {
-            waFallbackQueue.push(float32);
-            let total = 0;
-            for (let i = 0; i < waFallbackQueue.length; i++) total += waFallbackQueue[i].length;
-            while (total > WEBAUDIO_SAMPLE_RATE * 1.5 && waFallbackQueue.length > 1) {
-                total -= waFallbackQueue.shift().length;
-            }
+        if (waWorkletNode) waWorkletNode.port.postMessage(float32, [float32.buffer]);
+        else if (waRing) waRing.push(float32);
+    }
+
+    // Live-Anzeige in Setup & Sync: Pufferstand, Tempo-Korrektur, Unterlaeufe, Spruenge.
+    function waOnStats(st) {
+        const el = document.getElementById('waStats');
+        if (!el || !st) return;
+        const ms = (v) => Math.round(v * 1000 / st.rate);
+        const d = (st.ratio - 1) * 100;
+        el.textContent = 'buffer ' + ms(st.fill) + ' ms (avg ' + ms(st.avg) + ') | drift ' + (d >= 0 ? '+' : '') + d.toFixed(2) +
+            '% | underruns ' + st.underruns + ' | skips ' + st.skips + (st.playing ? '' : ' | prebuffering');
+    }
+
+    function waPushConfigToEngine() {
+        if (waWorkletNode) waWorkletNode.port.postMessage({ cmd: 'cfg', rate: WEBAUDIO_SAMPLE_RATE,
+            targetMs: waBufTargetMs, maxMs: waBufMaxMs, driftPermille: waDriftPermille });
+        if (waRing) waRing.setConfig(WEBAUDIO_SAMPLE_RATE, waBufTargetMs, waBufMaxMs, waDriftPermille);
+    }
+
+    // Raten-Wechsel: der AudioContext ist an seine Abtastrate gebunden - also alten Audio-Graph komplett
+    // abbauen und (falls gerade zugehoert wird) mit der neuen Rate frisch aufbauen.
+    function waRebuildAfterRateChange() {
+        const wasListening = waIsListening;
+        try { if (waWorkletNode) waWorkletNode.disconnect(); } catch (e) {}
+        try { if (waScriptNode) { waScriptNode.onaudioprocess = null; waScriptNode.disconnect(); } } catch (e) {}
+        try { if (waAudioContext && waAudioContext.state !== 'closed') waAudioContext.close(); } catch (e) {}
+        waWorkletNode = null; waScriptNode = null; waRing = null; waGainNode = null;
+        waMediaStreamDest = null; waUseWorklet = false; waEngineStarted = false; waAudioContext = null;
+        if (wasListening) {
+            const btn = document.getElementById('waListenBtn');
+            waIsListening = false;
+            _startWebAudioListen(btn);
+            // Manche Browser (v.a. iOS) lassen einen neuen AudioContext ohne frische Nutzer-Geste nicht
+            // anlaufen - dann sauber zurueck in den "Listen"-Zustand statt still weiterzulaufen.
+            setTimeout(() => {
+                if (waIsListening && (!waAudioContext || waAudioContext.state !== 'running')) {
+                    _stopWebAudioListen(btn);
+                    if (btn) btn.textContent = '🔈 Tap to resume audio';
+                }
+            }, 1200);
         }
+    }
+
+    // Wird bei jedem Status-Update vom Server aufgerufen: uebernimmt die in der config.json gespeicherten
+    // Einstellungen (gelten damit geraeteuebergreifend), haelt die Eingabefelder aktuell und wendet
+    // Aenderungen live an.
+    function waApplyServerConfig(data) {
+        if (!data || typeof data.WEBAUDIO_RATE !== 'number') return;
+        const setIf = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v !== undefined && document.activeElement !== el && String(el.value) !== String(v)) el.value = v;
+        };
+        setIf('waRateSel', data.WEBAUDIO_RATE);
+        setIf('waBufInput', data.WEBAUDIO_BUF_MS);
+        setIf('waBufMaxInput', data.WEBAUDIO_BUF_MAX_MS);
+        setIf('waDriftInput', data.WEBAUDIO_DRIFT);
+
+        const srv = document.getElementById('waSrvStats');
+        if (srv && typeof data.WEBAUDIO_SRV_LOAD === 'number') {
+            srv.textContent = 'server load ' + data.WEBAUDIO_SRV_LOAD + '% (peak ' + data.WEBAUDIO_SRV_PEAK + '%) | behind ' + data.WEBAUDIO_SRV_BEHIND;
+        }
+
+        // Mumble nimmt mit 48 kHz auf -> 48000 sperren (bzw. warnen, falls es schon aktiv ist)
+        const opt48 = document.querySelector('#waRateSel option[value="48000"]');
+        if (opt48) {
+            const block = !!data.WEBAUDIO_MUMBLE48 && data.WEBAUDIO_RATE !== 48000;
+            opt48.disabled = block;
+            opt48.textContent = block ? '48000 (used by Mumble)' : '48000';
+        }
+        const rateHint = document.getElementById('waRateHint');
+        if (rateHint) {
+            const warn = !!data.WEBAUDIO_MUMBLE48 && data.WEBAUDIO_RATE === 48000;
+            rateHint.style.display = warn ? '' : 'none';
+            if (warn) rateHint.textContent = '\u26A0 Mumble also records at 48 kHz - the TX waterfall may stay empty. Please choose another rate.';
+        }
+
+        const sig = [data.WEBAUDIO_RATE, data.WEBAUDIO_BUF_MS, data.WEBAUDIO_BUF_MAX_MS, data.WEBAUDIO_DRIFT].join('|');
+        if (sig === waCfgSig) return;
+        waCfgSig = sig;
+        const rateChanged = data.WEBAUDIO_RATE !== WEBAUDIO_SAMPLE_RATE;
+        WEBAUDIO_SAMPLE_RATE = data.WEBAUDIO_RATE;
+        if (typeof data.WEBAUDIO_BUF_MS === 'number') waBufTargetMs = data.WEBAUDIO_BUF_MS;
+        if (typeof data.WEBAUDIO_BUF_MAX_MS === 'number') waBufMaxMs = data.WEBAUDIO_BUF_MAX_MS;
+        if (typeof data.WEBAUDIO_DRIFT === 'number') waDriftPermille = data.WEBAUDIO_DRIFT;
+        if (rateChanged) waRebuildAfterRateChange(); else waPushConfigToEngine();
     }
 
     async function waRequestWakeLock() {
@@ -989,7 +1200,15 @@
             // referenzierter Context wurde bisher nie durch einen frischen ersetzt, genau das passt
             // zu "nur ein Reload hilft".
             if (!waAudioContext || waAudioContext.state === 'closed') {
-                waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE });
+                try {
+                    waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE });
+                } catch (e) {
+                    // Nicht jeder Browser unterstuetzt jede Abtastrate - dann verstaendlich melden statt still zu scheitern.
+                    waAudioContext = null;
+                    alert('This browser cannot play audio at ' + WEBAUDIO_SAMPLE_RATE + ' Hz. Please choose another rate in Setup & Sync.');
+                    if (btn) { btn.textContent = '🔈 Listen to RX audio'; btn.style.background = ''; }
+                    return;
+                }
                 waMediaStreamDest = null; // an den neuen Context gebunden, muss neu aufgebaut werden
                 waEngineStarted = false; // neuer Context -> Audio-Graph muss auch neu aufgebaut werden
                 // NEU (wie OpenWebRX): _waEngineStart() haengt am state-Wechsel, nicht am Klick direkt -
@@ -1190,7 +1409,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-300926 SWX";
+                if (vInd) vInd.textContent = "V-041026 KBD";
             });
 
             socket.on('audio', (data) => { 
@@ -1269,6 +1488,12 @@
 
     function updateUI(data) {
         if (!data) return;
+        waApplyServerConfig(data); // NEU: WebAudio-Rate/Puffer aus der config.json uebernehmen (geraeteuebergreifend)
+        const scIn = document.getElementById('scrollIntervalInput');
+        if (scIn && typeof data.SCROLL_INTERVAL_S === 'number' && document.activeElement !== scIn) {
+            const ms = Math.round(data.SCROLL_INTERVAL_S * 1000);
+            if (Number(scIn.value) !== ms) scIn.value = ms;
+        }
         const waCb = document.getElementById('webaudioToggle');
         if (waCb && typeof data.WEBAUDIO_ENABLED === 'boolean') waCb.checked = data.WEBAUDIO_ENABLED;
         if (data.MODE) currentMode = data.MODE.toUpperCase();
@@ -1596,6 +1821,60 @@
     });
     window.addEventListener('keyup', (e) => { if (e.key === (radioConfigGlobal.ptt_hotkey || 'F6')) hotkeyKeyPressed = false; });
 
+    // NEU: Tastatursteuerung fuer eine Tasten-Box / ein Handmikrofon (ATmega32u4 als USB-Tastatur) oder eine normale Tastatur.
+    // Standardmaessig AUS (pro Browser, localStorage) - sonst wuerde auf jeder normalen Tastatur ploetzlich jeder Buchstabe den
+    // Kanal wechseln. Einschalten: Haken in Setup & Sync oder einmalig per Adresse ?keys=1 (z.B. in der Startadresse eines
+    // Kiosk-Browsers); ?keys=0 schaltet wieder aus. Belegung ueber e.code (physische Taste, unabhaengig vom Tastaturlayout).
+    // Mit Strg/Alt/Meta gedrueckte Tasten und Eingabefelder bleiben unberuehrt. Ausgegraute Buttons (VFO, Lock) reagieren auch
+    // per Taste nicht, weil die Tasten die echten Buttons ausloesen. Der PTT-Hotkey hat Vorrang vor allen anderen Tasten.
+    const KEY_BUTTONS = { KeyU: 'btnUp', KeyD: 'btnDown', KeyM: 'btnMode', KeyA: 'asqBtn' };
+    // Eindeutiges PTT fuer die Box: F7 = Senden AN, F8 = Senden AUS (die Box schaltet selbst um, sendet aber je nach Zustand die eine oder andere Taste).
+    // Das Geraet fuehrt sie absolut aus - eine Box, die nach Timeout/Notabschaltung vom Geraet abweicht, kann den Sender so nicht versehentlich einschalten.
+    // Falls der Browser bei F7 einen eigenen Dialog zeigt (Caret-Browsing): hier eine andere Taste eintragen.
+    const KEY_PTT_ON = 'F7', KEY_PTT_OFF = 'F8';
+    const KEY_SCAN_CODE = 'KeyS', KEY_SCAN_HOLD_MS = 600;   // S kurz = Suchlauf, S gehalten = Kanal-Blaetterer (wie auf dem Touchscreen)
+    try {
+        const kp = new URLSearchParams(location.search).get('keys');
+        if (kp === '1') localStorage.setItem('ae5900_keys', '1'); else if (kp === '0') localStorage.removeItem('ae5900_keys');
+    } catch (err) {}
+    function kbdShortcutsOn() { try { return localStorage.getItem('ae5900_keys') === '1'; } catch (err) { return false; } }
+    function setKbdShortcuts(on) { try { if (on) localStorage.setItem('ae5900_keys', '1'); else localStorage.removeItem('ae5900_keys'); } catch (err) {} }
+    function keyFlash(el) { if (!el) return; el.classList.add('key-flash'); setTimeout(() => el.classList.remove('key-flash'), 180); }
+    let scanKeyTimer = null;
+    function scanKeyCancel() { if (scanKeyTimer) { clearTimeout(scanKeyTimer); scanKeyTimer = null; } }
+    function kbdBlocked(e) {
+        if (!kbdShortcutsOn() || e.ctrlKey || e.altKey || e.metaKey) return true;
+        const t = e.target, tag = t && t.tagName;
+        return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!(t && t.isContentEditable);
+    }
+    window.addEventListener('keydown', (e) => {
+        if (e.repeat || kbdBlocked(e)) return;
+        if (e.key === (radioConfigGlobal.ptt_hotkey || 'F6')) return;
+        if (e.key === KEY_PTT_ON || e.key === KEY_PTT_OFF) {
+            e.preventDefault(); keyFlash(document.getElementById('pttBtn'));
+            send(e.key === KEY_PTT_ON ? 'PTT_ON' : 'PTT_OFF');
+            return;
+        }
+        if (e.code === KEY_SCAN_CODE) {
+            e.preventDefault(); scanKeyCancel();
+            scanKeyTimer = setTimeout(() => {
+                scanKeyTimer = null;
+                const b = document.getElementById('scanBtn');
+                if (b && !b.disabled) { keyFlash(b); send('SSCAN_STEP_TOGGLE'); }
+            }, KEY_SCAN_HOLD_MS);
+            return;
+        }
+        const id = KEY_BUTTONS[e.code];
+        if (id) { e.preventDefault(); const b = document.getElementById(id); if (b && !b.disabled) { keyFlash(b); b.click(); } }
+    });
+    window.addEventListener('keyup', (e) => {
+        if (e.code !== KEY_SCAN_CODE || !scanKeyTimer) return;
+        scanKeyCancel();   // losgelassen, bevor die Haltezeit um war = kurzer Druck
+        const b = document.getElementById('scanBtn');
+        if (b && !b.disabled) { keyFlash(b); send('SSCAN'); }
+    });
+    window.addEventListener('blur', scanKeyCancel);
+
     function changePTTHotkey() {
         const inputField = document.getElementById('pttHotkeyInput'); if (!inputField) return;
         inputField.value = "PRESS BUTTON..."; inputField.style.background = "#440000";
@@ -1716,6 +1995,7 @@
 
     window.onload = function() {
         resizeCanvas(); initSocket(); pollStatus(); syncVzModeSelect(); syncWfInputs();
+        const kbdCb = document.getElementById('kbdShortcutsToggle'); if (kbdCb) kbdCb.checked = kbdShortcutsOn();
         // NEU: S-SCAN/MW - kurz = normaler Suchlauf (mit Verweilen), lang = "Kanal-Blaetterer"
         // (ignoriert Rauschsperre, fester Takt, fuers Nebenbei-Mithoeren).
         attachLongPress(document.getElementById('scanBtn'), () => send('SSCAN'), () => send('SSCAN_STEP_TOGGLE'));
