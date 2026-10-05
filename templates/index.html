@@ -562,7 +562,7 @@
         <p>WebAudio buffer target (ms): <input type="number" id="waBufInput" min="50" max="2000" step="10" value="{{config.webaudio_buffer_ms}}" onchange="send('SETWA_BUF_' + this.value)" style="width:80px;" title="Higher = more robust against network jitter, but more delay."></p>
         <p>WebAudio buffer max (ms): <input type="number" id="waBufMaxInput" min="150" max="3000" step="50" value="{{config.webaudio_buffer_max_ms}}" onchange="send('SETWA_BUFMAX_' + this.value)" style="width:80px;" title="Above this the backlog is dropped and playback jumps back to the target."></p>
         <p>WebAudio drift correction (&permil;, 0 = off): <input type="number" id="waDriftInput" min="0" max="20" step="1" value="{{config.webaudio_drift_permille}}" onchange="send('SETWA_DRIFT_' + this.value)" style="width:80px;" title="Maximum playback-speed adjustment used to keep the buffer at its target (5 = 0.5 %). A large backlog is caught up faster, at up to 2 %."></p>
-        <p style="font-size:0.8em; color:#9a9; margin-top:-6px;">Live: <span id="waStats">not listening</span><br><span id="waSrvStats">-</span></p>
+        <p style="font-size:0.8em; color:#9a9; margin-top:-6px;">Live: <span id="waStats">not listening</span><br><span id="waSrvStats">-</span><br><span id="waNetDiag">-</span></p>
         <p>Waterfall contrast (0.05-2.0): <input type="number" id="wfContrastInput" step="0.01" min="0.05" max="2" value="1.52" onchange="setWfContrast(this.value)" style="width:80px;"></p>
         <p>Waterfall adapt speed (0.01-1.0): <input type="number" id="wfSpeedInput" step="0.01" min="0.01" max="1" value="0.042" onchange="setWfSpeed(this.value)" style="width:80px;"></p>
         <p>PTT Hotkey (e.g. F6, Space, p): 
@@ -730,6 +730,7 @@
             this.minTarget = Math.ceil((blockSize || 128) * 1.5);
             this.time = 0;          // abgespielte Zeit in s (fuer das Zusammenfassen von Spruengen)
             this.lastSkipTime = -10;
+            this.correcting = false; this.aligning = false; this.finishAlign = false;
             this.setConfig(rate, 200, 600, 5);
         }
         setConfig(rate, targetMs, maxMs, driftPermille) {
@@ -787,27 +788,41 @@
             this.avgFill += (f - this.avgFill) * (1 - Math.exp(-N / (this.rate * 3.0)));
             let want = 1.0;
             if (this.driftMax > 0) {
-                const err = this.avgFill - this.target;
-                if (Math.abs(err) > this.deadband) {
-                    // k = 1 bei 50 % Abweichung vom Ziel (+ Totbereich). Bis dahin regelt der eingestellte
-                    // Maximalwert (Normalbetrieb, Uhren-Drift). Darueber hinaus (grosser Rueckstau, z.B. nach
-                    // einem Schwall bei Display-aus) wird das Tempo kraeftiger bis max. 2 % angehoben, damit
-                    // der Abbau Sekunden statt Minuten dauert - klingt dann kurz minimal schneller/langsamer.
-                    const k = Math.abs(err - Math.sign(err) * this.deadband) / (0.5 * this.target);
+                const err = this.avgFill - this.target, a = Math.abs(err);
+                // Mit Hysterese: Eingreifen ab 'deadband', Aufhoeren schon bei der Haelfte. Ohne diese Schwelle naehert sich
+                // der Regler dem Ziel nur asymptotisch und hoert nie auf - dann wird dauerhaft mit Bruchteil-Versatz
+                // interpoliert (leichter Hoehenverlust: das Rauschen klingt "dunkler").
+                if (a > this.deadband) this.correcting = true;
+                else if (a < this.deadband * 0.5) this.correcting = false;
+                if (this.correcting) {
+                    const k = a / (0.5 * this.target);
                     const catchMax = Math.max(0.02, this.driftMax);
                     const dev = k <= 1 ? k * this.driftMax : this.driftMax + Math.min(1, (k - 1) / 3) * (catchMax - this.driftMax);
                     want = 1.0 + Math.sign(err) * dev;
                 }
+            } else this.correcting = false;
+            if (want === 1.0 && this.aligning) {
+                // Ausrichtung auf eine ganze Lesezeiger-Position laeuft: Tempo bleibt wie gesetzt
+            } else {
+                this.aligning = false;
+                this.ratio += (want - this.ratio) * Math.min(1, N / (this.rate * 0.5));
+                if (want === 1.0 && Math.abs(this.ratio - 1.0) < 1e-5) {
+                    this.ratio = 1.0;
+                    const fr = this.rpos - Math.floor(this.rpos);
+                    if (fr > 0.001 && fr < 0.999) this.aligning = true;
+                }
             }
-            this.ratio += (want - this.ratio) * Math.min(1, N / (this.rate * 0.5));
-            // Ist die Korrektur abgeschlossen, Tempo exakt auf 1,0 setzen. Der Lesezeiger wird dabei bewusst
-            // NICHT auf eine ganze Position gerundet (das waere ein hoerbarer Mini-Sprung) - er laeuft mit
-            // dem verbliebenen Bruchteil einfach glatt weiter.
-            if (want === 1.0 && Math.abs(this.ratio - 1.0) < 1e-5) this.ratio = 1.0;
+            this.finishAlign = false;
+            if (this.aligning) {
+                const fr = this.rpos - Math.floor(this.rpos), d = fr < 0.5 ? fr : 1 - fr, ALIGN = 2e-4;
+                if (d <= ALIGN * N) { this.ratio = fr < 0.5 ? 1 - d / N : 1 + d / N; this.finishAlign = true; }
+                else this.ratio = fr < 0.5 ? 1 - ALIGN : 1 + ALIGN;
+            }
             const r = this.ratio;
             if (f < N * r + 4) {
                 out.fill(0);
                 this.playing = false;
+                this.correcting = false; this.aligning = false; this.finishAlign = false;
                 this.underruns++;
                 return;
             }
@@ -834,6 +849,7 @@
                 }
             }
             this.rpos = pos;
+            if (this.finishAlign) { this.rpos = Math.round(this.rpos) % this.cap; this.ratio = 1.0; this.aligning = false; this.finishAlign = false; }
         }
         getStats() {
             return { fill: this.fill(), avg: this.avgFill, ratio: this.ratio, underruns: this.underruns,
@@ -938,7 +954,8 @@
         const ms = (v) => Math.round(v * 1000 / st.rate);
         const d = (st.ratio - 1) * 100;
         el.textContent = 'buffer ' + ms(st.fill) + ' ms (avg ' + ms(st.avg) + ') | drift ' + (d >= 0 ? '+' : '') + d.toFixed(2) +
-            '% | underruns ' + st.underruns + ' | skips ' + st.skips + (st.playing ? '' : ' | prebuffering');
+            '% | underruns ' + st.underruns + ' | skips ' + st.skips + (st.playing ? '' : ' | prebuffering') + ' | ' + (waTransportName() || 'transport ?') +
+            ' | out ' + WA_LATENCY_HINT + (waAudioContext && typeof waAudioContext.baseLatency === 'number' && waAudioContext.baseLatency > 0 ? ' (' + Math.round(waAudioContext.baseLatency * 1000) + ' ms)' : '') + ' | ' + WA_OUT_ROUTE;
     }
 
     function waPushConfigToEngine() {
@@ -1176,9 +1193,10 @@
     }
 
     function toggleWebAudioListen() {
+        if (waStarting) return;   // waehrend des Startens ignoriert
         const btn = document.getElementById('waListenBtn');
         if (!waIsListening) {
-            if (btn) { btn.textContent = '🔊 Verbinde...'; btn.disabled = true; }
+            if (btn) { btn.textContent = '⏳ Connecting…'; btn.disabled = true; }
             ensureSocketConnected((ok) => {
                 if (btn) btn.disabled = false;
                 if (!ok) {
@@ -1193,6 +1211,90 @@
         }
     }
 
+    // NEU: Start-Anzeige ("Starting audio...") und Warten auf den WebSocket-Wechsel von Socket.IO.
+    // Socket.IO verbindet zuerst per HTTP-Polling und wechselt dann auf WebSocket. In der Polling-Phase kommt das Audio
+    // gebuendelt (etwa 1x pro Sekunde) und stockt hoerbar. Darum wird erst abgespielt, wenn der Wechsel da ist - hoechstens
+    // WA_START_MAX_MS lang, danach auf jeden Fall (sonst bliebe Audio ganz aus, falls der Wechsel nie klappt). In der
+    // Wartezeit ist der Button gesperrt (zweites Tippen wird ignoriert) und zeigt einen Fortschrittsbalken.
+    // latencyHint des Wiedergabe-AudioContexts. Getestet: 'playback' vs. 'interactive' hat das Stocken in Brave NICHT veraendert
+    // (14 vs. 12 Luecken in 40 s), darum bleibt es beim Standard des Browsers ('interactive'). Der Umschalter bleibt fuer
+    // weitere Versuche: Adresse mit ?lat=playback bzw. ?lat=balanced aufrufen (der Browser merkt sich die Wahl).
+    const WA_LATENCY_HINT = (() => {
+        try {
+            const q = new URLSearchParams(location.search).get('lat');
+            if (q === 'default') localStorage.removeItem('ae5900_lat'); else if (q === 'interactive' || q === 'balanced' || q === 'playback') localStorage.setItem('ae5900_lat', q);
+            const s = localStorage.getItem('ae5900_lat');
+            return (s === 'interactive' || s === 'balanced' || s === 'playback') ? s : 'interactive';
+        } catch (e) { return 'interactive'; }
+    })();
+    // Ausgabeweg. 'element' = Ton geht ueber ein verstecktes <audio>-Element (MediaStream) - gedacht fuer besseres Weiterlaufen bei
+    // ausgeschaltetem Display. 'direct' = Ton geht direkt an den Ausgang des AudioContexts, ohne das Element.
+    // Gemessen (Brave, Handy): Ueber das Element stockt der Ton in Chromium-Browsern die ersten ca. 20 s (12-14 Luecken in 40 s),
+    // direkt sind es 1 Luecke am Tonbeginn und der Ton lief auch im Hintergrund weiter. Darum ist 'direct' in Chromium-Browsern
+    // (Brave/Chrome/Edge/Samsung) der Standard, Firefox/Safari bleiben bei 'element'. Umschalten: Adresse mit ?out=direct bzw.
+    // ?out=element aufrufen (der Browser merkt sich die Wahl). Langzeit-Hintergrundtest (Display aus) steht noch aus.
+    const WA_OUT_ROUTE = (() => {
+        try {
+            const q = new URLSearchParams(location.search).get('out');
+            if (q === 'default') localStorage.removeItem('ae5900_out'); else if (q === 'direct' || q === 'element') localStorage.setItem('ae5900_out', q);
+            const s = localStorage.getItem('ae5900_out');
+            if (s === 'direct' || s === 'element') return s;
+            return /Chrome\//.test(navigator.userAgent) ? 'direct' : 'element';   // Chromium-Familie: direkt; Firefox/Safari: wie bisher
+        } catch (e) { return /Chrome\//.test(navigator.userAgent) ? 'direct' : 'element'; }
+    })();
+    let waGateOpen = false, waStarting = false, waSkipWait = false, waStartTimer = null, waSlowNoticeTimer = null;
+    const WA_START_MAX_MS = 6000;
+    function waTransportName() {
+        try { return (socket && socket.io && socket.io.engine && socket.io.engine.transport) ? socket.io.engine.transport.name : ''; } catch (e) { return ''; }
+    }
+    // NEU (Diagnose): Verbindungs-Messung zum Vergleich mehrerer Clients. Zeigt, wie lange Socket.IO nach dem Laden der Seite im
+    // HTTP-Polling hing, bis WebSocket stand ("first websocket after ..."), und ob es Neuverbindungen/Fehler gab. Erscheint in Setup &
+    // Sync unter der Live-Zeile. Zeiten sind Sekunden seit dem Laden der Seite.
+    const netDiag = { firstWs: null, name: '', since: 0, connects: 0, errors: 0, drops: 0 };
+    function netDiagText() {
+        const now = performance.now() / 1000;
+        const first = netDiag.firstWs !== null ? ' (first websocket after ' + netDiag.firstWs.toFixed(1) + ' s)' : '';
+        return 'net: ' + (netDiag.name || '?') + ' for ' + (now - netDiag.since).toFixed(1) + ' s' + first +
+            ' | connects ' + netDiag.connects + ' | errors ' + netDiag.errors + ' | drops ' + netDiag.drops + ' | page ' + Math.round(now) + ' s';
+    }
+    function netDiagAttach() {
+        socket.on('connect', () => { netDiag.connects++; });
+        socket.on('connect_error', () => { netDiag.errors++; });
+        socket.on('disconnect', () => { netDiag.drops++; });
+        setInterval(() => {
+            const now = performance.now() / 1000, name = waTransportName();
+            if (name !== netDiag.name) { netDiag.name = name; netDiag.since = now; if (name === 'websocket' && netDiag.firstWs === null) netDiag.firstWs = now; }
+            const el = document.getElementById('waNetDiag'); if (el) el.textContent = netDiagText();
+        }, 250);
+    }
+    function _waShowListening(btn, slow) {
+        if (btn) { btn.disabled = false; btn.textContent = slow ? '🔊 Listening... (slow connection)' : '🔊 Listening... (tap to stop)'; btn.style.background = '#006600'; }
+    }
+    function waStartupCancel() {
+        if (waStartTimer) { clearInterval(waStartTimer); waStartTimer = null; }
+        if (waSlowNoticeTimer) { clearTimeout(waSlowNoticeTimer); waSlowNoticeTimer = null; }
+        waStarting = false;
+    }
+    function _waBeginStartup(btn) {
+        waStartupCancel();
+        const name = waTransportName();
+        // Normalfall (WebSocket steht schon) und alle Faelle, in denen Warten nichts brachte oder nicht erkennbar ist: sofort
+        if (name === 'websocket' || name === '' || waSkipWait) { waGateOpen = true; _waShowListening(btn, false); return; }
+        waGateOpen = false; waStarting = true;
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Starting audio…'; }
+        const t0 = Date.now();
+        waStartTimer = setInterval(() => {
+            const el = Date.now() - t0, ws = waTransportName() === 'websocket';
+            if (btn && !ws && el < WA_START_MAX_MS) { const pct = Math.min(100, el * 100 / WA_START_MAX_MS); btn.style.background = 'linear-gradient(90deg, #00aa00 ' + pct + '%, #333 ' + pct + '%)'; }
+            if (ws || el >= WA_START_MAX_MS) {
+                clearInterval(waStartTimer); waStartTimer = null; waStarting = false; waGateOpen = true;
+                if (!ws) waSkipWait = true;   // der Wechsel kam nicht: bei weiteren Starts nicht noch einmal warten
+                _waShowListening(btn, !ws);
+                if (!ws) waSlowNoticeTimer = setTimeout(() => { waSlowNoticeTimer = null; if (waIsListening && !waStarting) _waShowListening(btn, false); }, 8000);
+            }
+        }, 100);
+    }
+
     function _startWebAudioListen(btn) {
             // NEU: pruefen ob der AudioContext wirklich noch lebt, nicht nur ob er existiert. Manche
             // Browser schliessen einen AudioContext nach laengerer Zeit im Hintergrund komplett
@@ -1201,7 +1303,7 @@
             // zu "nur ein Reload hilft".
             if (!waAudioContext || waAudioContext.state === 'closed') {
                 try {
-                    waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE });
+                    waAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: WEBAUDIO_SAMPLE_RATE, latencyHint: WA_LATENCY_HINT });
                 } catch (e) {
                     // Nicht jeder Browser unterstuetzt jede Abtastrate - dann verstaendlich melden statt still zu scheitern.
                     waAudioContext = null;
@@ -1219,7 +1321,7 @@
             waAudioContext.resume();
             // NEU: Ausgabe ueber ein verstecktes <audio>-Element route - Android/Chrome behandeln das
             // eher als "richtige" Medienwiedergabe (Hintergrund-Ueberleben bei ausgeschaltetem Display).
-            if (!waMediaStreamDest) {
+            if (WA_OUT_ROUTE === 'element' && !waMediaStreamDest) {
                 waMediaStreamDest = waAudioContext.createMediaStreamDestination();
                 const audioEl = document.getElementById('waAudioElement');
                 if (audioEl) audioEl.srcObject = waMediaStreamDest.stream;
@@ -1229,7 +1331,7 @@
             // dauerhaft pausiert, obwohl im Hintergrund schon wieder brav Audio eingeplant wurde: stumme
             // Wiedergabe, "Erneutes Draufdruecken bringt das Audio nicht zurueck".
             const waAudioElStart = document.getElementById('waAudioElement');
-            if (waAudioElStart) waAudioElStart.play().catch(() => {});
+            if (waAudioElStart && WA_OUT_ROUTE === 'element') waAudioElStart.play().catch(() => {});
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = new MediaMetadata({ title: 'AE-5900 Live RX Audio', artist: 'Funkgeraet-Fernsteuerung' });
                 navigator.mediaSession.playbackState = 'playing';
@@ -1237,7 +1339,7 @@
                 navigator.mediaSession.setActionHandler('pause', () => { navigator.mediaSession.playbackState = 'playing'; });
             }
             waIsListening = true;
-            if (btn) { btn.textContent = '🔊 Listening... (tap to stop)'; btn.style.background = '#006600'; }
+            _waBeginStartup(btn);
             waRequestWakeLock();
             // Falls der Context schon 'running' ist (z.B. weil er von einer vorherigen Session noch
             // existiert), feuert onstatechange u.U. nicht erneut - direkt pruefen als Sicherheitsnetz.
@@ -1250,6 +1352,8 @@
 
     function _stopWebAudioListen(btn) {
             waIsListening = false;
+            waStartupCancel(); waGateOpen = false;
+            if (btn) btn.disabled = false;
             if (btn) { btn.textContent = '🔈 Listen to RX audio'; btn.style.background = ''; }
             if (waWakeLock) { waWakeLock.release(); waWakeLock = null; }
             if ('mediaSession' in navigator) { navigator.mediaSession.playbackState = 'none'; }
@@ -1405,11 +1509,12 @@
                 upgrade: true,
                 rememberUpgrade: true
             });
+            netDiagAttach();
 
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-041026 RMF";
+                if (vInd) vInd.textContent = "V-051026 NDG";
             });
 
             socket.on('audio', (data) => { 
@@ -1423,7 +1528,7 @@
                 // Kommt als Base64-Text an (siehe Backend-Kommentar) statt als rohe Bytes.
                 // NEU: keine Rueckstau-/Zeitluecken-Erkennung mehr noetig - der Ringpuffer in der
                 // Wiedergabe-Engine kuemmert sich strukturell darum (siehe waPushAudio/_waEngineStart).
-                if (!waIsListening || !waAudioContext) return;
+                if (!waIsListening || !waAudioContext || !waGateOpen) return;
                 if (waAudioContext.state === 'suspended') waAudioContext.resume();
                 const binStr = atob(b64str);
                 const bytes = new Uint8Array(binStr.length);
