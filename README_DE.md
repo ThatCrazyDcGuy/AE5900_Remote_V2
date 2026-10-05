@@ -289,7 +289,20 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-041026 RMF *MEILENSTEIN UPDATE*
+Aktuell: V-051026 NDG – WebAudio-Update – BITTE TESTEN
+
+1. WebAudio für weniger Verzögerungen (Lags) in mobilen Browsern neu konfiguriert
+2. Kleine Fehlerbehebungen bei Puffer und Timing
+3. Versuch, ein AudioWorklet/Ringpuffer-System zu implementieren (ähnlich wie bei OpenWebRX)
+
+Bitte gib bei Rückmeldungen folgende Informationen an:
+1. Soundkarte (oder die Ausgabe von: `pactl list short sources`)
+2. Die Zeile „[AUDIO-ROUTING] Karte: ...“ aus dem Log
+3. Browser und Version sowie die Info, ob der Ton in den ersten Sekunden ruckelt
+4. Die Zeilen „Live:“ und „net:“ aus „Setup & Sync“ (Screenshot ist auch in Ordnung)
+5. Hintergrundbetrieb / ausgeschalteter Bildschirm: Läuft der Ton weiter?
+
+Vorherige Version: V-041026 RMF *MEILENSTEIN UPDATE*
 
 1. Neue Audio-Engine: ruhiger, weniger Verzögerung, korrigiert sich selbst. Rate und Puffer sind im Setup & Sync einstellbar.
 2. Neue Soundkarten-Erkennung: funktioniert jetzt mit den meisten USB-Soundkarten, nicht nur mit C-Media.
