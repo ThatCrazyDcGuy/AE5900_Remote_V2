@@ -293,7 +293,20 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-041026 RMF *MILESTONE UPDATE*
+Current: V-051026 NDG - WebAudio update - PLEASE TEST
+
+1. WebAudio reconfigured for less lags on mobile browsers
+2. Small bugfixes in buffer and timing
+3. Tried to implement an AudioWorklet/Ringpuffer like you might know from openwebrx
+
+When you report, please include:
+1. Sound card (or the output of: pactl list short sources)
+2. The "[AUDIO-ROUTING] Karte: ..." line from the log
+3. Browser + version, and whether audio stutters in the first seconds
+4. The "Live:" and "net:" lines from Setup & Sync (screenshot is fine)
+5. Background / screen-off: does the audio keep running?
+
+Previous version:  V-041026 RMF *MILESTONE UPDATE*
 
 1. New audio engine: smoother, lower latency, self-correcting. Rate and buffer settings are adjustable in "Setup & Sync."
 2. New sound card detection: now works with most USB sound cards, not just C-Media devices.
