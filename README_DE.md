@@ -289,7 +289,11 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-051026 NDG – WebAudio-Update – BITTE TESTEN
+Aktuell: V-061026 CLS
+
+1. Fehlerbehebung beim Clarifier
+
+Vorherige Version: V-051026 NDG – WebAudio-Update – BITTE TESTEN
 
 1. WebAudio für weniger Verzögerungen (Lags) in mobilen Browsern neu konfiguriert
 2. Kleine Fehlerbehebungen bei Puffer und Timing
