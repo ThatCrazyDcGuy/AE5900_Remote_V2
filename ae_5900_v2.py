@@ -63,6 +63,7 @@ key_codes = {'0':'01', '1':'02', '2':'03', '3':'04', '4':'05', '5':'06', '6':'07
 
 
 # --- AUDIO CONFIG ---
+CLAR_STEP_TIMEOUT = 5.5   # s - Server-seitiger Ablauf des Clarifier-Schritts (der Browser setzt nach 5 s selbst zurueck, hier kleine Reserve)
 SW_SCAN_GRACE_SECONDS = 3.0  # NEU: Gnadenfrist fuer S-SCAN/MW nach Signalverlust, bevor weitergesucht wird
 STEP_INTERVAL_SECONDS = 4.0  # NEU: fester Takt fuer den "Kanal-Blaetterer" (Longpress S-SCAN/MW) - ignoriert die Rauschsperre komplett, reines Weiterschalten zum Nebenbei-Mithoeren
 stream_rx = None
@@ -1302,6 +1303,32 @@ def mumble_uses_48k(fresh=False):
 # der Eingangspuffer ueber, Samples gehen verloren und es knistert - unabhaengig von jeder Abtastrate.
 audio_worker_stats = {"load": 0.0, "peak": 0.0, "behind": 0}
 
+def effective_clar_step():
+    """Der WIRKSAME Clarifier-Schritt ('STEP', '1 Hz', '10 Hz', '100 Hz'). Ein Hz-Schritt gilt nur, solange er frisch ist
+    (letzte Clarifier-Aktivitaet < CLAR_STEP_TIMEOUT) und im Clarifier-Modus (USB/LSB/CW) ausserhalb des VFO-Bandes - sonst
+    wird er auf 'STEP' zurueckgesetzt. So kann ein verlorener Browser-Timer (Seite im Hintergrund/geschlossen) oder ein
+    veralteter, in der config.json gespeicherter Wert UP/DOWN nicht dauerhaft sperren."""
+    step = radio.config.get("clar_step", "STEP")
+    if step != "STEP":
+        mode = MODES[radio.mode_idx].upper()
+        fresh = (time.time() - getattr(radio, "clar_step_since", 0.0)) < CLAR_STEP_TIMEOUT
+        if not fresh or mode not in ("USB", "LSB", "CW") or radio.config.get("current_band", "EU") == "VFO":
+            radio.config["clar_step"] = "STEP"
+            return "STEP"
+    return step
+
+def clar_lock_blocks_start(cmd):
+    """True, wenn der Befehl einen Suchlauf/MW/Scroll STARTEN wuerde, waehrend ein Clarifier-Schritt (1/10/100 Hz) aktiv ist.
+    S-SCAN beginnt technisch mit einem UP-Tastendruck, MW tippt Ziffern - beides wuerde der Clarifier anders deuten. Das STOPPEN
+    eines laufenden Modus ist immer erlaubt."""
+    if effective_clar_step() == "STEP":
+        return False
+    if cmd == 'SSCAN':             return not radio.sw_scan_active
+    if cmd == 'MW_TOGGLE':         return not getattr(radio, 'mw_active', False)
+    if cmd == 'SSCAN_STEP_TOGGLE': return not radio.sw_step_active
+    if cmd == 'MW_STEP_TOGGLE':    return not getattr(radio, 'mw_step_active', False)
+    return False
+
 def webaudio_status_fields():
     return {
         "SCROLL_INTERVAL_S": radio.config.get("scroll_interval_s", STEP_INTERVAL_SECONDS),  # Takt des Kanal-Blaetterers
@@ -1431,6 +1458,14 @@ def api_cmd(cmd):
     # Sicherstellen, dass 'val' sicher ausgelesen wird, BEVOR der Thread-Lock greift
     val = request.args.get('val')
 
+    if cmd in ('CLARUP', 'CLARDN', 'CLARHZ') or cmd.startswith('SET_CLAR'):
+        radio.clar_step_since = time.time()   # Server-Ablauf des Hz-Schritts neu starten
+
+    if clar_lock_blocks_start(cmd):
+        with radio.lock:
+            print(f"[{cmd} gesperrt] Clarifier-Schritt aktiv - nicht gestartet.")
+            return jsonify(get_current_status_dict())
+
     # NEU: die vier Such-/Blaetter-Modi (S-SCAN, MW, und die beiden neuen Longpress-"Blaetterer")
     # schliessen sich gegenseitig aus - jeder Modus-Start/jeder andere Tastendruck raeumt zuerst
     # alle anderen drei auf, damit nie zwei gleichzeitig um den Kanal konkurrieren.
@@ -1525,34 +1560,14 @@ def api_cmd(cmd):
                 return jsonify(get_current_status_dict())
 
             # --- 3. NORMALE CB-KANAL-UMSCHALTUNG (WENN NICHT IM VFO-MODUS) ---
-            clar_step = radio.config.get("clar_step", "STEP")
-            
-            # === NEU & ZERSTÖRUNGSFREI: WEICHE FÜR AKTIVEN CLARIFIER IM CB-MODUS ===
+            clar_step = effective_clar_step()
+
+            # === SPERRE: Solange ein Clarifier-Schritt (1/10/100 Hz) aktiv ist, tun UP/DOWN NICHTS ===
+            # Frueher wurden UP/DOWN hier auf den Clarifier umgebogen (Offset +/-, Befehle 26/27). Das lief nicht sauber, weil
+            # das Frontend die Tasten zwar sperren wollte, die Sperre aber sofort wieder aufgehoben wurde. Jetzt sind sie
+            # eindeutig gesperrt - fuer den Clarifier gibt es CLAR+ / CLAR-. Gilt auch fuer jeden anderen Client und die Box.
             if current_hardware_mode in ["USB", "LSB", "CW"] and clar_step != "STEP":
-                step_sizes = {"1 Hz": 1, "10 Hz": 10, "100 Hz": 100}
-                size = step_sizes.get(clar_step, 1)
-                
-                ch_str = str(radio.current_ch).zfill(2)
-                current_offset = radio.config["clar_offsets"].get(ch_str, 0)
-                
-                # Mathematischen Frequenzversatz im RAM einberechnen
-                if cmd == 'U':
-                    new_offset = min(500, current_offset + size)
-                else:
-                    new_offset = max(-500, current_offset - size)
-                    
-                radio.config["clar_offsets"][ch_str] = new_offset
-                radio.save_config()
-                print(f"[UP/DOWN -> CLAR] Offset für CH {ch_str} auf {new_offset} Hz geaendert (Schrittweite: {clar_step}).")
-                
-                # Physische Clarifier-Befehle (26/27) an das echte Albrecht senden
-                if radio.ser:
-                    hex_cmd = "26" if cmd == 'U' else "27"
-                    radio.ser.write(bytes.fromhex(f"41000100{hex_cmd}000006"))
-                    time.sleep(0.08)
-                    radio.ser.write(bytes.fromhex(f"41000000{hex_cmd}000006"))
-                
-                # Route sofort bündig beenden, damit kein CB-Kanal umspringt!
+                print(f"[UP/DOWN gesperrt] Clarifier-Schritt '{clar_step}' aktiv - {cmd} ignoriert.")
                 return jsonify(get_current_status_dict())
 
             # --- AB HIER LÄUFT EUER ORIGINALER KANAL- UND FREQUENZ-CODE ABSOLUT UNBERÜHRT WEITER ---
@@ -2681,7 +2696,7 @@ def api_cmd(cmd):
         "VOL": radio.config.get("vol", 50),
         "SKIP_PA": radio.config.get("skip_pa", False), 
         "SKIP_CW": radio.config.get("skip_cw", False), 
-        "CLAR_STEP": radio.config.get("clar_step", "STEP"), 
+        "CLAR_STEP": effective_clar_step(), 
         "CLAR_OFFSET": current_channel_offset,
         "LOCK_ENABLED": radio.config.get("lock_enabled", False), 
         "MW_SCAN": getattr(radio, 'mw_active', False), 
@@ -2753,7 +2768,7 @@ def api_config_override():
                 "VOL": radio.config.get("vol", 50), 
                 "SKIP_PA": radio.config.get("skip_pa", False), 
                 "SKIP_CW": radio.config.get("skip_cw", False), 
-                "CLAR_STEP": radio.config.get("clar_step", "STEP"), 
+                "CLAR_STEP": effective_clar_step(), 
                 "CLAR_OFFSET": radio.config["clar_offsets"].get(current_ch_str, 0), 
                 "LOCK_ENABLED": radio.config.get("lock_enabled", False), 
                 "MW_SCAN": getattr(radio, 'mw_active', False), 
@@ -2964,7 +2979,7 @@ def get_current_status_dict():
         "SW_STEP": getattr(radio, 'sw_step_active', False), 
         "MW_STEP": getattr(radio, 'mw_step_active', False), 
         **webaudio_status_fields(), 
-        "CLAR_STEP": radio.config.get("clar_step", "STEP"), 
+        "CLAR_STEP": effective_clar_step(), 
         "CLAR_OFFSET": radio.config["clar_offsets"].get(current_ch_str, 0),
         "PTT_HOTKEY": radio.config.get("ptt_hotkey", "F6"), 
         "CURRENT_BEEP": radio.config.get("current_beep", "None"),
