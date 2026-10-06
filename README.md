@@ -293,7 +293,11 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-051026 NDG - WebAudio update - PLEASE TEST
+Current: V-061026 CLS
+
+1. Clarifier bugfix
+
+Previous version: V-051026 NDG - WebAudio update - PLEASE TEST
 
 1. WebAudio reconfigured for less lags on mobile browsers
 2. Small bugfixes in buffer and timing
