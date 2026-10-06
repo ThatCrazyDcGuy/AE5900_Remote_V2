@@ -1361,7 +1361,7 @@
             if (audioEl) { audioEl.pause(); }
     }
     let isWebUILocked = false; let radioConfigGlobal = { ptt_hotkey: 'F6' };
-    let webuiQueue = []; let isWebUIBusy = false; let clarTimer = null; let currentClarOffset = 0;
+    let webuiQueue = []; let isWebUIBusy = false; let clarTimer = null; let currentClarOffset = 0; let currentClarStepGlobal = "STEP"; let scanRunningGlobal = false;
     let currentSqTimeout = 0; let currentAsqTimeout = 0; let currentMuteTimeout = 0;
     let cqRecPendingGlobal = false; // NEU: sperrt CQ REC, solange Speichern/Abbrechen noch offen ist
 
@@ -1514,7 +1514,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-051026 NDG";
+                if (vInd) vInd.textContent = "V-061026 CLS";
             });
 
             socket.on('audio', (data) => { 
@@ -1594,6 +1594,8 @@
     function updateUI(data) {
         if (!data) return;
         waApplyServerConfig(data); // NEU: WebAudio-Rate/Puffer aus der config.json uebernehmen (geraeteuebergreifend)
+        if (data.CLAR_STEP !== undefined) currentClarStepGlobal = data.CLAR_STEP;
+        scanRunningGlobal = !!(data.SW_SCAN || data.MW_SCAN || data.SW_STEP || data.MW_STEP);
         const scIn = document.getElementById('scrollIntervalInput');
         if (scIn && typeof data.SCROLL_INTERVAL_S === 'number' && document.activeElement !== scIn) {
             const ms = Math.round(data.SCROLL_INTERVAL_S * 1000);
@@ -1805,6 +1807,19 @@
         updateUIState();
     }
 
+    // NEU: UP/DOWN sind gesperrt, solange ein Clarifier-Schritt (1/10/100 Hz) aktiv ist - nur im CB-Band und in den Clarifier-Modi
+    // (CW/USB/LSB). Im VFO-Band sind UP/DOWN die Frequenzschritte, in AM/FM und PA gibt es keinen Clarifier. Das Backend sperrt
+    // dieselben Faelle (und laesst den Schritt nach 5,5 s von selbst ablaufen).
+    function clarStepLocksUpDown() {
+        if (currentBandGlobal === "VFO") return false;
+        if (currentMode !== "CW" && currentMode !== "USB" && currentMode !== "LSB") return false;
+        return !!clarTimer || (!!currentClarStepGlobal && currentClarStepGlobal !== "STEP");
+    }
+
+    // NEU: bei aktivem Clarifier-Schritt sind auch S-SCAN und MW gesperrt (S-SCAN beginnt mit einem UP-Tastendruck, MW tippt Ziffern).
+    // Ein bereits LAUFENDER Suchlauf/MW/Scroll bleibt immer abschaltbar.
+    function clarStepLocksScan() { return clarStepLocksUpDown() && !scanRunningGlobal; }
+
     function updateUIState() {
         const allButtons = document.querySelectorAll('.ctrl-btn, .channel-selectors button, .controls button, .keypad button, .keypad-wrapper button, button[onclick]');
         if (currentSqTimeout > 0 || currentAsqTimeout > 0 || currentMuteTimeout > 0 || isWebUIBusy === true) {
@@ -1823,6 +1838,11 @@
                     b.style.opacity = "0.4";
                     return;
                 }
+
+                // NEU: UP/DOWN bleiben bei aktivem Clarifier-Schritt gesperrt. Vorher wurden sie hier am Ende der Schleife pauschal wieder
+                // freigegeben und hoben damit die Sperre auf, die updateUI() kurz zuvor gesetzt hatte.
+                if ((oc === "send('U')" || oc === "send('D')") && clarStepLocksUpDown()) { b.disabled = true; b.style.opacity = "0.4"; return; }
+                if ((b.id === 'scanBtn' || b.id === 'mwBtn') && clarStepLocksScan()) { b.disabled = true; b.style.opacity = "0.4"; return; }
 
                 // 2. RETTUNG DER MODE-TASTE IM PA-MODUS FÜR DEN VFO
                 if (currentMode === "PA") {
@@ -1915,7 +1935,8 @@
     function startClarTimeout(hzBtn) {
         if (hzBtn.innerText !== "STEP") {
             if (document.getElementById('clarUpBtn')) document.getElementById('clarUpBtn').disabled = false; if (document.getElementById('clarDnBtn')) document.getElementById('clarDnBtn').disabled = false;
-            clarTimer = setTimeout(() => { hzBtn.innerText = "STEP"; send('SET_CLAR_STEP?val=STEP'); clarTimer = null; updateUIState(); }, 5000);
+            clarTimer = setTimeout(() => { hzBtn.innerText = "STEP"; currentClarStepGlobal = "STEP"; send('SET_CLAR_STEP?val=STEP'); clarTimer = null; updateUIState(); }, 5000);
+            updateUIState();
         }
     }
 
@@ -2073,6 +2094,7 @@
 
         el.addEventListener('pointerdown', (e) => {
             if (e.pointerType === 'mouse' && e.button !== 0) return; // nur linke Maustaste
+            if (el.disabled) return;   // gesperrte Taste (z.B. bei aktivem Clarifier-Schritt) startet nichts
             firedLong = false;
             startX = e.clientX; startY = e.clientY;
             clearTimer();
@@ -2091,7 +2113,7 @@
         el.addEventListener('pointerup', () => {
             const wasLong = firedLong;
             clearTimer();
-            if (!wasLong) shortFn();
+            if (!wasLong && !el.disabled) shortFn();
         });
         el.addEventListener('pointercancel', clearTimer);
         el.addEventListener('pointerleave', clearTimer);
