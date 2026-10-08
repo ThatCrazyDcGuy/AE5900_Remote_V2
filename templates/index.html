@@ -460,13 +460,13 @@
 
         <button onclick="send('P')" id="pttBtn" class="btn-ptt">PTT TOGGLE</button>
     </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <button onclick="toggleWebAudioListen()" id="waListenBtn" style="flex: 1; background: #003300;">🔈 Inactive... (tap to start)</button>
+            <button onclick="toggleMicTalk()" id="waMicBtn" style="flex: 1; background: #330000; display: none;">🎤 Inactive... (tap to start)</button>
+        </div>
 </div> <details class="setup-area">
     <summary>⚙ SETUP & SYNC</summary>
     <div style="background: #222; padding: 20px; border-radius: 10px;">
-        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-            <button onclick="toggleWebAudioListen()" id="waListenBtn" style="flex: 1; background: #003300;">🔈 Listen to RX audio</button>
-            <button onclick="toggleMicTalk()" id="waMicBtn" style="flex: 1; background: #330000; display: none;">🎤 Talk (mic)</button>
-        </div>
         <button id="syncBtn" class="hold-button"><span style="position:relative; z-index:2;">SUPER SYNC (CH 01 - Hold 3s)</span><div class="progress-bar" id="syncProgress"></div></button>
         <p>PTT Timeout: <input type="number" id="pttInput" value="{{ config.ptt_timeout }}" style="width: 60px;" onchange="updateTimeout()"> s</p>
         <p>Mode-Skip (FW v1.12): 
@@ -1088,7 +1088,7 @@
         if (!waMicActive) {
             if (location.protocol !== 'https:') { alert('Mikrofon-Senden braucht eine sichere Verbindung (HTTPS).'); return; }
             if (!socket) return;
-            if (btn) { btn.textContent = '🎤 Verbinde...'; btn.disabled = true; }
+            if (btn) { btn.textContent = '🎤 Connecting...'; btn.disabled = true; }
             ensureSocketConnected((ok) => {
                 if (!ok) {
                     alert('Keine Verbindung zum Server moeglich - bitte Seite neu laden.');
@@ -1151,10 +1151,10 @@
                         if (socket) socket.emit('mic_pcm', waBytesToBase64(encoded));
                     };
                     waMicActive = true;
-                    if (btn) { btn.textContent = '🎤 Sending... (tap to stop)'; btn.style.background = '#660000'; }
+                    if (btn) { btn.textContent = '🎤 Activated... (tap to stop)'; btn.style.background = '#660000'; }
                 }).catch(err => {
                     alert('Mikrofon-Fehler: ' + err.message);
-                    if (btn) { btn.textContent = '🎤 Talk (mic)'; }
+                    if (btn) { btn.textContent = '🎤 Inactive... (tap to start)'; }
                 });
             });
     }
@@ -1166,7 +1166,7 @@
             if (waMicAudioContext) waMicAudioContext.close();
             waMicStream = null; waMicProcessor = null; waMicAudioContext = null;
             if (socket) socket.emit('mic_stop');
-            if (btn) { btn.textContent = '🎤 Talk (mic)'; btn.style.background = ''; }
+            if (btn) { btn.textContent = '🎤 Inactive... (tap to start)'; btn.style.background = ''; }
     }
 
     // NEU: prueft, ob das Socket wirklich noch verbunden ist, und erzwingt bei Bedarf eine neue
@@ -1201,7 +1201,7 @@
                 if (btn) btn.disabled = false;
                 if (!ok) {
                     alert('Keine Verbindung zum Server moeglich - bitte Seite neu laden.');
-                    if (btn) btn.textContent = '🔈 Listen to RX audio';
+                    if (btn) btn.textContent = '🔈 Inactive... (tap to start)';
                     return;
                 }
                 _startWebAudioListen(btn);
@@ -1268,7 +1268,7 @@
         }, 250);
     }
     function _waShowListening(btn, slow) {
-        if (btn) { btn.disabled = false; btn.textContent = slow ? '🔊 Listening... (slow connection)' : '🔊 Listening... (tap to stop)'; btn.style.background = '#006600'; }
+        if (btn) { btn.disabled = false; btn.textContent = slow ? '🔊 Listening... (slow connection)' : '🔊 Activated... (tap to stop)'; btn.style.background = '#006600'; }
     }
     function waStartupCancel() {
         if (waStartTimer) { clearInterval(waStartTimer); waStartTimer = null; }
@@ -1308,7 +1308,7 @@
                     // Nicht jeder Browser unterstuetzt jede Abtastrate - dann verstaendlich melden statt still zu scheitern.
                     waAudioContext = null;
                     alert('This browser cannot play audio at ' + WEBAUDIO_SAMPLE_RATE + ' Hz. Please choose another rate in Setup & Sync.');
-                    if (btn) { btn.textContent = '🔈 Listen to RX audio'; btn.style.background = ''; }
+                    if (btn) { btn.textContent = '🔈 Inactive... (tap to start)'; btn.style.background = ''; }
                     return;
                 }
                 waMediaStreamDest = null; // an den neuen Context gebunden, muss neu aufgebaut werden
@@ -1354,7 +1354,7 @@
             waIsListening = false;
             waStartupCancel(); waGateOpen = false;
             if (btn) btn.disabled = false;
-            if (btn) { btn.textContent = '🔈 Listen to RX audio'; btn.style.background = ''; }
+            if (btn) { btn.textContent = '🔈Inactive... (tap to start)'; btn.style.background = ''; }
             if (waWakeLock) { waWakeLock.release(); waWakeLock = null; }
             if ('mediaSession' in navigator) { navigator.mediaSession.playbackState = 'none'; }
             const audioEl = document.getElementById('waAudioElement');
@@ -1514,7 +1514,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-061026 CLS";
+                if (vInd) vInd.textContent = "V-081026 BTN";
             });
 
             socket.on('audio', (data) => { 
@@ -1556,7 +1556,7 @@
                     if (waMicAudioContext) waMicAudioContext.close();
                     waMicStream = null; waMicProcessor = null; waMicAudioContext = null;
                     const micBtn = document.getElementById('waMicBtn');
-                    if (micBtn) { micBtn.textContent = '🎤 Talk (mic)'; micBtn.style.background = ''; }
+                    if (micBtn) { micBtn.textContent = '🎤 Inactive... (tap to start)'; micBtn.style.background = ''; }
                 }
             });
         }, 400); 
@@ -1741,14 +1741,14 @@
 
         if(data.VOL !== undefined) { const dvDisp = document.getElementById('displayVolDisp'); if(dvDisp) dvDisp.innerText = data.VOL; }
         
-        // --- SQUELCH-RESET COUNTDOWN ANPASSUNG (17 SEKUNDEN HARDWARE-REALITÄT) ---
+        // --- SQUELCH-RESET COUNTDOWN ANPASSUNG (23 SEKUNDEN HARDWARE-REALITÄT) ---
         currentSqTimeout = data.SQ_TIMEOUT || 0; 
         currentAsqTimeout = data.ASQ_TIMEOUT || 0; 
         currentMuteTimeout = data.MUTE_TIMEOUT || 0;
         if (data.LOCK_ENABLED !== undefined) isWebUILocked = data.LOCK_ENABLED;
 
-        // Wenn der Sync aktiv ist, rechnen wir die Anzeige starr auf die 17s Hardware-Dauer um!
-        const sqTimeout = data.FULL_SYNC_ACTIVE ? Math.min(17, Math.ceil(currentSqTimeout)) : Math.max(0, Math.ceil(currentSqTimeout - 8));
+        // Wenn der Sync aktiv ist, rechnen wir die Anzeige starr auf die 23s Hardware-Dauer um!
+        const sqTimeout = data.FULL_SYNC_ACTIVE ? Math.min(23, Math.ceil(currentSqTimeout)) : Math.max(0, Math.ceil(currentSqTimeout - 8));
         const asqTimeout = currentAsqTimeout;
         const muteTimeout = currentMuteTimeout;
 
@@ -1761,7 +1761,7 @@
     if (sqResetBtnElement) {
         if (data.FULL_SYNC_ACTIVE === true) {
             // Berechne die echten verbleibenden Sekunden aus der Hardware-Dauer
-            let sekundenVerbleibend = Math.min(17, Math.ceil(data.SQ_TIMEOUT || 0));
+            let sekundenVerbleibend = Math.min(23, Math.ceil(data.SQ_TIMEOUT || 0));
             if (sekundenVerbleibend > 0) {
                 sqResetBtnElement.innerText = `SYNC (${sekundenVerbleibend}s)`;
                 sqResetBtnElement.style.color = "#00ff00"; // Wunderschönes Giftgrün während des Syncs!
