@@ -293,7 +293,12 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-061026 CLS
+Current: V-121026 BAR
+
+1. Bug fix – Firefox Mobile stuttering during page load & iOS freeze – Please test
+2. Audio button adjustments
+
+Previous version: V-061026 CLS
 
 1. Clarifier bugfix
 
