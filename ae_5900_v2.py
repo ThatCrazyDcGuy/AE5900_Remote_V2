@@ -427,7 +427,7 @@ class RadioInterface:
         default = {
             "ptt_timeout": 300, "last_ch": 1, "last_mode": 2, "skip_pa": False, "skip_cw": False,
             "p1_label": "(/)", "p2_label": "(/)", "p3_label": "(/)", "p4_label": "(/)",
-            "scan_speed": 0.5, "fft_rx_gain": 25000, "fft_tx_gain": 55000,
+            "scan_speed": 0.5, "fft_rx_gain": 25000, "fft_tx_gain": 55000, "fft_rx_gate": 40000,
             "vox_enabled": False, "mute_enabled": False, "asq_enabled": False, "asq_memory": False,
             "clar_step": "STEP", "clar_offsets": {str(ch).zfill(2): 0 for ch in range(1, 41)},
             "ptt_hotkey": "F6", "current_beep": "None", "roger_beep_enabled": True, "max_sq_steps": 80, 
@@ -1380,7 +1380,10 @@ def audio_stream_worker():
             else:
                 gain = radio.config.get("fft_rx_gain", 25000)
                 fft = np.abs(np.fft.rfft(data))[:bins] * fft_scale
-                fft_clean = np.where(fft < 40000, 0, fft - 40000)
+                # Rauschschwelle (Gate): alles darunter wird auf 0 gesetzt, der Rest um die Schwelle abgesenkt.
+                # Steuert, wie breit das RX-Spektrum/der Wasserfall wirkt. 40000 = bisheriges Verhalten, 0 = kein Gate.
+                gate = radio.config.get("fft_rx_gate", 40000)
+                fft_clean = np.where(fft < gate, 0, fft - gate)
                 fft_vals = np.round(fft_clean / gain, 3).tolist()
 
             with audio_cache_lock:
