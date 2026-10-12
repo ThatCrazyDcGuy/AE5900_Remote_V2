@@ -289,7 +289,12 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-061026 CLS
+Aktuell: V-121026 BAR
+
+1. Bugfix - Firefox Mobile stocken beim Laden der Seite & IOS Freeze - Bitte testen
+2. Anpassung der Audio-Tasten
+
+Vorherige Version: V-061026 CLS
 
 1. Fehlerbehebung beim Clarifier
 
