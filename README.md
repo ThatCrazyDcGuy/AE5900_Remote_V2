@@ -50,90 +50,58 @@ Flexible solutions provide better access. And that's exactly what this project s
 
 ![AE5900_Remote_v2](/pictures/v218mar2.jpeg)
 
-### How It Works:
-
-1. Connect the custom device to a Raspberry Pi or another host computer on which the Python script can be executed. This device then serves as a server.
-2. Connect the Adapter to Mic Port of AE5900.
-3. You have to plug a jack plug into the PA/EXT output as a dummy to silence the speaker.
-4. Increase the output volume of the AE5900 from 0 to about 75% on the volume control.
-5. Ensure proper grounding to prevent rf.
-6. Ideally, the AE5900 is already set to FM and channel 1.
-7. Set your AE5900 microphone to TYPE 2, set your P1 - P4 key shortcuts. I use P1 ASQ / P2 VOX / P3 MUTE
-8. Start Mumble on the host computer and your device (phone/laptop, etc.)
-9. Run `python3 ae_5900_v2.py` on the host/server.
-10. Open `HOSTNAMEIP:5000` in your browser on the device. You should now have control of your AE5900.
-11. Open Setup at the bottom of the WebUI and run Sync.
-12. Set the appropriate labels for the P1 to P4 buttons as you have set them on the AE5900.
-13. On the host computer, you may need to make adjustments in the volume control (pavucontrol). Typical adjustments would be: Menu item "Configuration" default sound card your network-connected sound card.
-14. On the host computer in Mumble, PulseAudio and Standard/Default can now be used for input and output. Audio input: Transmission should be set to continuous, quality to about 44kb/s.
-
-The script is currently designed for ALL region. VFO mode will follow.
-
-That's basically it, and anyone who's not completely clueless should be able to figure it out.
-
 ### Minimum requirements for this project:
 
-1. Reading comprehension skills
-2. Understanding skills
-3. Implementation skills
+1. Ability to read
+2. Ability to understand
+3. Ability to implement
 4. Soldering experience
 5. Raspberry Pi 3
-6. Some spare cash for parts
+6. A little spare cash for the parts
 
 ### The Hardware Build
 
-With pictures and everything you need to know.
+Includes pictures and everything you need to know.
 
-- First, the components for the audio filter and what you can use for building. Most of it I had in my parts box.
+- First, here are the components for the audio filter and what you can use for the build. I had most of these in my parts bin.
 
-For the audio filters we use:
+For the audio filter, we are using:
 
-1. 1x 600:600 Ohm transformers
+1. 1x 600:600 Ohm transformer
 2. 1x 100 Ohm resistor
 3. 1x 10 kOhm resistor
-4. 1x 10nF ceramic capacitor (103) (at least one to filter the RF)
-5. 1x 10µF electrolytic capacitor (approx. 16 - 50v)
+4. 1x 10nF (103) ceramic capacitor (at least one to filter out RF)
+5. 1x 10µF electrolytic capacitor (approx. 16–50V)
 
 Remaining components:
 
 1. USB breakout board or a hub
-2. FT232RL FT232 FTDI USB 3.3V 5.5V to TTL serial adapter
-3. USB soundcard
+2. FT232RL FTDI USB to TTL serial adapter (3.3V/5V)
+3. USB sound card
 4. RJ45 terminal
-5. A metal enclosure
+5. Metal enclosure
 
 ![AE5900_Remote_v2](/pictures/allpartsv2.jpg)
 
-- I've drawn you a nice picture. It might look like it was drawn by a three-year-old, but any hobbyist and soldering iron owner should be able to understand it.
+- I’ve drawn a nice picture for you. It might look like the work of a three-year-old, but this way, any hobbyist or soldering iron owner should be able to understand it.
 
 ![AE5900_Remote_v2](/pictures/overview_v3.png)
 
-You can, of course, simply plug the USB devices into a USB hub, but where's the fun in building something "as small as possible"?
-You still have to solder the two filters, though.
+Of course, you could simply plug the USB devices into a USB hub, but where’s the fun in building something as compact as possible?
+You still have to solder the two filters, though. 
 
-#### How Is This Actually Possible
+#### How is this actually possible?
 
-The AMM-500 sends hex codes serially to the AE-5900 and the AE-5900 responds accordingly. This makes a lot possible.
-To make the build work, I had to listen in between the two devices.
-Principle: Man in the middle.
+The AMM-500 sends serial HEX codes to the AE-5900, and the AE-5900 responds accordingly. This opens up a wide range of possibilities.
+To realize this DIY project, I had to monitor the communication between the two devices.
+Principle: Man-in-the-middle.
 
-Since the AE-5900 itself only releases its codes after a handshake with the AMM-500, this had to be purchased and eagerly awaited.
+Since the AE-5900 only enables its codes after a handshake with the AMM-500, I first had to purchase the latter and eagerly await its arrival.
 
-#### Required Software
+#### Required Software // Installation
 
-Mumble & Mumble Server for audio transmission (audio chat)
-
-Tailscale on all devices used for this project.
-When operating on a local network, Tailscale can be omitted.
-Tailscale is free for private users but requires an account.
-
-For those who prefer a more relaxed approach, using a fresh Raspberry Pi Trixie image:
-
-This block will first install the script and system updates on the Raspberry Pi.
-Then, everything necessary, such as Python, Mumble, audio, and Tailscale, will be installed.
-Finally, the settings in Mumble and the audio will be adjusted, and a simple autostart will be added.
-After restarting, Mumble will ask for the certificate and the database location.
-Now restart again, and everything is set up for the first test run.
+This block loads the script and system updates onto the Raspberry Pi.
+Then, all necessary components—such as Python, Mumble, audio support, and Tailscale—are installed.
 
 Simply copy the entire block into the console.
 
@@ -142,143 +110,40 @@ git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
 cd ~/AE5900_Remote_V2/
 sudo chmod +x install.sh
 ./install.sh
-#If you want to use tailscale:
-#Copy the created TailscaleLink into your browser and follow the instructions
+#If you want to use Tailscale:
+#Copy the generated Tailscale link into your browser and follow the instructions
 reboot
-````
+```
 
-#### My Audio Settings for the Host/Server
+### How it works:
 
-All of the following settings relate to the host / server.
-My audio settings don't necessarily have to be yours.
-They serve merely as an example here.
+1. Connect the DIY device to a Raspberry Pi or another host computer capable of running the Python script. This device then acts as the server.
+2. Connect the adapter to the microphone port.
+3. To mute the speaker, insert a dummy jack plug into the PA/EXT output.
+4. Turn up the AE-5900's output volume from 0 to approximately 75% using the volume control.
+5. Ensure proper grounding to avoid RF interference. 6. Ideally, the AE5900 should already be set to FM and channel 1.
+7. Set the microphone type to "TYPE 2" on your AE5900 and configure your P1–P4 key shortcuts.
+8. Run `python3 ae_5900_v2.py` on the host machine/server.
+9. Open `http://HOSTNAMEIP:5000` or `https://HOSTNAMEIP:5443` in your browser on your client device. You should now have control over your AE5900.
+10. Open the "Setup" section at the very bottom of the WebUI and perform the sync.
+11. Set the labels for the P1–P4 buttons to match the settings on your AE5900.
+12. You may need to make adjustments in the volume control (pavucontrol) on the host machine. Typical adjustments include setting your network-connected sound card as the default sound card under the "Configuration" tab.
 
-- Pavucontrol:
+The script supports all regions, including VFO mode.
 
-![AE5900_Remote_v2](/pictures/pavucontrolsettings.png)
+That’s basically it; anyone with a basic level of technical knowledge should be able to get this working.
 
-- Mumble:
+### Audio Setup (especially for those wishing to use Mumble instead of WebAudio):
 
-![AE5900_Remote_v2](/pictures/mumblesettings.png)
+![AE5900_Remote_v2](AUDIOSETUP.md)
 
-#### Hamlib / Rigctl / Openwebrx setup
+### HAMLIB / Openwebrx Control Setup:
 
-- Tutorial AE5900_REMOTE_V2: Activate VFO on device and WebUI.
+![AE5900_Remote_v2](HAMLIBOWRX.md)
 
-[![AE5900 Webinterface V2 ](https://img.youtube.com/vi/Qk8EmSfFJvY/0.jpg)](https://www.youtube.com/watch?v=Qk8EmSfFJvY)
+### Bluetooth S-Meter Soldering Instructions and Setup:
 
-
-- Tutorial AE5900_REMOTE_V2: Setup and use Openwebrx to control ae5900
-
-
-[![AE5900 Webinterface V2 ](https://img.youtube.com/vi/0zt2-Wdh3UA/0.jpg)](https://www.youtube.com/watch?v=0zt2-Wdh3UA)
-
-
-- Add PTT Code to openwebrx settings/general in Photo description edit (hostname/ip) and add:
-
-```bash
-<script type="text/javascript">
-// === CONFIGURATION ===
-// Enter the hostname or IP address of your Albrecht Pi below, after ALBRECHT_HOST = (e.g. 'ae5900ctrl' or '192.168.122.50')
-var ALBRECHT_HOST = '127.0.0.1';
-// =====================
-
-if (document.getElementsByTagName('a')[0]) {
-    document.getElementsByTagName('a')[0].innerHTML = '';
-}
-
-if (typeof window.owrxPttState === 'undefined') {
-    window.owrxPttState = false;
-}
-
-if (!document.getElementById('owrx-cat-ptt')) {
-    var pttBtn = document.createElement('button');
-    pttBtn.id = 'owrx-cat-ptt';
-    pttBtn.innerHTML = 'RX/TX';
-
-    pttBtn.style.background = '#ADD8E6';
-    pttBtn.style.color = '#fff';
-    pttBtn.style.border = '1px solid #ff3333';
-    pttBtn.style.padding = '5px 15px';
-    pttBtn.style.marginLeft = '15px';
-    pttBtn.style.cursor = 'pointer';
-    pttBtn.style.fontWeight = 'bold';
-    pttBtn.style.borderRadius = '4px';
-    pttBtn.style.fontFamily = 'monospace';
-
-    pttBtn.onclick = function() {
-        window.owrxPttState = !window.owrxPttState;
-        var pttVal = window.owrxPttState ? '1' : '0';
-
-        fetch('http://' + ALBRECHT_HOST + ':5000/api/rig/ptt/' + pttVal, { mode: 'cors' })
-            .then(function(r) { return r.text(); })
-            .then(function(text) {
-                if (window.owrxPttState) {
-                    pttBtn.style.background = '#ff0000';
-                    pttBtn.style.boxShadow = '0 0 10px red';
-                    pttBtn.innerHTML = ' T X ';
-                } else {
-                    pttBtn.style.background = '#008000';
-                    pttBtn.style.boxShadow = 'none';
-                    pttBtn.innerHTML = ' R X ';
-                }
-            })
-            .catch(function(err) {
-                console.error('Albrecht API nicht erreichbar:', err);
-                window.owrxPttState = !window.owrxPttState; // Reset on err
-                pttBtn.innerHTML = 'API ERR';
-            });
-    };
-
-    var firstLink = document.getElementsByTagName('a')[0];
-    if (firstLink && firstLink.parentNode) {
-        firstLink.parentNode.appendChild(pttBtn);
-    }
-}
-</script>
-````
-![AE5900_Remote_v2](/pictures/owrx1.png)
-
-- settings/reporting in RigControl settings add:
-
-![AE5900_Remote_v2](/pictures/owrx2.png)
-
-- settings/sdr in Profile settings add:
-
-![AE5900_Remote_v2](/pictures/owrx3.png)
-
-
-### The bluetooth s-meter part // device mod needed
-
-I was able to find the pinout for external s-meter.
-Instead of using another wire/output/plug i decided to use a esp32 wroom and now we have a s-meter ober bt.
-
-Lets see some photos and screenshots here:
-
-![AE5900_Remote_v2](/pictures/bt-smeter.png)
-
-![AE5900_Remote_v2](/pictures/bt-arduino.png)
-
-![AE5900_Remote_v2](/pictures/bt-esp32device.png)
-
-![AE5900_Remote_v2](/pictures/bt-soldering0.png)
-
-![AE5900_Remote_v2](/pictures/bt-soldering1.png)
-
-![AE5900_Remote_v2](/pictures/bt-soldering2.png)
-
-Code is available in the ino folder.
-
-Pair device to you raspi/host by bluetoothctl / pair / trust / connect
-
-Run once:
-
-sudo rfcomm bind rfcomm0 EC:E3:34:46:D8:7E <- use your own mac here
-
-echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/rfcomm" | sudo tee /etc/sudoers.d/ae5900_rfcomm && sudo chmod 0440 /etc/sudoers.d/ae5900_rfcomm
-
-Have fun!
-
+![AE5900_Remote_v2](BTSMETER.md)
 
 ### It's a good idea to run a WebSDR at home to check your installation if necessary (channel/modulation).
 A good WebSDR can be easily set up with OpenWebRX, a Raspberry Pi, an RTL-SDR dongle (e.g., RTL-SDR Blog V3 or V4 / Nooelec NESDR V5), and an antenna.
