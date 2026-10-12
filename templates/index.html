@@ -1514,14 +1514,14 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-081026 BTN";
+                if (vInd) vInd.textContent = "V-121026 BAR";
             });
 
             socket.on('audio', (data) => { 
                 if (!data || !Array.isArray(data.data)) return;
                 if (visualizerMode === 'waterfall') drawWaterfall(data.data);
                 else if (visualizerMode === 'both') drawSplit(data.data);
-                else drawAudioBars(data.data);
+                else drawAudioBarsCoalesced(data.data);
             });
 
             socket.on('audio_pcm', (b64str) => {
@@ -1562,33 +1562,62 @@
         }, 400); 
     }
 
-    function drawAudioBars(data, xOffset, regionWidth) {
-        if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
-        // NEU: lastData wird jetzt passend zur tatsaechlichen Bin-Anzahl (128) gehalten -
-        // vorher fest auf 32 Eintraege begrenzt, wodurch Bins 33-128 als NaN "verschwanden"
-        // (das war der Grund fuer die Balken, die nur noch auf der linken Seite auftauchten).
+    // V-121026 BAR: leichtere Balken-Anzeige (Firefox Mobile ruckelte nur im Bars-Modus).
+    // Vorher: pro Frame bis zu 256x createLinearGradient (auch fuer Balken mit Hoehe 0) + 256x fillRect.
+    // Jetzt: (1) Balken mit Hoehe 0 werden uebersprungen, (2) der Farbverlauf liegt einmal pro Farbe/Hoehe
+    // als kleines Sprite vor und wird nur noch skaliert gezeichnet (Optik identisch), (3) im reinen Bars-Modus
+    // wird hoechstens einmal pro Bildschirm-Refresh gezeichnet (requestAnimationFrame), nicht pro Socket-Event.
+    const _barSprites = {};
+    function barSprite(color, h) {
+        const key = color + ':' + h;
+        let sp = _barSprites[key];
+        if (sp) return sp;
+        for (const k in _barSprites) delete _barSprites[k]; // nur die aktuelle Groesse/Farbe halten
+        sp = document.createElement('canvas'); sp.width = 2; sp.height = Math.max(1, h);
+        const c = sp.getContext('2d');
+        const g = c.createLinearGradient(0, sp.height, 0, 0);
+        if (color === 'red') { g.addColorStop(0, '#440000'); g.addColorStop(1, '#ff4444'); }
+        else if (color === 'orange') { g.addColorStop(0, '#442200'); g.addColorStop(1, '#ffaa44'); }
+        else { g.addColorStop(0, '#003300'); g.addColorStop(1, '#44ff44'); }
+        c.fillStyle = g; c.fillRect(0, 0, 2, sp.height);
+        _barSprites[key] = sp;
+        return sp;
+    }
+    function barsUpdate(data) {
         if (lastData.length !== data.length) lastData = new Array(data.length).fill(0);
+        for (let i = 0; i < data.length; i++) {
+            const v = +data[i];
+            lastData[i] = Math.max(isFinite(v) ? v : 0, lastData[i] - 2.2);
+        }
+    }
+    function barsRender(xOffset, regionWidth) {
+        if (!canvas || !ctx || lastData.length === 0) return;
         const ox = xOffset || 0;
         const w = (regionWidth !== undefined) ? regionWidth : canvas.width;
-        ctx.clearRect(ox, 0, w, canvas.height);
-        const layout = binLayout(data.length, ox, w, currentMode);
-        layout.forEach(p => {
-            const val = data[p.i];
-            let displayVal = Math.max(val, lastData[p.i] - 2.2); lastData[p.i] = displayVal;
-            let height = Math.min((displayVal / 42) * canvas.height, canvas.height);
-            if (height < 3) height = 0; // NEU: reiner Anzeige-Filter gegen die durchgehende "Grundrauschen"-Linie
-                                         // am unteren Rand - blendet nur sehr kleine Restausschlaege aus, die
-                                         // echten Daten/Peaks bleiben unangetastet.
-            const grad = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - height);
-            if (currentBarColor === 'red') { grad.addColorStop(0, '#440000'); grad.addColorStop(1, '#ff4444'); }
-            else if (currentBarColor === 'orange') { grad.addColorStop(0, '#442200'); grad.addColorStop(1, '#ffaa44'); }
-            else { grad.addColorStop(0, '#003300'); grad.addColorStop(1, '#44ff44'); }
-            // NEU: Mindestbreite von 1px voll deckend, sonst wird das fillRect bei schmalen Balken
-            // (z.B. im "Both"-Split mit halber Breite) subpixel-antialiast und wirkt viel dunkler.
+        const H = canvas.height;
+        ctx.clearRect(ox, 0, w, H);
+        const sp = barSprite(currentBarColor, H);
+        const layout = binLayout(lastData.length, ox, w, currentMode);
+        for (let k = 0; k < layout.length; k++) {
+            const p = layout[k];
+            const height = Math.min(Math.round((lastData[p.i] / 42) * H), H);
+            if (height < 3) continue; // reiner Anzeige-Filter gegen die "Grundrauschen"-Linie
             const bx = Math.floor(p.x);
             const bw = Math.max(1, Math.round(p.width) - (p.width > 2 ? 1 : 0));
-            ctx.fillStyle = grad; ctx.fillRect(bx, canvas.height - height, bw, height);
-        });
+            ctx.drawImage(sp, 0, 0, 2, H, bx, H - height, bw, height);
+        }
+    }
+    function drawAudioBars(data, xOffset, regionWidth) {
+        if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
+        barsUpdate(data);
+        barsRender(xOffset, regionWidth);
+    }
+    let _barsRaf = 0;
+    function drawAudioBarsCoalesced(data) {
+        if (!Array.isArray(data) || data.length === 0 || !canvas || !ctx) return;
+        barsUpdate(data); // Abklingen/Peak-Haltung laeuft weiter pro Datenpaket
+        if (_barsRaf) return;
+        _barsRaf = requestAnimationFrame(() => { _barsRaf = 0; if (visualizerMode === 'bars') barsRender(); });
     }
 
     function updateUI(data) {
