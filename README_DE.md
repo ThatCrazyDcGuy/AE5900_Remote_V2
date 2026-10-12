@@ -50,27 +50,6 @@ Hier werden verschiedene Funktionen demonstriert. Die Bedienung ist über mehrer
 
 ![AE5900_Remote_v2](/pictures/v218mar2.jpeg)
 
-### So funktioniert es:
-
-1. Schließe das gebastelte Gerät an einen Raspberry Pi oder einen anderen Host-Rechner, auf dem das Python-Skript ausgeführt werden kann an. Dieses Gerät dient dann als Server.
-2. Adapter mit dem Mikrofonport verbinden.
-3. Um den Lautsprecher stummzuschalten, muss ein Klinkenstecker als Blindstecker in den PA/EXT-Ausgang eingesteckt werden.
-4. Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 75% am Lautstärkeregler hoch.
-5. Sorgen Sie für eine ordnungsgemäße Erdung, um HF-Störungen zu vermeiden.
-6. Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
-7. Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts. Ich nutze P1 ASQ / P2 VOX / P3 MUTE
-8. Starte Mumble auf dem Host-Rechner und deinem Endgerät (Handy /Laptop etc.)
-9. Führe `python3 ae_5900_v2.py` auf dem Hostrechner/Server aus.
-10. Öffne auf dem Endgerät `HOSTNAMEIP:5000` in deinem Browser. Du solltest nun bereits Kontrolle über dein AE5900 haben.
-11. Öffne ganz unten im WebUI das Setup und führe den Sync aus.
-12. Setze die entsprechenden Labels für die P1 bis P4 Tasten so, wie du sie am AE5900 gesetzt hast.
-13. Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen. Typische Anpassungen wären hier: Menupunkt "Konfiguration" Standard Soundkarte deine im Netzwerk angebundene Soundkarte.
-14. Auf dem Hostrechner in Mumble kann nun im In & Output PulseAudio und Standard/Default verwendet werden. Audioeingabe: Die Übertragung sollte auf kontinuierlich gesetzt sein, die Qualität auf etwa 44kb/s.
-
-Das Script ist für alle Regionen ausgelegt. VFO Mode folgt noch.
-
-Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das schon hin.
-
 ### Mindestanforderung für dieses Projekt:
 
 1. Die Fähigkeit zu lesen
@@ -113,7 +92,7 @@ Die beiden Filter muss man aber dennoch löten.
 
 #### Wie ist das eigentlich möglich
 
-Das AMM-500 sendet seriell HEX codes an das AE-5900 und das AE-5900 antwrtet entsprechend. Damit ist so eniges möglich.
+Das AMM-500 sendet seriell HEX codes an das AE-5900 und das AE-5900 antwrotet entsprechend. Damit ist so eniges möglich.
 Um die Bastelei zu verwirklichen, musste ich zwischen den beiden Geräten mitlesen.
 Prinzip: Man in the middle.
 
@@ -121,19 +100,8 @@ Da das AE-5900 selbst erst nach einem Handshake mit dem AMM-500 seine Codes frei
 
 #### Benötigte Software // Installation
 
-Mumble & Mumble Server für die Audioübertragung (Audio Chat)
-
-Tailscale auf all den Geräten die für dieses Projekt genutzt werden.
-Bei Betrieb im lokalen Netzwerk kann auf Tailscale verzichtet werden.
-Tailscale ist für Privatanwender kostenlos, benötigt aber dennoch einen Account.
-
-Für die ganz faulen, mit frisch installiertem Raspberry Trixie Image:
-
 Mit diesem Block wird das Raspberry zuerst mit dem Script und den System-Updates gefüttert.
 Danach wird alles notwendige wie Python, Mumble, Audio, Tailscale installiert.
-Zum Schluss werden die Settings in Mumble und dem Audio angepasst, so wie ein stupider/einfacher Autostart hinzugefügt.
-Nach dem Neustart wird Mumble fragen stellen: Nach dem Zertifikat und dem Speicherort der Datenbank.
-Nun nochmals neustarten und alles ist für den ersten Testlauf eingerichtet.
 
 Kopiert einfach den gesamten Block in die Konsole.
 
@@ -146,137 +114,37 @@ sudo chmod +x install.sh
 #Kopiere den erstellten TailscaleLink in deinen Browser und folge der Anleitung
 reboot
 ```
-#### Meine Audioeinstellungen für den Host/Server
 
-Alle nachfolgenden Einstellungen betreffen den Host / Server.
-Meine Audioeinstellungen müssen nicht zwangsläufig deine sein.
-Sie dienen hier lediglich als Beispiel.
+### So funktioniert es:
 
-- Pavucontrol:
+1. Schließe das gebastelte Gerät an einen Raspberry Pi oder einen anderen Host-Rechner, auf dem das Python-Skript ausgeführt werden kann an. Dieses Gerät dient dann als Server.
+2. Adapter mit dem Mikrofonport verbinden.
+3. Um den Lautsprecher stummzuschalten, muss ein Klinkenstecker als Blindstecker in den PA/EXT-Ausgang eingesteckt werden.
+4. Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 75% am Lautstärkeregler hoch.
+5. Sorge für eine ordnungsgemäße Erdung, um HF-Störungen zu vermeiden.
+6. Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
+7. Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts.
+8. Führe `python3 ae_5900_v2.py` auf dem Hostrechner/Server aus.
+9. Öffne auf dem Endgerät `http://HOSTNAMEIP:5000` oder `https://HOSTNAMEIP:5443` in deinem Browser. Du solltest nun bereits Kontrolle über dein AE5900 haben.
+10. Öffne ganz unten im WebUI das Setup und führe den Sync aus.
+11. Setze die entsprechenden Labels für die P1 bis P4 Tasten so, wie du sie am AE5900 gesetzt hast.
+12. Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen. Typische Anpassungen wären hier: Menupunkt "Konfiguration" Standard Soundkarte deine im Netzwerk angebundene Soundkarte.
 
-![AE5900_Remote_v2](/pictures/pavucontrolsettings.png)
+Das Script ist für alle Regionen inkl. VFO Mode ausgelegt.
 
-- Mumble:
+Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das schon hin.
 
-![AE5900_Remote_v2](/pictures/mumblesettings.png)
+### Audio Setup, besonders für jene die Mumble anstatt WebAudio nutzen möchten:
 
-#### Hamlib / Rigctl / Openwebrx setup
+![AE5900_Remote_v2](AUDIOSETUP_DE.md)
 
-- Tutorial AE5900_REMOTE_V2: VFO am Gerät und in der WebUI aktivieren.
+### HAMLIB / Openwebrx Steuerungs Setup:
 
-[![AE5900 Webinterface V2 ](https://img.youtube.com/vi/Qk8EmSfFJvY/0.jpg)](https://www.youtube.com/watch?v=Qk8EmSfFJvY)
+![AE5900_Remote_v2](HAMLIBOWRX_DE.md)
 
-- Tutorial AE5900_REMOTE_V2: OpenWebRX zur Steuerung des AE5900 einrichten und verwenden
+### Bluetooth S-Meter Lötanleitung und Setup:
 
-[![AE5900 Webinterface V2 ](https://img.youtube.com/vi/0zt2-Wdh3UA/0.jpg)](https://www.youtube.com/watch?v=0zt2-Wdh3UA)
-
-- PTT-Code in den OpenWebRX-Einstellungen unter „Allgemein“ im Feld „Bildbeschreibung bearbeiten“ (Hostname/IP-Adresse) hinzufügen.
-
-- settings/general in Photo description bearbeiten (Hostname/IP-Adresse) und Folgendes hinzufügen:
-
-```bash
-<script type="text/javascript">
-// === CONFIGURATION ===
-// Enter the hostname or IP address of your Albrecht Pi below, after ALBRECHT_HOST = (e.g. 'ae5900ctrl' or '192.168.122.50')
-var ALBRECHT_HOST = '127.0.0.1';
-// =====================
-
-if (document.getElementsByTagName('a')[0]) {
-    document.getElementsByTagName('a')[0].innerHTML = '';
-}
-
-if (typeof window.owrxPttState === 'undefined') {
-    window.owrxPttState = false;
-}
-
-if (!document.getElementById('owrx-cat-ptt')) {
-    var pttBtn = document.createElement('button');
-    pttBtn.id = 'owrx-cat-ptt';
-    pttBtn.innerHTML = 'RX/TX';
-
-    pttBtn.style.background = '#ADD8E6';
-    pttBtn.style.color = '#fff';
-    pttBtn.style.border = '1px solid #ff3333';
-    pttBtn.style.padding = '5px 15px';
-    pttBtn.style.marginLeft = '15px';
-    pttBtn.style.cursor = 'pointer';
-    pttBtn.style.fontWeight = 'bold';
-    pttBtn.style.borderRadius = '4px';
-    pttBtn.style.fontFamily = 'monospace';
-
-    pttBtn.onclick = function() {
-        window.owrxPttState = !window.owrxPttState;
-        var pttVal = window.owrxPttState ? '1' : '0';
-
-        fetch('http://' + ALBRECHT_HOST + ':5000/api/rig/ptt/' + pttVal, { mode: 'cors' })
-            .then(function(r) { return r.text(); })
-            .then(function(text) {
-                if (window.owrxPttState) {
-                    pttBtn.style.background = '#ff0000';
-                    pttBtn.style.boxShadow = '0 0 10px red';
-                    pttBtn.innerHTML = ' T X ';
-                } else {
-                    pttBtn.style.background = '#008000';
-                    pttBtn.style.boxShadow = 'none';
-                    pttBtn.innerHTML = ' R X ';
-                }
-            })
-            .catch(function(err) {
-                console.error('Albrecht API nicht erreichbar:', err);
-                window.owrxPttState = !window.owrxPttState; // Reset on err
-                pttBtn.innerHTML = 'API ERR';
-            });
-    };
-
-    var firstLink = document.getElementsByTagName('a')[0];
-    if (firstLink && firstLink.parentNode) {
-        firstLink.parentNode.appendChild(pttBtn);
-    }
-}
-</script>
-````
-![AE5900_Remote_v2](/pictures/owrx1.png)
-
-- settings/reporting in RigControl settings hinzufügen:
-
-![AE5900_Remote_v2](/pictures/owrx2.png)
-
-- settings/sdr in Profile settings hinzufügen:
-
-![AE5900_Remote_v2](/pictures/owrx3.png)
-
-
-### Der Bluetooth-S-Meter-Teil // Geräte-Mod erforderlich
-
-Ich konnte die Pinbelegung für das externe S-Meter finden.
-Anstatt ein anderes Kabel/einen anderen Ausgang/Stecker zu verwenden, habe ich mich für die Verwendung eines ESP32-Wrooms entschieden und jetzt haben wir ein S-Meter über BT.
-
-Sehen wir uns hier einige Fotos und Screenshots an:
-
-![AE5900_Remote_v2](/pictures/bt-smeter.png)
-
-![AE5900_Remote_v2](/pictures/bt-arduino.png)
-
-![AE5900_Remote_v2](/pictures/bt-esp32device.png)
-
-![AE5900_Remote_v2](/pictures/bt-soldering0.png)
-
-![AE5900_Remote_v2](/pictures/bt-soldering1.png)
-
-![AE5900_Remote_v2](/pictures/bt-soldering2.png)
-
-Code ist im Ino-Ordner verfügbar.
-
-Kopple das Gerät mit deinem Raspi/Host über Bluetoothctl / Pair / Trust / Connect
-
-Einmal ausführen:
-
-sudo rfcomm bind rfcomm0 EC:E3:34:46:D8:7E <- Verwende hier deine eigenen Mac
-
-echo „$USER ALL=(ALL) NOPASSWD: /usr/bin/rfcomm“ | sudo tee /etc/sudoers.d/ae5900_rfcomm && sudo chmod 0440 /etc/sudoers.d/ae5900_rfcomm
-
-Viel Spaß!
-
+![AE5900_Remote_v2](BTSMETER_DE.md)
 
 ### Es empfiehlt sich zu Hause einen WebSDR zu betreiben umd die Installation ggf. überrüfen (Kanal/Modulation) zu können.
 Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RTL-SDR-Dongle (z. B. RTL-SDR Blog V3 oder V4 / Nooelec NESDR V5) und einer Antenne aufbauen.
