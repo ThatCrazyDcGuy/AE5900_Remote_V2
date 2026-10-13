@@ -38,8 +38,9 @@ Flexible solutions provide better access. And that's exactly what this project s
 12. Physically PTT key / Special key on phone or keyboard
 13. Country codes must be set in the web interface and on the device.
 14. Hamlib/Rigctl compatible (flrig, fldigi, rigctl, grig, openwebrx, js8call & wsjt-cb)
-15. If you decide to open and solder the device, extrenal S-METER can now be used via Bluetooth.
-16. Web Audio HTTP RX only / HTTPS RX and TX
+15. RTL Dongle or OpenWebRX S-meter implementation
+17. If you decide to open and solder the device, extrenal S-METER can now be used via Bluetooth.
+18. Web Audio HTTP RX only / HTTPS RX and TX
 
 
 - Various features are demonstrated here. Operable via multiple software and devices simultaneously. Also rigctl and hamlib is implemented and a bluetooth s-meter.
@@ -158,7 +159,12 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-121026 BAR
+Current: 131026 SMT - TEST RUN -
+
+- Additional implementation: Use RTL-SDR dongle with dedicated antenna as an S-meter (rtl-sdr and pyrtlsdr packages required)
+- Additional implementation: Use OpenWebRX server as an S-meter (a dedicated, private, non-public OpenWebRX server is required)
+
+Previous version: V-121026 BAR
 
 1. Bug fix – Firefox Mobile stuttering during page load & iOS freeze – Please test
 2. Audio button adjustments
