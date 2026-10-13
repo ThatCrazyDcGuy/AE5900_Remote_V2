@@ -433,6 +433,15 @@ class RadioInterface:
             "ptt_hotkey": "F6", "current_beep": "None", "roger_beep_enabled": True, "max_sq_steps": 80, 
             "max_asq_steps": 9, "current_sq_level": 0, "current_asq_level": 1, "full_sync_active": False,
             "bt_mac_address": "00:00:00:00:00:00",
+            "smeter_source": "esp32",   # "esp32" (Hardware-Mod, Bluetooth) | "sdr" (RTL-SDR-Dongle) | "owrx" (lokales OpenWebRX) | "off"
+            "sdr_gain": "30",           # Tuner-Gain in dB oder "auto"
+            "sdr_floor_db": -60.0,      # Pegel (dBFS) bei dem die Anzeige 0 % zeigt (Eichung)
+            "sdr_full_db": -20.0,       # Pegel (dBFS) bei dem die Anzeige 100 % zeigt (Eichung)
+            "sdr_smooth": 0.5,          # Glaettung des S-Meters (0.05 traege ... 1.0 = keine Glaettung)
+            "owrx_smooth": 0.3,
+            "owrx_addr": "127.0.0.1:8073",  # lokales OpenWebRX (Quelle "owrx"), nur Host:Port
+            "owrx_floor_db": -85.0,     # OpenWebRX-S-Meter-Pegel (dB) bei 0 %
+            "owrx_full_db": -30.0,      # OpenWebRX-S-Meter-Pegel (dB) bei 100 %
             "webaudio_enabled": False,
             # NEU: WebAudio-Feintuning (Setup & Sync) - liegt wie alle anderen Einstellungen in der
             # config.json und gilt damit geraeteuebergreifend fuer alle Browser.
@@ -2881,11 +2890,378 @@ def bluetooth_rssi_receiver_worker():
                         
                         # Begrenzen auf saubere 0 bis 100%
                         percent = max(0.0, min(1.0, percent))
-                        radio.owrx_rssi_live = int(percent * 100)
+                        # Nur uebernehmen, wenn der ESP32 als S-Meter-Quelle gewaehlt ist (sonst SDR bzw. aus).
+                        if radio.config.get("smeter_source", "esp32") == "esp32":
+                            radio.owrx_rssi_live = int(percent * 100)
         except Exception:
             time.sleep(2.0)
 
 threading.Thread(target=bluetooth_rssi_receiver_worker, daemon=True).start()
+
+# =========================================================================
+# S-METER-QUELLE "SDR-DONGLE" (fuer CB-Funker ohne Hardware-Mod am Geraet)
+# Ein RTL-SDR deckt das ganze CB-Band auf einmal ab (1,024 MS/s um 27,18 MHz). Aus jedem Datenblock wird die
+# Leistung im Fenster des aktuell eingestellten Kanals berechnet - beim Kanalwechsel wird NICHT neu abgestimmt.
+# Die Anzeige ist relativ und unkalibriert (zweite Antenne!) - Eichung ueber sdr_floor_db / sdr_full_db.
+# Waehrend des Sendens wird nicht gelesen (Uebersteuerung durch die eigene Sendeleistung).
+# =========================================================================
+smeter_info = {"state": "off", "db": None}
+
+def current_channel_freq_hz():
+    """Frequenz des aktuell eingestellten Kanals (gleiche Zuordnung wie beim Hamlib-Sync)."""
+    try:
+        c_band = radio.config.get("current_band", "EU")
+        if c_band == "VFO":
+            return float(radio.vfo_freq)
+        c_mode = MODES[radio.mode_idx].upper()
+        if c_band == "PL" and c_mode in ("USB", "LSB"):
+            matrix = BASE_EU
+        else:
+            matrix = bandMatrices.get(c_band, BASE_EU)
+        return float(matrix.get(str(radio.current_ch).zfill(2), "27.185")) * 1e6
+    except Exception:
+        return 27185000.0
+
+def sdr_band_power_db(iq, center_hz, freq_hz, sample_rate, nfft=8192, half_bw_hz=4000.0):
+    """Leistung (dBFS) im Fenster freq_hz +- half_bw_hz aus einem Block komplexer Samples (Mittel ueber mehrere FFTs)."""
+    n_blocks = len(iq) // nfft
+    if n_blocks < 1:
+        return None
+    win = np.hanning(nfft)
+    wpow = float(np.sum(win ** 2))
+    x = np.asarray(iq[:n_blocks * nfft]).reshape(n_blocks, nfft) * win
+    spec = np.abs(np.fft.fft(x, axis=1)) ** 2
+    k0 = int(round((freq_hz - center_hz) / sample_rate * nfft))
+    span = max(1, int(half_bw_hz / sample_rate * nfft))
+    idx = (k0 + np.arange(-span, span + 1)) % nfft
+    p = float(np.mean(np.sum(spec[:, idx], axis=1))) / (nfft * wpow)
+    return 10.0 * np.log10(max(p, 1e-12))
+
+def sdr_smeter_worker():
+    """Liest rohe IQ-Daten ueber das Kommandozeilenwerkzeug 'rtl_sdr' (Paket rtl-sdr). Bewusst KEIN pyrtlsdr:
+    das braucht je nach Version eine neuere librtlsdr als die Distribution mitbringt (rtlsdr_set_dithering)."""
+    import shutil, tempfile
+    SR = 1024000
+    NFFT = 8192
+    NBLK = 4
+    NBYTES = 2 * NFFT * NBLK
+    proc = None
+    errf = None
+    center = None
+    run_gain = None
+    smoothed = None
+    skip = 0
+
+    def stop_proc():
+        nonlocal proc, errf
+        if proc is not None:
+            try: proc.kill()
+            except Exception: pass
+            try: proc.wait(timeout=2)
+            except Exception: pass
+            proc = None
+        if errf is not None:
+            try: errf.close()
+            except Exception: pass
+            errf = None
+
+    while True:
+        try:
+            if radio.config.get("smeter_source", "esp32") != "sdr":
+                stop_proc()
+                if smeter_info.get("src") == "sdr":
+                    smeter_info.update({"state": "off", "db": None, "src": None})
+                smoothed = None
+                time.sleep(1.0)
+                continue
+            smeter_info["src"] = "sdr"
+            if radio.is_tx or radio.is_device_sending:
+                # Waehrend des Sendens nicht lesen und den Dongle freigeben (Pipe wuerde sonst veralten).
+                stop_proc()
+                smoothed = None
+                time.sleep(0.1)
+                continue
+            if shutil.which("rtl_sdr") is None:
+                smeter_info.update({"state": "rtl_sdr not found (sudo apt install rtl-sdr)", "db": None})
+                time.sleep(5.0)
+                continue
+            gain_cfg = str(radio.config.get("sdr_gain", "30")).strip().lower()
+            f = current_channel_freq_hz()
+            want = 27180000.0 if abs(f - 27180000.0) <= 400000.0 else f + 60000.0
+            if proc is None or proc.poll() is not None or abs(want - (center or 0)) > 1.0 or gain_cfg != run_gain:
+                stop_proc()
+                cmd = ["rtl_sdr", "-f", str(int(want)), "-s", str(SR)]
+                if gain_cfg != "auto":
+                    cmd += ["-g", str(float(gain_cfg))]
+                cmd += ["-"]
+                errf = tempfile.TemporaryFile()
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf)
+                center, run_gain, smoothed, skip = want, gain_cfg, None, 2  # erste Bloecke: Einschwingen
+            buf = proc.stdout.read(NBYTES)
+            if len(buf) < NBYTES:
+                try:
+                    proc.wait(timeout=2)
+                    errf.seek(0)
+                    lines = [l.strip() for l in errf.read().decode('utf-8', 'ignore').splitlines() if l.strip()]
+                    reason = lines[-1] if lines else "no data"
+                except Exception:
+                    reason = "no data"
+                smeter_info.update({"state": "rtl_sdr: " + reason[:80], "db": None})
+                stop_proc()
+                time.sleep(3.0)
+                continue
+            if skip > 0:
+                skip -= 1
+                continue
+            if radio.is_tx or radio.is_device_sending:
+                continue  # Block stammt aus der Zeit vor dem Senden - verwerfen
+            raw = np.frombuffer(buf, dtype=np.uint8).astype(np.float32)
+            raw = (raw - 127.5) / 127.5
+            iq = raw[0::2] + 1j * raw[1::2]
+            db = sdr_band_power_db(iq, center, f, SR, NFFT)
+            if db is not None:
+                smoothed = db if smoothed is None else smoothed + (db - smoothed) * max(0.05, min(1.0, float(radio.config.get("sdr_smooth", 0.5))))
+                lo = float(radio.config.get("sdr_floor_db", -60.0))
+                hi = float(radio.config.get("sdr_full_db", -20.0))
+                pct = (smoothed - lo) / max(3.0, hi - lo)
+                radio.owrx_rssi_live = int(max(0.0, min(1.0, pct)) * 100)
+                smeter_info.update({"state": "ok", "db": round(float(smoothed), 1)})
+        except Exception as e:
+            smeter_info.update({"state": "error: " + str(e)[:60], "db": None})
+            stop_proc()
+            time.sleep(3.0)
+
+threading.Thread(target=sdr_smeter_worker, daemon=True).start()
+
+# =========================================================================
+# S-METER-QUELLE "OPENWEBRX" (lokale OpenWebRX-Installation, nur vom selben Nutzer verwendet)
+# Das Backend haengt sich als EIN Client per WebSocket an OpenWebRX (ws://host:port/ws/), stellt dort den Demodulator
+# auf die Frequenz des AE-5900-Kanals und liest die "smeter"-Nachrichten (lineare Leistung -> dB).
+# Protokoll nach dem OpenWebRX+-Quellcode (owrx/connection.py, htdocs/openwebrx.js). Eigener Mini-WebSocket-Client
+# aus der Standardbibliothek, damit keine zusaetzliche Python-Abhaengigkeit noetig ist.
+# =========================================================================
+class MiniWebSocket:
+    def __init__(self, host, port, path="/", timeout=5.0):
+        self.sock = socket.create_connection((host, int(port)), timeout=timeout)
+        self.sock.settimeout(timeout)
+        key = base64.b64encode(os.urandom(16)).decode()
+        req = ("GET %s HTTP/1.1\r\nHost: %s:%s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n") % (path, host, port, key)
+        self.sock.sendall(req.encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = self.sock.recv(4096)
+            if not chunk or len(buf) > 65536:
+                raise ConnectionError("websocket handshake failed")
+            buf += chunk
+        head, rest = buf.split(b"\r\n\r\n", 1)
+        if b" 101 " not in head.split(b"\r\n")[0]:
+            raise ConnectionError("websocket refused: " + head.split(b"\r\n")[0].decode("latin-1")[:60])
+        self._buf = bytearray(rest)
+        self._frag = bytearray()
+        self._frag_op = None
+
+    def _parse(self):
+        b = self._buf
+        if len(b) < 2:
+            return None
+        fin, op, masked, ln, idx = b[0] & 0x80, b[0] & 0x0F, b[1] & 0x80, b[1] & 0x7F, 2
+        if ln == 126:
+            if len(b) < 4: return None
+            ln, idx = int.from_bytes(b[2:4], "big"), 4
+        elif ln == 127:
+            if len(b) < 10: return None
+            ln, idx = int.from_bytes(b[2:10], "big"), 10
+        if masked:
+            idx += 4
+        if len(b) < idx + ln:
+            return None
+        payload = bytes(b[idx:idx + ln])
+        if masked:
+            m = b[idx - 4:idx]
+            payload = bytes(c ^ m[i % 4] for i, c in enumerate(payload))
+        del b[:idx + ln]
+        return fin, op, payload
+
+    def recv(self):
+        """Naechste Text-/Binaernachricht als (opcode, payload); None bei Zeitueberschreitung (Verbindung bleibt)."""
+        while True:
+            fr = self._parse()
+            if fr is None:
+                try:
+                    chunk = self.sock.recv(65536)
+                except socket.timeout:
+                    return None
+                if not chunk:
+                    raise ConnectionError("websocket closed")
+                self._buf += chunk
+                continue
+            fin, op, payload = fr
+            if op == 0x9:
+                self._send(0xA, payload)
+            elif op == 0x8:
+                raise ConnectionError("websocket closed by server")
+            elif op in (0x1, 0x2, 0x0):
+                if op != 0x0:
+                    self._frag, self._frag_op = bytearray(payload), op
+                else:
+                    self._frag += payload
+                if fin:
+                    return self._frag_op, bytes(self._frag)
+
+    def _send(self, op, payload):
+        mask = os.urandom(4)
+        n = len(payload)
+        hdr = bytes([0x80 | op]) + (bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + n.to_bytes(2, "big"))
+        self.sock.sendall(hdr + mask + bytes(c ^ mask[i % 4] for i, c in enumerate(payload)))
+
+    def send_text(self, text):
+        self._send(0x1, text.encode("utf-8"))
+
+    def close(self):
+        try: self.sock.close()
+        except Exception: pass
+
+OWRX_MODS = {"FM": ("nfm", -4000, 4000), "PA": ("nfm", -4000, 4000), "AM": ("am", -4000, 4000),
+             "CW": ("cw", -400, 400), "USB": ("usb", 300, 2700), "LSB": ("lsb", -2700, -300)}
+
+def owrx_smeter_worker():
+    ws = None
+    center = None
+    srate = None
+    sent = None          # zuletzt gesendete (offset, mode)
+    started = False
+    smoothed = None
+    while True:
+        try:
+            if radio.config.get("smeter_source", "esp32") != "owrx":
+                if ws is not None:
+                    ws.close(); ws = None
+                center = srate = sent = None
+                started = False
+                smoothed = None
+                if smeter_info.get("src") == "owrx":
+                    smeter_info.update({"state": "off", "db": None, "src": None})
+                time.sleep(1.0)
+                continue
+            smeter_info["src"] = "owrx"
+            if ws is None:
+                host, _, port = str(radio.config.get("owrx_addr", "127.0.0.1:8073")).strip().partition(":")
+                ws = MiniWebSocket(host or "127.0.0.1", port or 8073, "/ws/", timeout=1.0)
+                ws.send_text("SERVER DE CLIENT client=ae5900 type=receiver")
+                ws.send_text(json.dumps({"type": "connectionproperties",
+                                         "params": {"output_rate": 12000, "hd_output_rate": 44100}}))
+                center = srate = sent = None
+                started = False
+                smoothed = None
+                smeter_info.update({"state": "connected, waiting for config", "db": None})
+            msg = ws.recv()
+            if msg is not None and msg[0] == 0x1:
+                text = msg[1].decode("utf-8", "ignore")
+                if text.startswith("{"):
+                    j = json.loads(text)
+                    t = j.get("type")
+                    if t == "config" and isinstance(j.get("value"), dict):
+                        v = j["value"]
+                        if "center_freq" in v and center != v["center_freq"]:
+                            center, sent = v["center_freq"], None
+                        if "samp_rate" in v:
+                            srate = v["samp_rate"]
+                    elif t == "smeter":
+                        if not (radio.is_tx or radio.is_device_sending) and sent is not None:
+                            db = 10.0 * np.log10(max(float(j.get("value", 0.0)), 1e-12))
+                            smoothed = db if smoothed is None else smoothed + (db - smoothed) * max(0.05, min(1.0, float(radio.config.get("owrx_smooth", 0.3))))
+                            lo = float(radio.config.get("owrx_floor_db", -85.0))
+                            hi = float(radio.config.get("owrx_full_db", -30.0))
+                            pct = (smoothed - lo) / max(3.0, hi - lo)
+                            radio.owrx_rssi_live = int(max(0.0, min(1.0, pct)) * 100)
+                            smeter_info.update({"state": "ok", "db": round(float(smoothed), 1)})
+            # Demodulator auf die aktuelle Kanalfrequenz stellen (nur bei Aenderung senden)
+            if center is not None:
+                f = current_channel_freq_hz()
+                half = (srate or 0) / 2.0
+                off = int(round(f - center))
+                if srate and abs(off) > half - 5000:
+                    sent = None
+                    smoothed = None
+                    smeter_info.update({"state": "frequency outside OpenWebRX range", "db": None})
+                else:
+                    mod, lo_cut, hi_cut = OWRX_MODS.get(MODES[radio.mode_idx].upper(), OWRX_MODS["FM"])
+                    want = (off, mod)
+                    if want != sent:
+                        ws.send_text(json.dumps({"type": "dspcontrol", "params": {
+                            "low_cut": lo_cut, "high_cut": hi_cut, "offset_freq": off, "mod": mod,
+                            "squelch_level": -150}}))
+                        if not started:
+                            ws.send_text(json.dumps({"type": "dspcontrol", "action": "start"}))
+                            started = True
+                        sent = want
+                        smoothed = None
+        except Exception as e:
+            smeter_info.update({"state": "OpenWebRX: " + str(e)[:70], "db": None, "src": "owrx"})
+            if ws is not None:
+                ws.close(); ws = None
+            center = srate = sent = None
+            started = False
+            time.sleep(3.0)
+
+threading.Thread(target=owrx_smeter_worker, daemon=True).start()
+
+SMETER_CAL_KEYS = {"sdr": ("sdr_floor_db", "sdr_full_db", -60.0, -20.0, "sdr_smooth", 0.5),
+                   "owrx": ("owrx_floor_db", "owrx_full_db", -85.0, -30.0, "owrx_smooth", 0.3)}
+
+@app.route('/api/smeter')
+def api_smeter_info():
+    src = request.args.get('src') or radio.config.get("smeter_source", "esp32")
+    lo_k, hi_k, lo_d, hi_d, sm_k, sm_d = SMETER_CAL_KEYS.get(src, SMETER_CAL_KEYS["sdr"])
+    active = (src == radio.config.get("smeter_source", "esp32"))
+    return jsonify({
+        "source": radio.config.get("smeter_source", "esp32"),
+        "state": smeter_info["state"] if active and smeter_info.get("src") == src else "-",
+        "db": smeter_info["db"] if active and smeter_info.get("src") == src else None,
+        "gain": str(radio.config.get("sdr_gain", "30")),
+        "addr": radio.config.get("owrx_addr", "127.0.0.1:8073"),
+        "floor": radio.config.get(lo_k, lo_d),
+        "full": radio.config.get(hi_k, hi_d),
+        "smooth": radio.config.get(sm_k, sm_d),
+    })
+
+@app.route('/api/smeter/set')
+def api_smeter_set():
+    """Setzt die S-Meter-Quelle und/oder Parameter. Nicht uebergebene Werte bleiben unveraendert;
+    floor/full gelten fuer die (ggf. neu gewaehlte) aktive Quelle."""
+    src = request.args.get('src', radio.config.get("smeter_source", "esp32"))
+    if src not in ("esp32", "sdr", "owrx", "off"):
+        return jsonify({"status": "error", "message": "invalid source"}), 400
+    try:
+        new = {}
+        if 'gain' in request.args:
+            gain = request.args.get('gain', '').strip().lower() or '30'
+            new["sdr_gain"] = 'auto' if gain == 'auto' else str(max(0.0, min(50.0, float(gain))))
+        if 'addr' in request.args:
+            addr = request.args.get('addr', '').strip() or "127.0.0.1:8073"
+            host, _, port = addr.partition(":")
+            if not host or (port and not port.isdigit()) or len(addr) > 80 or any(c in addr for c in " /\\?#"):
+                return jsonify({"status": "error", "message": "Address must look like host:port"}), 400
+            new["owrx_addr"] = addr
+        if src in SMETER_CAL_KEYS and 'smooth' in request.args:
+            new[SMETER_CAL_KEYS[src][4]] = max(0.05, min(1.0, float(request.args.get('smooth'))))
+        if src in SMETER_CAL_KEYS and ('floor' in request.args or 'full' in request.args):
+            lo_k, hi_k, lo_d, hi_d = SMETER_CAL_KEYS[src][:4]
+            floor = float(request.args.get('floor', radio.config.get(lo_k, lo_d)))
+            full = float(request.args.get('full', radio.config.get(hi_k, hi_d)))
+            if full < floor + 3.0:
+                return jsonify({"status": "error", "message": "Full must be at least 3 dB above Floor"}), 400
+            new[lo_k], new[hi_k] = floor, full
+    except ValueError:
+        return jsonify({"status": "error", "message": "invalid number"}), 400
+    with radio.lock:
+        if src != radio.config.get("smeter_source", "esp32"):
+            radio.owrx_rssi_live = 0
+        radio.config["smeter_source"] = src
+        radio.config.update(new)
+        radio.save_config()
+    return jsonify({"status": "success"})
 
 def audio_broadcast_task():
     while True:
