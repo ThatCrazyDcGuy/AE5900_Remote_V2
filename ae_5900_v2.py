@@ -8,6 +8,7 @@ import time
 import json
 import os
 import numpy as np
+import shutil
 import pyaudio
 import base64
 import queue
@@ -1153,7 +1154,8 @@ def index():
     return render_template('index.html', 
                            config=radio.config, 
                            beeps_list=radio.beeps_list, 
-                           lang=erkannte_sprache)
+                           lang=erkannte_sprache,
+                           bg_version=background_version())
 
 # FFT_BINS wird jetzt oben aus der konfigurierten Abtastrate abgeleitet (compute_audio_params) - bei 22050 Hz weiterhin 128.
 
@@ -3206,6 +3208,58 @@ def owrx_smeter_worker():
             time.sleep(3.0)
 
 threading.Thread(target=owrx_smeter_worker, daemon=True).start()
+
+# =========================================================================
+# HINTERGRUNDBILD (serverweit: static/bgr.jpg, gilt auf allen Geraeten des Nutzers)
+# Der Browser verkleinert das Bild vor dem Upload (max. ~1600 px) und sendet ein JPEG als rohen Request-Body.
+# Der Server nimmt nur echte JPEG-Dateien an, begrenzt die Groesse und schreibt atomar (alter Hintergrund bleibt bei
+# Abbruch erhalten). Das erste ersetzte Bild wird als static/bgr_default.jpg gesichert (fuer "Reset").
+# =========================================================================
+BG_DIR = os.path.join(SCRIPT_DIR, "static")
+BG_FILE = os.path.join(BG_DIR, "bgr.jpg")
+BG_DEFAULT = os.path.join(BG_DIR, "bgr_default.jpg")
+BG_MAX_BYTES = 4 * 1024 * 1024
+
+def background_version():
+    """Aenderungszeit des Hintergrundbilds - als ?v= an die Bildadresse, damit ein neues Bild sofort erscheint."""
+    try:
+        return int(os.path.getmtime(BG_FILE))
+    except Exception:
+        return 0
+
+@app.route('/api/background', methods=['POST'])
+def api_background_upload():
+    n = request.content_length
+    if n is not None and n > BG_MAX_BYTES:
+        return jsonify({"status": "error", "message": "Image too large (max 4 MB)"}), 413
+    data = request.get_data(cache=False)
+    if len(data) > BG_MAX_BYTES:
+        return jsonify({"status": "error", "message": "Image too large (max 4 MB)"}), 413
+    if len(data) < 1000 or data[:3] != b'\xff\xd8\xff':
+        return jsonify({"status": "error", "message": "Not a JPEG image"}), 400
+    try:
+        os.makedirs(BG_DIR, exist_ok=True)
+        if os.path.exists(BG_FILE) and not os.path.exists(BG_DEFAULT):
+            shutil.copy2(BG_FILE, BG_DEFAULT)
+        tmp = BG_FILE + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, BG_FILE)
+    except Exception as e:
+        return jsonify({"status": "error", "message": "Could not save: " + str(e)[:80]}), 500
+    return jsonify({"status": "success", "v": background_version()})
+
+@app.route('/api/background/reset', methods=['POST'])
+def api_background_reset():
+    try:
+        if os.path.exists(BG_DEFAULT):
+            shutil.copy2(BG_DEFAULT, BG_FILE + ".tmp")
+            os.replace(BG_FILE + ".tmp", BG_FILE)
+        elif os.path.exists(BG_FILE):
+            os.remove(BG_FILE)   # kein Original gesichert: Standard ist dann die einfarbige Hintergrundfarbe
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)[:80]}), 500
+    return jsonify({"status": "success", "v": background_version()})
 
 SMETER_CAL_KEYS = {"sdr": ("sdr_floor_db", "sdr_full_db", -60.0, -20.0, "sdr_smooth", 0.5),
                    "owrx": ("owrx_floor_db", "owrx_full_db", -85.0, -30.0, "owrx_smooth", 0.3)}
