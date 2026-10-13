@@ -583,7 +583,37 @@
 <p>Bluetooth S-Meter MAC: 
             <input type="text" id="btMacInput" value="{{ config.bt_mac_address if config.bt_mac_address and config.bt_mac_address != '00:00:00:00:00:00' else '' }}" placeholder="AA:BB:CC:DD:EE:FF" style="width:160px; font-family:monospace; text-align:center;">
             <button onclick="reconnectHardwareBluetooth()" style="padding: 2px 8px; font-size: 0.8em; background: #004444; border-color: #00ff00;">CONNECT</button>
-        </p>        
+        </p>
+        <p>S-Meter source:
+            <select id="smSrc" onchange="smeterSwitch()" style="width:190px;">
+                <option value="esp32" {% if config.get('smeter_source','esp32') == 'esp32' %}selected{% endif %}>Hardware mod (ESP32)</option>
+                <option value="sdr" {% if config.get('smeter_source','esp32') == 'sdr' %}selected{% endif %}>SDR dongle (RTL-SDR)</option>
+                <option value="owrx" {% if config.get('smeter_source','esp32') == 'owrx' %}selected{% endif %}>OpenWebRX (local)</option>
+                <option value="off" {% if config.get('smeter_source','esp32') == 'off' %}selected{% endif %}>Off</option>
+            </select>
+        </p>
+        <div id="smSdrBox" style="display:none; border-left: 2px solid #044; padding-left: 8px; margin: 4px 0;">
+            <p id="smHint" style="font-size:0.8em; color:#888; margin:2px 0;"></p>
+            <p id="smGainRow">SDR gain (dB or auto):
+                <input type="text" id="smGain" value="{{ config.get('sdr_gain','30') }}" style="width:55px; text-align:center;" onchange="smeterApply()">
+            </p>
+            <p id="smAddrRow">OpenWebRX address:
+                <input type="text" id="smAddr" value="{{ config.get('owrx_addr','127.0.0.1:8073') }}" style="width:140px; text-align:center; font-family:monospace;" onchange="smeterApply()">
+            </p>
+            <p>Floor (0 %):
+                <input type="number" id="smFloor" step="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()"> dB
+                <button onclick="smeterSetFromNow('smFloor')" style="padding: 2px 8px; font-size: 0.8em;">= now</button>
+            </p>
+            <p>Full (100 %):
+                <input type="number" id="smFull" step="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()"> dB
+                <button onclick="smeterSetFromNow('smFull')" style="padding: 2px 8px; font-size: 0.8em;">= now</button>
+            </p>
+            <p>Smoothing (0.05-1):
+                <input type="number" id="smSmooth" step="0.05" min="0.05" max="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()">
+                <span style="font-size:0.8em; color:#888;">low = calm, 1 = off</span>
+            </p>
+            <p id="smStatus" style="font-size:0.85em; color:#0aa; font-family:monospace;">-</p>
+        </div>        
         
     </div>
 
@@ -1514,7 +1544,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-121026 BAR";
+                if (vInd) vInd.textContent = "V-131026 SMT";
             });
 
             socket.on('audio', (data) => { 
@@ -1562,7 +1592,7 @@
         }, 400); 
     }
 
-    // V-121026 BAR: leichtere Balken-Anzeige (Firefox Mobile ruckelte nur im Bars-Modus).
+    // V-131026 SMT: leichtere Balken-Anzeige (Firefox Mobile ruckelte nur im Bars-Modus).
     // Vorher: pro Frame bis zu 256x createLinearGradient (auch fuer Balken mit Hoehe 0) + 256x fillRect.
     // Jetzt: (1) Balken mit Hoehe 0 werden uebersprungen, (2) der Farbverlauf liegt einmal pro Farbe/Hoehe
     // als kleines Sprite vor und wird nur noch skaliert gezeichnet (Optik identisch), (3) im reinen Bars-Modus
@@ -2073,6 +2103,70 @@
             alert("The asynchronous states and modulation have been successfully calibrated!"); 
         });
     }
+
+    // --- S-Meter-Quelle (ESP32 / SDR-Dongle / OpenWebRX / aus) ---
+    // Floor/Full gelten je Quelle getrennt (die Skalen von rtl_sdr und OpenWebRX sind verschieden) und werden vom Server geladen.
+    let smLastDb = null;
+    function smShowBox(src) {
+        const box = document.getElementById('smSdrBox');
+        box.style.display = (src === 'sdr' || src === 'owrx') ? 'block' : 'none';
+        document.getElementById('smGainRow').style.display = (src === 'sdr') ? '' : 'none';
+        document.getElementById('smAddrRow').style.display = (src === 'owrx') ? '' : 'none';
+        document.getElementById('smHint').textContent = (src === 'owrx')
+            ? 'Uses the OpenWebRX running on this Raspberry (it must have an SDR profile covering the channel). Relative reading - calibrate with the two values below.'
+            : 'Receive-only second antenna on an RTL-SDR dongle (stop OpenWebRX first, the dongle can only be used once). Relative reading - calibrate with the two values below.';
+    }
+    function smeterLoad() {
+        const src = document.getElementById('smSrc').value;
+        smShowBox(src);
+        if (src !== 'sdr' && src !== 'owrx') return;
+        fetch('/api/smeter?src=' + src).then(r => r.json()).then(d => {
+            document.getElementById('smFloor').value = d.floor;
+            document.getElementById('smFull').value = d.full;
+            document.getElementById('smSmooth').value = d.smooth;
+            document.getElementById('smGain').value = d.gain;
+            document.getElementById('smAddr').value = d.addr;
+        }).catch(() => {});
+    }
+    function smeterSwitch() {      // Quelle gewechselt: nur die Quelle setzen, Felder der neuen Quelle laden
+        const src = document.getElementById('smSrc').value;
+        smShowBox(src);
+        fetch('/api/smeter/set?src=' + encodeURIComponent(src)).then(r => r.json()).then(d => {
+            if (d.status !== 'success') alert(d.message || 'Could not switch S-Meter source');
+            smeterLoad();
+        }).catch(() => {});
+    }
+    function smeterApply() {      // Werte der gewaehlten Quelle speichern
+        const src = document.getElementById('smSrc').value;
+        let q = 'src=' + encodeURIComponent(src);
+        if (src === 'sdr') q += '&gain=' + encodeURIComponent(document.getElementById('smGain').value.trim() || '30');
+        if (src === 'owrx') q += '&addr=' + encodeURIComponent(document.getElementById('smAddr').value.trim());
+        if (src === 'sdr' || src === 'owrx') {
+            q += '&smooth=' + encodeURIComponent(document.getElementById('smSmooth').value)
+              + '&floor=' + encodeURIComponent(document.getElementById('smFloor').value)
+              + '&full=' + encodeURIComponent(document.getElementById('smFull').value);
+        }
+        fetch('/api/smeter/set?' + q).then(r => r.json()).then(d => {
+            if (d.status !== 'success') { alert(d.message || 'Could not save S-Meter settings'); smeterLoad(); }
+        }).catch(() => {});
+    }
+    function smeterSetFromNow(id) {
+        if (smLastDb === null) { alert('No reading available yet.'); return; }
+        document.getElementById(id).value = Math.round(smLastDb);
+        smeterApply();
+    }
+    function smeterPoll() {
+        const box = document.getElementById('smSdrBox');
+        if (!box || box.style.display === 'none' || box.offsetParent === null) return;
+        const src = document.getElementById('smSrc').value;
+        fetch('/api/smeter?src=' + src).then(r => r.json()).then(d => {
+            smLastDb = (d.db === null || d.db === undefined) ? null : d.db;
+            const st = document.getElementById('smStatus');
+            if (st) st.textContent = (src === 'owrx' ? 'OpenWebRX: ' : 'SDR: ') + d.state + (smLastDb !== null ? '  |  ' + smLastDb.toFixed(1) + ' dB' : '');
+        }).catch(() => {});
+    }
+    setInterval(smeterPoll, 1500);
+    if (document.getElementById('smSrc')) smeterLoad();
 
     function reconnectHardwareBluetooth() {
         const macField = document.getElementById('btMacInput');
