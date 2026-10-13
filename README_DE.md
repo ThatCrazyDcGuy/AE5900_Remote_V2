@@ -38,8 +38,9 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 12. Physische PTT-Taste/Sondertaste am Telefon oder an der Tastatur verwenden.
 13. Ländercodes müssen im WebUI und am Gerät eingestellt werden.
 14. Hamlib/Rigctl kompatibel (flrig, fldigi, rigctl, grig, openwebrx, js8call & wsjt-cb).
-15. Wenn man sich traut das Gerät zu öffnen und zu löten ist nun ein extrenes S-METER per Bluetooth möglich.
-16. Web-Audio HTTP nur RX / HTTPS RX und TX
+15. RTL-Dongle oder Openwebrx S-Meter Implementierung
+16. Wenn man sich traut das Gerät zu öffnen und zu löten ist nun ein extrenes S-METER per Bluetooth möglich.
+17. Web-Audio HTTP nur RX / HTTPS RX und TX
 
 
 Hier werden verschiedene Funktionen demonstriert. Die Bedienung ist über mehrere Softwareprogramme und Geräte gleichzeitig möglich. Außerdem sind rigctl und hamlib sowie ein Bluetooth-S-Meter implementiert.
@@ -157,7 +158,12 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-121026 BAR
+Aktuell: 131026 SMT - TESTLAUF -
+
+- Zusätzliche Implementierung: RTL-SDR Dongle mit eigener Antenne als S-Meter nutzen (pakete rtl-sdr und pyrtlsdr erforderlich)
+- Zusätzliche Implementierung: Opemwebrx Server als S-Meter nutzen (ein eigerner, privater, nicht öffentlicher Openwebrx Server ist erforderlich)
+
+Vorherige Version: V-121026 BAR
 
 1. Bugfix - Firefox Mobile stocken beim Laden der Seite & IOS Freeze - Bitte testen
 2. Anpassung der Audio-Tasten
