@@ -41,6 +41,7 @@ Flexible solutions provide better access. And that's exactly what this project s
 15. RTL Dongle or OpenWebRX S-meter implementation
 17. If you decide to open and solder the device, extrenal S-METER can now be used via Bluetooth.
 18. Web Audio HTTP RX only / HTTPS RX and TX
+19. Change background image for individual style (just for fun)
 
 
 - Various features are demonstrated here. Operable via multiple software and devices simultaneously. Also rigctl and hamlib is implemented and a bluetooth s-meter.
