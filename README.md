@@ -159,10 +159,11 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: 131026 SMT - TEST RUN -
+Current: V-131026 SMT - TEST RUN - // Test done >> Current: V-131026 BGR uploaded
 
 - Additional implementation: Use RTL-SDR dongle with dedicated antenna as an S-meter (rtl-sdr and pyrtlsdr packages required)
 - Additional implementation: Use OpenWebRX server as an S-meter (a dedicated, private, non-public OpenWebRX server is required)
+- Added a background image uploader (just for fun)
 
 Previous version: V-121026 BAR
 
