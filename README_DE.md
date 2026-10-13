@@ -41,6 +41,7 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 15. RTL-Dongle oder Openwebrx S-Meter Implementierung
 16. Wenn man sich traut das Gerät zu öffnen und zu löten ist nun ein extrenes S-METER per Bluetooth möglich.
 17. Web-Audio HTTP nur RX / HTTPS RX und TX
+18. 19. Hintergrundbild für einen individuellen Stil ändern (einfach nur zum Spaß)
 
 
 Hier werden verschiedene Funktionen demonstriert. Die Bedienung ist über mehrere Softwareprogramme und Geräte gleichzeitig möglich. Außerdem sind rigctl und hamlib sowie ein Bluetooth-S-Meter implementiert.
