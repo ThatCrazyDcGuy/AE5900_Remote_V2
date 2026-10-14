@@ -218,3 +218,7 @@ Wo die Leute darüber sprechen:
 - [cbfunk.ch](https://cbfunk.ch/)
 - [cbfunker.online](https://cbfunker.online/)
 - [worldwidedx.com](https://www.worldwidedx.com/threads/web-control-of-cb-radio.271268/#post-872377)
+
+### Kontaktiere mich auf:
+
+[TELEGRAM](https://t.me/gz62cb)
