@@ -4,13 +4,33 @@ Switch lang. to EN: [🇬🇧 English](https://github.com/ThatCrazyDcGuy/AE5900_
 
 ## DEUTSCHE VERSION DER README:
 
-Ein LAN/Web Remote Rig Control System für das Albrecht AE-5900 Funkgerät, dass das AMM-500 Mikrofon simuliert. Das AE5900 wird so per Webbrowser in einem Webinterface bedienbar.
-=======================================================
+Ein LAN/Web Remote Rig Control System für das Albrecht AE-5900 Funkgerät, das das AMM-500 Mikrofon simuliert. Das AE5900 wird so per Webbrowser in einem Webinterface bedienbar.
 
 ### Das Vorwort:
 
 **WARNUNG!!!** Es besteht die Gefahr, dass die Nutzung je nach Landesbestimmung strafbar ist.
 Klärt das mit eurem Gewissen. Ich bin nicht eure Mutti!
+
+### Schnellstart in fünf Schritten
+
+1. Das Zusatzgerät bauen (Teileliste und Bilder weiter unten) und zwischen Raspberry Pi und Mikrofonbuchse des AE5900 hängen.
+2. Auf dem Raspberry Pi diese Zeilen in die Konsole kopieren:
+
+```bash
+git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
+cd ~/AE5900_Remote_V2/
+sudo chmod +x install.sh
+./install.sh
+reboot
+```
+
+3. Im Browser `http://IP-DES-RASPBERRY:5000` öffnen (oder `https://IP-DES-RASPBERRY:5443`, wenn auch gesendet werden soll).
+4. Ganz unten auf "SETUP & SYNC" tippen und den Sync ausführen.
+5. Die Labels der Tasten P1 bis P4 so eintragen, wie sie am AE5900 eingestellt sind (Mic Type 2).
+
+Aktualisieren später immer mit `git pull` und das Programm neu starten. Eigene Einstellungen und das eigene Hintergrundbild bleiben dabei erhalten.
+
+> **Wichtig:** Das AE5900 immer nur von **einem Gerät gleichzeitig** über die Weboberfläche bedienen. Hamlib/Rigctl-Programme (z. B. OpenWebRX, fldigi) neben einem Browser sind in Ordnung. Mehrere Browser oder Handys gleichzeitig sind es nicht, weil dann der PTT-Killswitch bei Verbindungsverlust nicht mehr zuverlässig greift.
 
 ### Hauptziel des Projekts:
 
@@ -23,32 +43,31 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 - Ein Screenshot vom aktuellen UI, im Browser, auf dem Smartphone
 
 ![AE5900_Remote_v2](/pictures/webui_last.jpg)
-  
-1. Visuelles Audiofeedback
+
+1. Visuelles Audiofeedback (Balken, Wasserfall oder beides)
 2. Lautstärke des Mikrofons regelbar
 3. Optimierte Scan-Funktion mit regelbarer Geschwindigkeit
 4. Clarifier
 5. Lock
 6. Mute
 7. Vox
-8. MW (multi chanel scan)
+8. MW (Multi-Channel-Scan)
 9. Squelch // Autosquelch
 10. Der PTT-Kill-Schalter wird 30 Sekunden nach Verbindungsverlust aktiviert.
-11. Eigene Rogerbeeps erstellen. Einfach zu den Bestätigungstönen im Ordner hinzufügen.
+11. Eigene Rogerbeeps erstellen. Einfach zu den Bestätigungstönen im Ordner beeps hinzufügen.
 12. Physische PTT-Taste/Sondertaste am Telefon oder an der Tastatur verwenden.
 13. Ländercodes müssen im WebUI und am Gerät eingestellt werden.
 14. Hamlib/Rigctl kompatibel (flrig, fldigi, rigctl, grig, openwebrx, js8call & wsjt-cb).
-15. RTL-Dongle oder Openwebrx S-Meter Implementierung
-16. Wenn man sich traut das Gerät zu öffnen und zu löten ist nun ein extrenes S-METER per Bluetooth möglich.
+15. S-Meter aus einem RTL-SDR-Dongle oder vom eigenen OpenWebRX-Server
+16. Wer sich traut, das Gerät zu öffnen und zu löten: externes S-METER per Bluetooth (ESP32).
 17. Web-Audio HTTP nur RX / HTTPS RX und TX
 18. Hintergrundbild für einen individuellen Stil ändern (einfach nur zum Spaß)
 
-
-Hier werden verschiedene Funktionen demonstriert. Die Bedienung ist über mehrere Softwareprogramme und Geräte gleichzeitig möglich. Außerdem sind rigctl und hamlib sowie ein Bluetooth-S-Meter implementiert.
+Hier werden verschiedene Funktionen demonstriert. Rigctl und Hamlib sowie ein Bluetooth-S-Meter sind implementiert.
 
 [![AE5900 Webinterface V2 ](https://img.youtube.com/vi/0-UP0ARVENU/0.jpg)](https://www.youtube.com/watch?v=0-UP0ARVENU)
 
-- Ein Foto vom neusten Prototyp ohne Klinkenstecker. Audio und Sterung über RJ45.
+- Ein Foto vom neusten Prototyp ohne Klinkenstecker. Audio und Steuerung über RJ45.
 
 ![AE5900_Remote_v2](/pictures/v218mar2.jpeg)
 
@@ -58,282 +77,116 @@ Hier werden verschiedene Funktionen demonstriert. Die Bedienung ist über mehrer
 2. Die Fähigkeit zu verstehen
 3. Die Fähigkeit umzusetzen
 4. Lötkolbenerfahrung
-5. Raspberry PI 3
+5. Raspberry Pi 3
 6. Etwas Kleingeld für die Teile
 
 ### Die Hardware-Bastelei
 
-Mit Bildern und allem was man wissen muss.
+Mit Bildern und allem, was man wissen muss.
 
-- Vorab mal die Komponenten für den Audiofilter und was man so zum Basteln nutzen kann. Das meisste davon hatte ich in meiner Bastelkiste.
+- Vorab die Komponenten für den Audiofilter und was man so zum Basteln nutzen kann. Das meiste davon hatte ich in meiner Bastelkiste.
 
 Für die Audiofilter nutzen wir hier nun:
 
-1. 1x 600:600 Ohm Transformatoren
+1. 1x 600:600 Ohm Transformator
 2. 1x 100 Ohm Widerstand
-3. 1x 10 KOhm Widerstand
-4. 1x Keramikkondensator 10nF (103) (mindestens einer um die HF zu filtern)
-5. 1x Elco Kondensator 10µF (c.a 16 - 50v)
+3. 1x 10 kOhm Widerstand
+4. 1x Keramikkondensator 10nF (103) (mindestens einer, um die HF zu filtern)
+5. 1x Elko 10µF (ca. 16 - 50 V)
 
 Restliche Komponenten:
 
-1. USB Breakoutboard oder einen HUB
-2. FT232RL FT232 FTDI USB 3,3 V 5,5 V zu TTL Seriell Adapter
-3. USB Soundkarte
-4. Rj45 Terminal
+1. USB-Breakoutboard oder einen Hub
+2. FT232RL FT232 FTDI USB 3,3 V / 5,5 V zu TTL Seriell Adapter
+3. USB-Soundkarte
+4. RJ45-Terminal
 5. Ein Gehäuse aus Metall
 
 ![AE5900_Remote_v2](/pictures/allpartsv2.jpg)
 
-- Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen aber so verstehts vielleicht jeder Hobbybastler und Lötkolbenbesitzer.
+- Ich habe euch ein schönes Bild gemalt. Sieht zwar aus wie von einem Dreijährigen, aber so versteht's vielleicht jeder Hobbybastler und Lötkolbenbesitzer.
 
 ![AE5900_Remote_v2](/pictures/overview_v3.png)
 
-Man kann die USB Geräte natürlich auch einfach in einen USB Hub stecken, aber wo bleibt da der Spass am "so klein wie möglich" bauen?
+Man kann die USB-Geräte natürlich auch einfach in einen USB-Hub stecken, aber wo bleibt da der Spaß am "so klein wie möglich" bauen?
 Die beiden Filter muss man aber dennoch löten.
 
-#### Wie ist das eigentlich möglich
+#### Wie ist das eigentlich möglich?
 
-Das AMM-500 sendet seriell HEX codes an das AE-5900 und das AE-5900 antwrotet entsprechend. Damit ist so eniges möglich.
+Das AMM-500 sendet seriell HEX-Codes an das AE-5900 und das AE-5900 antwortet entsprechend. Damit ist so einiges möglich.
 Um die Bastelei zu verwirklichen, musste ich zwischen den beiden Geräten mitlesen.
 Prinzip: Man in the middle.
 
-Da das AE-5900 selbst erst nach einem Handshake mit dem AMM-500 seine Codes freigibt, musste dies erst käuflich erworben und sehnlichst erwartet werden.
+Da das AE-5900 selbst erst nach einem Handshake mit dem AMM-500 seine Codes freigibt, musste dieses erst gekauft und sehnlichst erwartet werden.
 
 #### Benötigte Software // Installation
 
-Mit diesem Block wird das Raspberry zuerst mit dem Script und den System-Updates gefüttert.
-Danach wird alles notwendige wie Python, Mumble, Audio, Tailscale installiert.
+Mit dem Block im Schnellstart wird der Raspberry Pi zuerst mit dem Script und den System-Updates gefüttert.
+Danach wird alles Notwendige wie Python, Audio, Tailscale (und auf Wunsch Mumble) installiert.
 
-Kopiert einfach den gesamten Block in die Konsole.
-
-```bash
-git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
-cd ~/AE5900_Remote_V2/
-sudo chmod +x install.sh
-./install.sh
-#Wer tailscale nutzen möchte:
-#Kopiere den erstellten TailscaleLink in deinen Browser und folge der Anleitung
-reboot
-```
+Wer Tailscale nutzen möchte: Den erzeugten Tailscale-Link in den Browser kopieren und der Anleitung folgen, dann neu starten.
 
 ### So funktioniert es:
 
-1. Schließe das gebastelte Gerät an einen Raspberry Pi oder einen anderen Host-Rechner, auf dem das Python-Skript ausgeführt werden kann an. Dieses Gerät dient dann als Server.
+1. Schließe das gebastelte Gerät an einen Raspberry Pi oder einen anderen Host-Rechner an, auf dem das Python-Skript ausgeführt werden kann. Dieses Gerät dient dann als Server.
 2. Adapter mit dem Mikrofonport verbinden.
 3. Um den Lautsprecher stummzuschalten, muss ein Klinkenstecker als Blindstecker in den PA/EXT-Ausgang eingesteckt werden.
-4. Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 75% am Lautstärkeregler hoch.
+4. Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 75 % am Lautstärkeregler hoch.
 5. Sorge für eine ordnungsgemäße Erdung, um HF-Störungen zu vermeiden.
 6. Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
-7. Stelle an deinem AE5900 Mikrofon TYPE 2 ein, setze deine P1 - P4 Key-Shortcuts.
-8. Führe `python3 ae_5900_v2.py` auf dem Hostrechner/Server aus.
+7. Stelle an deinem AE5900 Mikrofon TYPE 2 ein und setze deine P1 - P4 Key-Shortcuts.
+8. Führe `python3 ae_5900_v2.py` auf dem Hostrechner/Server aus (der Installer startet es beim Booten bereits automatisch).
 9. Öffne auf dem Endgerät `http://HOSTNAMEIP:5000` oder `https://HOSTNAMEIP:5443` in deinem Browser. Du solltest nun bereits Kontrolle über dein AE5900 haben.
 10. Öffne ganz unten im WebUI das Setup und führe den Sync aus.
 11. Setze die entsprechenden Labels für die P1 bis P4 Tasten so, wie du sie am AE5900 gesetzt hast.
-12. Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen. Typische Anpassungen wären hier: Menupunkt "Konfiguration" Standard Soundkarte deine im Netzwerk angebundene Soundkarte.
+12. Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen. Typische Anpassung: Menüpunkt "Konfiguration", Standard-Soundkarte deine im Netzwerk angebundene Soundkarte.
 
-Das Script ist für alle Regionen inkl. VFO Mode ausgelegt.
+Das Script ist für alle Regionen inkl. VFO-Mode ausgelegt.
 
-Das ist eigentlich alles und wer nicht komplett ahnungslos ist, bekommt das schon hin.
+Das ist eigentlich alles, und wer nicht komplett ahnungslos ist, bekommt das schon hin.
 
-### Audio Setup, besonders für jene die Mumble anstatt WebAudio nutzen möchten:
+### Audio Setup, besonders für jene, die Mumble anstatt WebAudio nutzen möchten:
 
-![AE5900_Remote_v2](AUDIOSETUP_DE.md)
+[Audio-Setup (AUDIOSETUP_DE.md)](AUDIOSETUP_DE.md)
 
-### HAMLIB / Openwebrx Steuerungs Setup:
+### HAMLIB / OpenWebRX Steuerungs-Setup:
 
-![AE5900_Remote_v2](HAMLIBOWRX_DE.md)
+[Hamlib / Rigctl / OpenWebRX (HAMLIBOWRX_DE.md)](HAMLIBOWRX_DE.md)
 
-### Bluetooth S-Meter Lötanleitung und Setup:
+### S-Meter (drei Quellen):
 
-![AE5900_Remote_v2](BTSMETER_DE.md)
+Die Quelle wird im "Setup & Sync" unter "S-Meter source" gewählt: ESP32-Hardware-Mod, RTL-SDR-Dongle oder der eigene OpenWebRX-Server.
 
-### Es empfiehlt sich zu Hause einen WebSDR zu betreiben umd die Installation ggf. überrüfen (Kanal/Modulation) zu können.
+[S-Meter einrichten (SMETER_DE.md)](SMETER_DE.md)
+
+### Bluetooth-S-Meter Lötanleitung und Setup:
+
+[Bluetooth-S-Meter (BTSMETER_DE.md)](BTSMETER_DE.md)
+
+### Es empfiehlt sich, zu Hause einen WebSDR zu betreiben, um die Installation ggf. zu überprüfen (Kanal/Modulation).
 Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RTL-SDR-Dongle (z. B. RTL-SDR Blog V3 oder V4 / Nooelec NESDR V5) und einer Antenne aufbauen.
 
 ### Was noch fehlt // Was noch nicht funktioniert
 
-1. Es fehlt immer irgendetwas. Was nicht ist, das kommt noch.
+1. Es fehlt immer irgendetwas. Was nicht da ist, das kommt noch.
 
-2. ....
+### Versionsinformationen & Änderungsübersicht
 
-### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
+Aktuell: **V-141026 BGD**. Aktualisieren immer mit `git pull`.
 
-Aktuell: V-141026 MOD
+- Hintergrundbild: Das Repository enthält `static/bgr_default.jpg`. Dein eigenes Bild (CHANGE im Setup & Sync) liegt als `static/bgr.jpg` und kollidiert nie mit `git pull`.
+- Moduswechsel über Hamlib/Rigctl beachten jetzt Skip PA / Skip CW.
+- S-Meter aus einem RTL-SDR-Dongle oder vom eigenen OpenWebRX-Server.
 
-1. Korrektur des Hamlib/Rigctl Code bei Verwendung von Openwebrx als Client und S-SMETER
-
-Vorherige Version: V-131026 SMT – TESTLAUF – // Test abgeschlossen >> Aktuell: V-131026 BGR hochgeladen
-
-1. Zusätzliche Implementierung: Verwendung eines RTL-SDR-Dongles mit dedizierter Antenne als S-Meter (Pakete rtl-sdr und pyrtlsdr erforderlich)
-2. Zusätzliche Implementierung: Verwendung eines OpenWebRX-Servers als S-Meter (ein dedizierter, privater, nicht öffentlicher OpenWebRX-Server ist erforderlich)
-3. Upload-Funktion für Hintergrundbilder hinzugefügt (just for fun)
-
-Vorherige Version: V-121026 BAR
-
-1. Bugfix - Firefox Mobile stocken beim Laden der Seite & IOS Freeze - Bitte testen
-2. Anpassung der Audio-Tasten
-
-Vorherige Version: V-061026 CLS
-
-1. Fehlerbehebung beim Clarifier
-
-Vorherige Version: V-051026 NDG – WebAudio-Update – BITTE TESTEN
-
-1. WebAudio für weniger Verzögerungen (Lags) in mobilen Browsern neu konfiguriert
-2. Kleine Fehlerbehebungen bei Puffer und Timing
-3. Versuch, ein AudioWorklet/Ringpuffer-System zu implementieren (ähnlich wie bei OpenWebRX)
-
-Bitte gib bei Rückmeldungen folgende Informationen an:
-1. Soundkarte (oder die Ausgabe von: `pactl list short sources`)
-2. Die Zeile „[AUDIO-ROUTING] Karte: ...“ aus dem Log
-3. Browser und Version sowie die Info, ob der Ton in den ersten Sekunden ruckelt
-4. Die Zeilen „Live:“ und „net:“ aus „Setup & Sync“ (Screenshot ist auch in Ordnung)
-5. Hintergrundbetrieb / ausgeschalteter Bildschirm: Läuft der Ton weiter?
-
-Vorherige Version: V-041026 RMF *MEILENSTEIN UPDATE*
-
-1. Neue Audio-Engine: ruhiger, weniger Verzögerung, korrigiert sich selbst. Rate und Puffer sind im Setup & Sync einstellbar.
-2. Neue Soundkarten-Erkennung: funktioniert jetzt mit den meisten USB-Soundkarten, nicht nur mit C-Media.
-3. S-SCAN / MW wartet nach Signalende 3 Sekunden, bevor es weitersucht. Das Tempo von SCROLL ist einstellbar.
-4. Tasten- und Boxsteuerung (optional, standardmäßig aus): U/D = Kanal, M = Mode, A = ASQ, S = Scan (lang = Scroll), F7/F8 = Senden an/aus.
-5. Weniger Datenverkehr beim Wasserfall.
-6. Neuer Installer (install.sh): startet automatisch beim Booten, Mumble ist jetzt optional.
-
-Zusatz: Bitte ae_5900_v2.py, index.html und install.sh aktualisieren und das Programm neu starten. Neue Stellschrauben findet ihr im Setup & Sync.
-
-Vorherige Version: V-300926 SWX
-
-1. RX Audio - rebuild. Läuft auch im Hintergrund weiter.
-2. S-SCAN / MW um SCROLL-Funktion erweitert. (Kanaldurchlauf bei offenem Squelch) Dazu lange auf die S-SCAN oder MW Taste drücken.
-
-Zusatz: Bitte schaut euch im Setup & Sync um. Da sind neue Stellschrauben auch für den Wasserfall.
-
-Vorherige Version: V-290926 AFX
-
-1. Audio Lautstärke Fix
-Laute Peaks beim Verbinden wurden entfernt 
-
-Zusatz: Bitte schaut euch im Setup & Sync um. Da sind neue Stellschrauben auch für den Wasserfall.
-
-Vorherige Version: V-271026 WBA
-
-1. Wasserfall angepasst
-2. Fehler beseitigt
-3. WebAudio integriert über https/port 5443. Die Schalter für das Webaudio befinden sich im Setup & Sync Bereeich.
-
-Zusatz: Bitte schaut euch im Setup & Sync um. Da sind neue Stellschrauben auch für den Wasserfall.
-
-Vorherige Version: V-251026 WFB
-
-TESTING! Ich muss selber erst sehen, ob mir das gefällt.
-
-1. Schüttel-Fehler in der Desktopansicht korrigiert.
-2. Die Audio-Balken sind jetzt feiner dargestellt.
-3. Im Setup & Sync kann man zwischen Audiobalken, so etwas ähnlichem wie einem Wasserfall oder beidem wählen.
-
-Vorherige Version: V-241026 BGF
-
-Nach längerer, notwendiger Pause, hier zumindest einige Bugfixes.
-
-1. S-Scan optimiert
-2. Fehler in den CLAR +/- UP/DOWN behoben
-3. A/SQ Res. gibt jetzt wieder ein visuelles Feedback.
-4. Im PA stehen nun UP/DOWN zur Verfügung. Damit lässt sich blind die Lautstärke der physichen Gerätes korrigieren, falls zu leise oder zu laut.
-
-Vorherige Version: V-200726 BTVO
-
-1. S-Meter über BT-Option
-2. Stabilerer VFO
-3. CH50-Bugfix
-
-Vorherige Version: V-090726 i3/a6 B-VFO
-
-1. VFO-Modus hinzugefügt.
-2. Video-Tutorials hinzugefügt.
-3. Diverse Fehlerbehebungen in der Benutzeroberfläche.
-
-Vorherige Version: V-050726 i1/a9 RIGC
-
-1. hamctl/rigctl-Funktionen hinzugefügt.
-Abhängigkeiten installieren (sudo apt install libhamlib-utils)
-
-2. Openwebrx TX-Button ist in openwebrx_ptt_code.txt verfügbar // zum Kopieren/Einfügen bereit.
-3. install.sh angepasst.
-
-Vorherige Version: V-300626 i4/a1 DSPx
-
-1. Automatische Anpassung der Anzeigegröße zwischen Smartphone und Computer.
-
-Vorherige Version: V-280626 i1/a1 BF
-
-1. Fehlerbehebungen der V-240626
-
-Vorherige Version: V-240626 i1/a4 JS8
-
-1. Neuimplementierung der JS8call-Steuerung.
-
-Als Trigger in JS8call in Radio/Rigoptions (schaltet automatisch ein/aus) verwende:
-
-```bash
-curl -s http://127.0.0.1:5000/api/cmd/TX?state=%1
-````
-In anderen Digitalmodi verwende für TX:
-
-```bash
-curl -s http://127.0.0.1:5000/api/cmd/TX?state=%1
-````
-Für RX:
-
-```bash
-curl -s http://127.0.0.1:5000/api/cmd/TX?state=%0
-
-````
-2. VOX Bugfixes
-
-Vorherige Version: V-210626 i6/a9 BPLC
-
-1. Alle Ländercodes hinzugefügt. Grüße an meine Tester in Polen und Großbritannien.
-2. Erneut einige Fehlerbehebungen für FW 1.12-Nutzer.
-
-Vorherige Version: V-190626 i2/a5 CQRP
-
-1. Neue Terminaltasten können unter „Einstellungen & Synchronisierung“ ausgewählt und bearbeitet werden.
-2. Mit den Tasten können QSOs aufgezeichnet und wiedergegeben sowie CQ-Rufzeichen aufgezeichnet und wiederholt werden. Diese Funktion kann unter „Einstellungen & Synchronisierung“ aktiviert werden.
-3. Fehlerbehbungen
-
-Vorherige Version: V-170626 i4/a1 FLK
-
-1. Einige Bugfixes in der Benutzeroberfläche
-2. A/SQ-Ebene zur Anzeige hinzugefügt. Bitte verwende zunächst A/SQ Res. (dauert etwa 25 Sekunden) und verwende dann die Tasten A/SQ +/-.
-3. Unschöne Tastenbewegung behoben.
-
-Vorherige Version: V-150626 i4/a5 BTN
-
-1. Fehlerbehebungen für Schaltflächen. Bei Fehlern bitte 140626ae_5900_v2.py verwenden.
-
-Vorherige Version: V-120626 i1/a1 LN-RB
-
-1. Roger-Piepton-Schalter hinzugefügt
-
-Vorherige Version: V-110626 i9/a9 LNG
-
-1. Die Sprache des Handbuchs unter „Einrichtung & Synchronisierung“ ändert sich entsprechend der Browsersprache.
-
-Vorherige Version: V-110626 i8/a9 VX-RB-SM-MW
-
-1. VOX-Funktion korrigiert
-2. Rogebeep-Funktion implementiert
-3. Simulationsmodus für Tests ohne Box hinzugefügt
-4. MultiWatch-Fehler behoben
+Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
 ### Extras und Testläufe
 
 1. JS8Call funktioniert damit recht gut. Man muss natürlich etwas an den Settings rumspielen und VOX aktivieren.
-Es sollte allerdings eine Kleinigkeit sein, hier noch eine PTT Funktion für entsprechende Software zu bauen.
+Es sollte allerdings eine Kleinigkeit sein, hier noch eine PTT-Funktion für entsprechende Software zu bauen.
 
-2. User Feedback vom 30. April 2026: Linux Mint um die Version 21.3 und drunter, versteht die Python- Vol- und Vol+ nicht.
-Nur falls jemand au so einem System testet. Ein mintupgrade hilft das Problem zu lösen.
+2. User-Feedback vom 30. April 2026: Linux Mint um die Version 21.3 und darunter versteht die Python-Vol- und Vol+ nicht.
+Nur falls jemand auf so einem System testet. Ein Mint-Upgrade hilft, das Problem zu lösen.
 
 ### Was du sonst noch erwarten kannst:
 
@@ -343,14 +196,14 @@ Aber ich werde einige Skripte, Bilder und Ideen hochladen, um sie mit anderen zu
 
 Ich bin kein Programmierer, aber ich kann Texte lesen, verstehen, umsetzen und in meine Projekte einbauen.
 
-Ich übernehme keine Verantwortung für eure Basteleien. Bei meinem lieben Betatester und bei mir funktionieren Soft - so wie Hardware einwandfrei.
-Das Audio bekam in QSO's durchweg gutes Feedback.
+Ich übernehme keine Verantwortung für eure Basteleien. Bei meinem lieben Betatester und bei mir funktionieren Software wie Hardware einwandfrei.
+Das Audio bekam in QSOs durchweg gutes Feedback.
 
 ### Danke, Leute:
 
 Ein besonderer Dank geht an alle verweisenden Seiten, die ich in letzter Zeit entdeckt habe:
 
-- [blog.adafruit.com](https://blog.adafruit.com/2026/06/28/a-remote-web-rig-control-system-for-the-albrecht-ae-5900-radio-hamsunday/?__cf_chl_f_tk=ZeEFXVEeo3pQ0MyeQUiZ6NV9VGvb3nG0cls587OkBxI-1782807606-1.0.1.1-vs2hueUsJCEhc7sezrSgWTLAEHHWuS3q5fcnDK67Xqo)
+- [blog.adafruit.com](https://blog.adafruit.com/2026/06/28/a-remote-web-rig-control-system-for-the-albrecht-ae-5900-radio-hamsunday/)
 - [korben.info](https://korben.info/il-a-transforme-sa-radio-cb-en-station-pilotable-depuis-un-navigateur-web.html)
 - [hackaday.com](https://hackaday.com/2026/06/03/web-based-control-for-a-cb-radio/)
 - [daily.dev](https://daily.dev/posts/web-based-control-for-a-cb-radio-hvgarjfyn)
@@ -365,4 +218,3 @@ Wo die Leute darüber sprechen:
 - [cbfunk.ch](https://cbfunk.ch/)
 - [cbfunker.online](https://cbfunker.online/)
 - [worldwidedx.com](https://www.worldwidedx.com/threads/web-control-of-cb-radio.271268/#post-872377)
-

@@ -1,4 +1,8 @@
-#### Hamlib / Rigctl / Openwebrx setup
+#### Hamlib / Rigctl / OpenWebRX Setup
+
+Zurück zur [README_DE](README_DE.md) · English: [HAMLIBOWRX.md](HAMLIBOWRX.md)
+
+Das Programm bietet einen rigctl-kompatiblen Server auf **Port 4532** des Raspberry Pi an (`rigctl -m 2 -r IP-DES-RASPBERRY:4532`). Damit sprechen flrig, fldigi, grig, JS8Call, WSJT-CB und OpenWebRX. Moduswechsel von dort beachten die Einstellungen Skip PA / Skip CW im Setup & Sync.
 
 - Tutorial AE5900_REMOTE_V2: VFO am Gerät und in der WebUI aktivieren.
 
@@ -8,11 +12,11 @@
 
 [![AE5900 Webinterface V2 ](https://img.youtube.com/vi/0zt2-Wdh3UA/0.jpg)](https://www.youtube.com/watch?v=0zt2-Wdh3UA)
 
-- PTT-Code in den OpenWebRX-Einstellungen unter „Allgemein“ im Feld „Bildbeschreibung bearbeiten“ (Hostname/IP-Adresse) hinzufügen.
+**1. PTT-Taste in OpenWebRX**
 
-- settings/general in Photo description bearbeiten (Hostname/IP-Adresse) und Folgendes hinzufügen:
+In den OpenWebRX-Einstellungen unter *settings/general* das Feld *Photo description* bearbeiten und den folgenden Code einfügen. Trage bei `ALBRECHT_HOST` den Hostnamen oder die IP-Adresse deines Raspberry Pi ein:
 
-```bash
+```html
 <script type="text/javascript">
 // === CONFIGURATION ===
 // Enter the hostname or IP address of your Albrecht Pi below, after ALBRECHT_HOST = (e.g. 'ae5900ctrl' or '192.168.122.50')
@@ -60,7 +64,7 @@ if (!document.getElementById('owrx-cat-ptt')) {
                 }
             })
             .catch(function(err) {
-                console.error('Albrecht API nicht erreichbar:', err);
+                console.error('Albrecht API not reachable:', err);
                 window.owrxPttState = !window.owrxPttState; // Reset on err
                 pttBtn.innerHTML = 'API ERR';
             });
@@ -72,13 +76,22 @@ if (!document.getElementById('owrx-cat-ptt')) {
     }
 }
 </script>
-````
+```
+
 ![AE5900_Remote_v2](/pictures/owrx1.png)
 
-- settings/reporting in RigControl settings hinzufügen:
+**2. Rig-Steuerung in OpenWebRX**
+
+In *settings/reporting* die RigControl-Einstellungen eintragen:
 
 ![AE5900_Remote_v2](/pictures/owrx2.png)
 
-- settings/sdr in Profile settings hinzufügen:
+**3. Profil**
+
+In *settings/sdr* die Profil-Einstellungen eintragen:
 
 ![AE5900_Remote_v2](/pictures/owrx3.png)
+
+**4. Optional: OpenWebRX als S-Meter**
+
+Dein OpenWebRX kann dem AE5900 auch als S-Meter dienen. Siehe [SMETER_DE.md](SMETER_DE.md).

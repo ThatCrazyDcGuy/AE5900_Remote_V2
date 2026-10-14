@@ -1,4 +1,8 @@
-#### Hamlib / Rigctl / OpenWebRX setup
+#### Hamlib / Rigctl / OpenWebRX Setup
+
+Back to the [README](README.md) · Deutsch: [HAMLIBOWRX_DE.md](HAMLIBOWRX_DE.md)
+
+The program offers a rigctl-compatible server on **port 4532** of the Raspberry Pi (`rigctl -m 2 -r IP-OF-YOUR-PI:4532`). flrig, fldigi, grig, JS8Call, WSJT-CB and OpenWebRX talk to it. Mode changes from those programs respect the Skip PA / Skip CW settings in Setup & Sync.
 
 - Tutorial AE5900_REMOTE_V2: Activate the VFO on the device and in the WebUI.
 
@@ -8,11 +12,11 @@
 
 [![AE5900 Web Interface V2](https://img.youtube.com/vi/0zt2-Wdh3UA/0.jpg)](https://www.youtube.com/watch?v=0zt2-Wdh3UA)
 
-- Add the PTT code in the OpenWebRX settings under "General" in the "Edit photo description" field (hostname/IP address).
+**1. PTT button in OpenWebRX**
 
-- Edit the "Photo description" under settings/general (hostname/IP address) and add the following:
+In the OpenWebRX settings under *settings/general*, edit the *Photo description* field and paste the code below. Enter the hostname or IP address of your Raspberry Pi at `ALBRECHT_HOST`:
 
-```bash
+```html
 <script type="text/javascript">
 // === CONFIGURATION ===
 // Enter the hostname or IP address of your Albrecht Pi below, after ALBRECHT_HOST = (e.g. 'ae5900ctrl' or '192.168.122.50')
@@ -60,7 +64,7 @@ if (!document.getElementById('owrx-cat-ptt')) {
                 }
             })
             .catch(function(err) {
-                console.error('Albrecht API nicht erreichbar:', err);
+                console.error('Albrecht API not reachable:', err);
                 window.owrxPttState = !window.owrxPttState; // Reset on err
                 pttBtn.innerHTML = 'API ERR';
             });
@@ -72,13 +76,22 @@ if (!document.getElementById('owrx-cat-ptt')) {
     }
 }
 </script>
-````
+```
+
 ![AE5900_Remote_v2](/pictures/owrx1.png)
 
-- Add settings/reporting in RigControl settings:
+**2. Rig control in OpenWebRX**
+
+Enter the RigControl settings under *settings/reporting*:
 
 ![AE5900_Remote_v2](/pictures/owrx2.png)
 
-- Add settings/sdr in Profile settings:
+**3. Profile**
+
+Enter the profile settings under *settings/sdr*:
 
 ![AE5900_Remote_v2](/pictures/owrx3.png)
+
+**4. Optional: OpenWebRX as S-meter**
+
+Your OpenWebRX can also serve as the S-meter of the AE5900. See [SMETER.md](SMETER.md).
