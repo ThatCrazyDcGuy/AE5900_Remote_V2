@@ -1550,7 +1550,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-131026 BGR";
+                if (vInd) vInd.textContent = "V-141026 MOD";
             });
 
             socket.on('audio', (data) => { 
@@ -1598,7 +1598,7 @@
         }, 400); 
     }
 
-    // V-131026 BGR: leichtere Balken-Anzeige (Firefox Mobile ruckelte nur im Bars-Modus).
+    // V-141026 MOD: leichtere Balken-Anzeige (Firefox Mobile ruckelte nur im Bars-Modus).
     // Vorher: pro Frame bis zu 256x createLinearGradient (auch fuer Balken mit Hoehe 0) + 256x fillRect.
     // Jetzt: (1) Balken mit Hoehe 0 werden uebersprungen, (2) der Farbverlauf liegt einmal pro Farbe/Hoehe
     // als kleines Sprite vor und wird nur noch skaliert gezeichnet (Optik identisch), (3) im reinen Bars-Modus
