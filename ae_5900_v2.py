@@ -1200,7 +1200,7 @@ def index():
                            config=radio.config, 
                            beeps_list=radio.beeps_list, 
                            lang=erkannte_sprache,
-                           bg_version=background_version())
+                           bg_url=background_url())
 
 # FFT_BINS wird jetzt oben aus der konfigurierten Abtastrate abgeleitet (compute_audio_params) - bei 22050 Hz weiterhin 128.
 
@@ -3255,22 +3255,27 @@ def owrx_smeter_worker():
 threading.Thread(target=owrx_smeter_worker, daemon=True).start()
 
 # =========================================================================
-# HINTERGRUNDBILD (serverweit: static/bgr.jpg, gilt auf allen Geraeten des Nutzers)
-# Der Browser verkleinert das Bild vor dem Upload (max. ~1600 px) und sendet ein JPEG als rohen Request-Body.
-# Der Server nimmt nur echte JPEG-Dateien an, begrenzt die Groesse und schreibt atomar (alter Hintergrund bleibt bei
-# Abbruch erhalten). Das erste ersetzte Bild wird als static/bgr_default.jpg gesichert (fuer "Reset").
+# HINTERGRUNDBILD (serverweit, gilt auf allen Geraeten des Nutzers)
+#   static/bgr_default.jpg  = mitgeliefertes Standardbild (im Repository, wird nie ueberschrieben)
+#   static/bgr.jpg          = persoenliches Bild des Nutzers (steht in der .gitignore -> keine Konflikte bei 'git pull')
+# Angezeigt wird bgr.jpg, falls vorhanden, sonst bgr_default.jpg. Der Browser verkleinert das Bild vor dem Upload
+# (max. ~1600 px) und sendet ein JPEG als rohen Request-Body. Der Server nimmt nur echte JPEG-Dateien an, begrenzt die
+# Groesse und schreibt atomar (das bisherige Bild bleibt bei Abbruch erhalten).
 # =========================================================================
 BG_DIR = os.path.join(SCRIPT_DIR, "static")
 BG_FILE = os.path.join(BG_DIR, "bgr.jpg")
 BG_DEFAULT = os.path.join(BG_DIR, "bgr_default.jpg")
 BG_MAX_BYTES = 4 * 1024 * 1024
 
-def background_version():
-    """Aenderungszeit des Hintergrundbilds - als ?v= an die Bildadresse, damit ein neues Bild sofort erscheint."""
-    try:
-        return int(os.path.getmtime(BG_FILE))
-    except Exception:
-        return 0
+def background_url():
+    """Adresse des aktuellen Hintergrundbilds samt Aenderungszeit (?v=), damit ein neues Bild sofort erscheint; '' = keins."""
+    for path, web in ((BG_FILE, "/static/bgr.jpg"), (BG_DEFAULT, "/static/bgr_default.jpg")):
+        try:
+            if os.path.exists(path):
+                return "%s?v=%d" % (web, int(os.path.getmtime(path)))
+        except Exception:
+            pass
+    return ""
 
 @app.route('/api/background', methods=['POST'])
 def api_background_upload():
@@ -3284,6 +3289,7 @@ def api_background_upload():
         return jsonify({"status": "error", "message": "Not a JPEG image"}), 400
     try:
         os.makedirs(BG_DIR, exist_ok=True)
+        # Aeltere Installationen: das mitgelieferte Bild lag als bgr.jpg vor - vor dem ersten Ueberschreiben sichern
         if os.path.exists(BG_FILE) and not os.path.exists(BG_DEFAULT):
             shutil.copy2(BG_FILE, BG_DEFAULT)
         tmp = BG_FILE + ".tmp"
@@ -3292,19 +3298,17 @@ def api_background_upload():
         os.replace(tmp, BG_FILE)
     except Exception as e:
         return jsonify({"status": "error", "message": "Could not save: " + str(e)[:80]}), 500
-    return jsonify({"status": "success", "v": background_version()})
+    return jsonify({"status": "success", "url": background_url()})
 
 @app.route('/api/background/reset', methods=['POST'])
 def api_background_reset():
     try:
-        if os.path.exists(BG_DEFAULT):
-            shutil.copy2(BG_DEFAULT, BG_FILE + ".tmp")
-            os.replace(BG_FILE + ".tmp", BG_FILE)
-        elif os.path.exists(BG_FILE):
-            os.remove(BG_FILE)   # kein Original gesichert: Standard ist dann die einfarbige Hintergrundfarbe
+        # Nur zuruecksetzen, wenn ein Standardbild existiert - sonst bliebe der Nutzer ganz ohne Hintergrund.
+        if os.path.exists(BG_DEFAULT) and os.path.exists(BG_FILE):
+            os.remove(BG_FILE)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)[:80]}), 500
-    return jsonify({"status": "success", "v": background_version()})
+    return jsonify({"status": "success", "url": background_url()})
 
 SMETER_CAL_KEYS = {"sdr": ("sdr_floor_db", "sdr_full_db", -60.0, -20.0, "sdr_smooth", 0.5),
                    "owrx": ("owrx_floor_db", "owrx_full_db", -85.0, -30.0, "owrx_smooth", 0.3)}
