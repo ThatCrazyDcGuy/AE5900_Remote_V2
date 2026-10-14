@@ -1,3 +1,59 @@
+<style>.hb-shot{position:relative;max-width:360px;margin:10px auto}.hb-shot img{width:100%;display:block;border-radius:6px}.hb-n{position:absolute;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;background:#ffcc00;color:#000;font:bold 12px/20px sans-serif;text-align:center;box-shadow:0 0 0 2px #000}.hb-leg{list-style:none;padding:0;margin:8px 0}.hb-leg li{display:flex;gap:8px;margin:6px 0}.hb-leg b.hb-b{flex:none;width:20px;height:20px;border-radius:50%;background:#ffcc00;color:#000;font:bold 12px/20px sans-serif;text-align:center}.hb-t{width:100%;border-collapse:collapse;font-size:0.95em}.hb-t td,.hb-t th{border:1px solid #444;padding:4px 6px;text-align:left;vertical-align:top}</style>
+<div style="color: #aaa; font-size: 0.9em; line-height: 1.4;">
+    <strong style="color: #0f0;">Übersicht der Bedienelemente</strong>
+    <p style="margin:5px 0;">Die Nummern im Bild entsprechen der Liste darunter. Alle Tasten sind in der Desktop- und in der Handy-Ansicht gleich.</p>
+    <div class="hb-shot"><img src="/static/handbook_ui.jpg" alt="Übersicht der Bedienelemente">
+        <span class="hb-n" style="left:7.62%;top:4.10%;">1</span>
+        <span class="hb-n" style="left:29.93%;top:26.25%;">2</span>
+        <span class="hb-n" style="left:8.55%;top:29.15%;">3</span>
+        <span class="hb-n" style="left:74.91%;top:29.15%;">4</span>
+        <span class="hb-n" style="left:74.91%;top:34.90%;">5</span>
+        <span class="hb-n" style="left:8.55%;top:52.10%;">6</span>
+        <span class="hb-n" style="left:30.39%;top:52.10%;">7</span>
+        <span class="hb-n" style="left:74.07%;top:52.10%;">8</span>
+        <span class="hb-n" style="left:8.55%;top:58.30%;">9</span>
+        <span class="hb-n" style="left:30.39%;top:58.30%;">10</span>
+        <span class="hb-n" style="left:52.23%;top:58.30%;">11</span>
+        <span class="hb-n" style="left:74.07%;top:58.30%;">12</span>
+        <span class="hb-n" style="left:8.55%;top:64.45%;">13</span>
+        <span class="hb-n" style="left:52.23%;top:64.45%;">14</span>
+        <span class="hb-n" style="left:74.07%;top:64.45%;">15</span>
+        <span class="hb-n" style="left:8.55%;top:70.55%;">16</span>
+        <span class="hb-n" style="left:8.55%;top:76.55%;">17</span>
+        <span class="hb-n" style="left:9.29%;top:86.85%;">18</span>
+        <span class="hb-n" style="left:52.23%;top:86.85%;">19</span>
+        <span class="hb-n" style="left:6.51%;top:96.05%;">20</span>
+    </div>
+    <ul class="hb-leg">
+        <li><b class="hb-b">1</b><span><strong style="color:#ddd;">Display:</strong> Große Zahl = Kanal, darunter die Frequenz, rechts die Modulation (z. B. AM). Oben rechts leuchten LOCK, MUTE, ASQ und VOX, wenn aktiv. MIC = Mikrofonpegel, SQ = Squelch-Pegel, SIGNAL = es liegt ein Signal an. Der Balken unten ist das S-Meter, daneben Audio-Balken oder Wasserfall.</span></li>
+        <li><b class="hb-b">2</b><span><strong style="color:#ddd;">Ziffernblock:</strong> Kanalwahl. Immer zwei Ziffern eingeben (z. B. 07).</span></li>
+        <li><b class="hb-b">3</b><span><strong style="color:#ddd;">CLAR + / STEP / CLAR -:</strong> Clarifier. Nur unter CW, USB und LSB aktiv. Mit STEP zwischen 1, 10 und 100 Hz wählen, dann CLAR + oder CLAR -.</span></li>
+        <li><b class="hb-b">4</b><span><strong style="color:#ddd;">MIC + / MIC -:</strong> Mikrofonlautstärke (MicGain der Soundkarte). Der Pegel steht oben links im Display.</span></li>
+        <li><b class="hb-b">5</b><span><strong style="color:#ddd;">RB:</strong> Roger-Beep ein/aus (grün = an).</span></li>
+        <li><b class="hb-b">6</b><span><strong style="color:#ddd;">MODE:</strong> Schaltet die Modulation weiter (PA, CW, FM, AM, USB, LSB). Übersprungen werden PA und CW je nach Mode-Skip im Setup.</span></li>
+        <li><b class="hb-b">7</b><span><strong style="color:#ddd;">UP / DOWN:</strong> Kanal hoch / runter. Im PA-Modus stellen die Tasten die Lautstärke des Geräts ein.</span></li>
+        <li><b class="hb-b">8</b><span><strong style="color:#ddd;">MUTE:</strong> Schaltet das AE5900 lautlos.</span></li>
+        <li><b class="hb-b">9</b><span><strong style="color:#ddd;">VOX:</strong> Sprachsteuerung ein/aus.</span></li>
+        <li><b class="hb-b">10</b><span><strong style="color:#ddd;">S-SCAN:</strong> Suchlauf, der bei einem Signal stoppt. Jede Taste beendet ihn. Lange drücken = Scroll (Kanaldurchlauf bei offenem Squelch). Die Geschwindigkeit stellst du im Setup ein.</span></li>
+        <li><b class="hb-b">11</b><span><strong style="color:#ddd;">MW:</strong> Multiwatch: scannt die im Setup eingetragenen Kanäle (z. B. 01,04,09,28). Lange drücken = Scroll.</span></li>
+        <li><b class="hb-b">12</b><span><strong style="color:#ddd;">LOCK:</strong> Sperrt alle Tasten am AE5900 und im WebUI bis auf LOCK.</span></li>
+        <li><b class="hb-b">13</b><span><strong style="color:#ddd;">A/SQ + / -:</strong> Stellt den Pegel von ASQ (9 Stufen, wenn ASQ an ist) oder vom Squelch (80 Stufen) ein.</span></li>
+        <li><b class="hb-b">14</b><span><strong style="color:#ddd;">ASQ:</strong> Automatische Rauschsperre ein/aus.</span></li>
+        <li><b class="hb-b">15</b><span><strong style="color:#ddd;">A/SQ Res.:</strong> Setzt den Pegel auf ASQ 1 bzw. Squelch 0 zurück (dauert etwa 25 Sekunden).</span></li>
+        <li><b class="hb-b">16</b><span><strong style="color:#ddd;">Vierte Reihe (wechselbar):</strong> Diese vier Tasten kannst du im Setup &amp; Sync umschalten, siehe Tabelle unten.</span></li>
+        <li><b class="hb-b">17</b><span><strong style="color:#ddd;">PTT TOGGLE:</strong> Senden ein/aus: einmal tippen = senden, nochmal = empfangen. Orange leuchtet die Taste, wenn VOX ausgelöst hat.</span></li>
+        <li><b class="hb-b">18</b><span><strong style="color:#ddd;">RX-Audio:</strong> Empfangston ein/aus (grün = läuft). Funktioniert per HTTP und HTTPS.</span></li>
+        <li><b class="hb-b">19</b><span><strong style="color:#ddd;">TX-Mikrofon:</strong> Mikrofon deines Geräts zum Senden. Funktioniert nur per HTTPS (Port 5443).</span></li>
+        <li><b class="hb-b">20</b><span><strong style="color:#ddd;">SETUP &amp; SYNC:</strong> Einstellungen, Super Sync, S-Meter-Quelle, Hintergrund und dieses Handbuch.</span></li>
+    </ul>
+    <strong style="color: #0f0;">Wechselbare vierte Tastenreihe</strong>
+    <table class="hb-t"><tr><th>Einstellung</th><th>Tasten</th><th>Zweck</th></tr>
+        <tr><td>AMM-500 default (P1-P4)</td><td>P1 bis P4</td><td>Die vier freien Tasten des AMM-500. Beschrifte sie so, wie du sie am AE5900 unter Mic Type 2 gesetzt hast.</td></tr>
+        <tr><td>QSO (REC/PLAY) CQ (REC/PLAY)</td><td>REC, RPLAY, CQ REC, CQ CALL</td><td>REC und RPLAY nehmen ein QSO auf und spielen es ab. CQ REC nimmt einen CQ-Ruf auf, CQ CALL wiederholt ihn.</td></tr>
+        <tr><td>Custom terminal commands</td><td>frei</td><td>Die vier Tasten belegst du selbst mit Terminal-Befehlen.</td></tr>
+    </table>
+    <p style="margin:5px 0;">Umschalten unter Setup &amp; Sync, „Modular keys in the 4th row“.</p>
+</div>
 <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #444; color: #aaa; font-size: 0.9em; line-height: 1.4;">
     <strong style="color: #0f0;">ℹ Kurzanleitung für Tester:</strong>
     <ul style="padding-left: 20px; margin-top: 5px;">
