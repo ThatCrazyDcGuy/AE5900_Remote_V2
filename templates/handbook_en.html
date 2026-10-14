@@ -1,3 +1,59 @@
+<style>.hb-shot{position:relative;max-width:360px;margin:10px auto}.hb-shot img{width:100%;display:block;border-radius:6px}.hb-n{position:absolute;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;background:#ffcc00;color:#000;font:bold 12px/20px sans-serif;text-align:center;box-shadow:0 0 0 2px #000}.hb-leg{list-style:none;padding:0;margin:8px 0}.hb-leg li{display:flex;gap:8px;margin:6px 0}.hb-leg b.hb-b{flex:none;width:20px;height:20px;border-radius:50%;background:#ffcc00;color:#000;font:bold 12px/20px sans-serif;text-align:center}.hb-t{width:100%;border-collapse:collapse;font-size:0.95em}.hb-t td,.hb-t th{border:1px solid #444;padding:4px 6px;text-align:left;vertical-align:top}</style>
+<div style="color: #aaa; font-size: 0.9em; line-height: 1.4;">
+    <strong style="color: #0f0;">Overview of the controls</strong>
+    <p style="margin:5px 0;">The numbers in the picture match the list below. All keys are the same in the desktop and in the phone view.</p>
+    <div class="hb-shot"><img src="/static/handbook_ui.jpg" alt="Overview of the controls">
+        <span class="hb-n" style="left:7.62%;top:4.10%;">1</span>
+        <span class="hb-n" style="left:29.93%;top:26.25%;">2</span>
+        <span class="hb-n" style="left:8.55%;top:29.15%;">3</span>
+        <span class="hb-n" style="left:74.91%;top:29.15%;">4</span>
+        <span class="hb-n" style="left:74.91%;top:34.90%;">5</span>
+        <span class="hb-n" style="left:8.55%;top:52.10%;">6</span>
+        <span class="hb-n" style="left:30.39%;top:52.10%;">7</span>
+        <span class="hb-n" style="left:74.07%;top:52.10%;">8</span>
+        <span class="hb-n" style="left:8.55%;top:58.30%;">9</span>
+        <span class="hb-n" style="left:30.39%;top:58.30%;">10</span>
+        <span class="hb-n" style="left:52.23%;top:58.30%;">11</span>
+        <span class="hb-n" style="left:74.07%;top:58.30%;">12</span>
+        <span class="hb-n" style="left:8.55%;top:64.45%;">13</span>
+        <span class="hb-n" style="left:52.23%;top:64.45%;">14</span>
+        <span class="hb-n" style="left:74.07%;top:64.45%;">15</span>
+        <span class="hb-n" style="left:8.55%;top:70.55%;">16</span>
+        <span class="hb-n" style="left:8.55%;top:76.55%;">17</span>
+        <span class="hb-n" style="left:9.29%;top:86.85%;">18</span>
+        <span class="hb-n" style="left:52.23%;top:86.85%;">19</span>
+        <span class="hb-n" style="left:6.51%;top:96.05%;">20</span>
+    </div>
+    <ul class="hb-leg">
+        <li><b class="hb-b">1</b><span><strong style="color:#ddd;">Display:</strong> Big number = channel, below it the frequency, on the right the mode (e.g. AM). LOCK, MUTE, ASQ and VOX light up top right when active. MIC = microphone level, SQ = squelch level, SIGNAL = a signal is present. The bar at the bottom is the S-meter, next to it audio bars or waterfall.</span></li>
+        <li><b class="hb-b">2</b><span><strong style="color:#ddd;">Number pad:</strong> Channel selection. Always enter two digits (e.g. 07).</span></li>
+        <li><b class="hb-b">3</b><span><strong style="color:#ddd;">CLAR + / STEP / CLAR -:</strong> Clarifier. Only active in CW, USB and LSB. Choose 1, 10 or 100 Hz with STEP, then CLAR + or CLAR -.</span></li>
+        <li><b class="hb-b">4</b><span><strong style="color:#ddd;">MIC + / MIC -:</strong> Microphone volume (MicGain of the sound card). The level is shown top left in the display.</span></li>
+        <li><b class="hb-b">5</b><span><strong style="color:#ddd;">RB:</strong> Roger beep on/off (green = on).</span></li>
+        <li><b class="hb-b">6</b><span><strong style="color:#ddd;">MODE:</strong> Steps through the modes (PA, CW, FM, AM, USB, LSB). PA and CW are skipped depending on the Mode-Skip setting in Setup.</span></li>
+        <li><b class="hb-b">7</b><span><strong style="color:#ddd;">UP / DOWN:</strong> Channel up / down. In PA mode the keys adjust the device volume.</span></li>
+        <li><b class="hb-b">8</b><span><strong style="color:#ddd;">MUTE:</strong> Mutes the AE5900.</span></li>
+        <li><b class="hb-b">9</b><span><strong style="color:#ddd;">VOX:</strong> Voice operated transmit on/off.</span></li>
+        <li><b class="hb-b">10</b><span><strong style="color:#ddd;">S-SCAN:</strong> Scan that stops on a signal. Any key ends it. Long press = scroll (channel run with squelch open). Set the speed in Setup.</span></li>
+        <li><b class="hb-b">11</b><span><strong style="color:#ddd;">MW:</strong> Multiwatch: scans the channels entered in Setup (e.g. 01,04,09,28). Long press = scroll.</span></li>
+        <li><b class="hb-b">12</b><span><strong style="color:#ddd;">LOCK:</strong> Locks all keys on the AE5900 and in the WebUI except LOCK.</span></li>
+        <li><b class="hb-b">13</b><span><strong style="color:#ddd;">A/SQ + / -:</strong> Sets the level of ASQ (9 steps, when ASQ is on) or of the squelch (80 steps).</span></li>
+        <li><b class="hb-b">14</b><span><strong style="color:#ddd;">ASQ:</strong> Automatic squelch on/off.</span></li>
+        <li><b class="hb-b">15</b><span><strong style="color:#ddd;">A/SQ Res.:</strong> Resets the level to ASQ 1 or squelch 0 (takes about 25 seconds).</span></li>
+        <li><b class="hb-b">16</b><span><strong style="color:#ddd;">Fourth row (switchable):</strong> You can switch these four keys in Setup &amp; Sync, see the table below.</span></li>
+        <li><b class="hb-b">17</b><span><strong style="color:#ddd;">PTT TOGGLE:</strong> Transmit on/off: tap once = transmit, again = receive. The key lights orange when VOX has triggered.</span></li>
+        <li><b class="hb-b">18</b><span><strong style="color:#ddd;">RX audio:</strong> Receive audio on/off (green = running). Works over HTTP and HTTPS.</span></li>
+        <li><b class="hb-b">19</b><span><strong style="color:#ddd;">TX microphone:</strong> Your device's microphone for transmitting. Works only over HTTPS (port 5443).</span></li>
+        <li><b class="hb-b">20</b><span><strong style="color:#ddd;">SETUP &amp; SYNC:</strong> Settings, Super Sync, S-meter source, background and this manual.</span></li>
+    </ul>
+    <strong style="color: #0f0;">Switchable fourth row of keys</strong>
+    <table class="hb-t"><tr><th>Setting</th><th>Keys</th><th>Purpose</th></tr>
+        <tr><td>AMM-500 default (P1-P4)</td><td>P1 to P4</td><td>The four free keys of the AMM-500. Label them the way you set them on the AE5900 under Mic Type 2.</td></tr>
+        <tr><td>QSO (REC/PLAY) CQ (REC/PLAY)</td><td>REC, RPLAY, CQ REC, CQ CALL</td><td>REC and RPLAY record and play back a QSO. CQ REC records a CQ call, CQ CALL repeats it.</td></tr>
+        <tr><td>Custom terminal commands</td><td>free</td><td>You assign the four keys yourself with terminal commands.</td></tr>
+    </table>
+    <p style="margin:5px 0;">Switch under Setup &amp; Sync, “Modular keys in the 4th row”.</p>
+</div>
 <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #444; color: #aaa; font-size: 0.9em; line-height: 1.4;">
     <strong style="color: #0f0;">ℹ Quick Guide for Testers:</strong>
     <ul style="padding-left: 20px; margin-top: 5px;">
