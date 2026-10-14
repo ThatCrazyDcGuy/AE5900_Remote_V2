@@ -160,7 +160,11 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog (always perform updates with 'git pull')
 
-Current: V-131026 SMT - TEST RUN - // Test done >> Current: V-131026 BGR uploaded
+Current: V-141026 MOD
+
+1. Correction of Hamlib/Rigctl code when using Openwebrx as client and S-SMETER
+
+Previous version: V-131026 SMT - TEST RUN - // Test done >> Current: V-131026 BGR uploaded
 
 - Additional implementation: Use RTL-SDR dongle with dedicated antenna as an S-meter (rtl-sdr and pyrtlsdr packages required)
 - Additional implementation: Use OpenWebRX server as an S-meter (a dedicated, private, non-public OpenWebRX server is required)
