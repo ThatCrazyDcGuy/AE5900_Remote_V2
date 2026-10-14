@@ -424,6 +424,65 @@ class RadioInterface:
             self.ser = None
             print(f"--- SIMULATIONS-MODUS AKTIV: Kein Funkgeraet an {detected_port} ---")
 
+    # --- Modus-Index mit Zeitstempel der letzten Aenderung (Grundlage fuer die Echo-Erkennung bei Hamlib 'M') ---
+    @property
+    def mode_idx(self):
+        return self._mode_idx
+
+    @mode_idx.setter
+    def mode_idx(self, value):
+        if getattr(self, '_mode_idx', None) != value:
+            self._mode_changed_at = time.time()
+        self._mode_idx = value
+
+    def next_mode_idx(self, idx):
+        """Welcher Modus folgt auf einen Druck der Mode-Taste? Gleiche Regeln wie beim 'M'-Befehl der Oberflaeche:
+        DE ab Kanal 41 und EC nur FM<->PA, sonst Rotation mit optional uebersprungenem PA bzw. CW."""
+        band = self.config.get("current_band", "EU")
+        if (band == "DE" and self.current_ch > 40) or band == "EC":
+            return MODES.index("PA") if MODES[idx].upper() == "FM" else MODES.index("FM")
+        n = (idx + 1) % len(MODES)
+        for _ in range(len(MODES)):
+            m = MODES[n].upper()
+            if (self.config.get("skip_pa", False) and m == "PA") or (self.config.get("skip_cw", False) and m == "CW"):
+                n = (n + 1) % len(MODES)
+                continue
+            break
+        return n
+
+    def mode_click_steps(self, old_idx, new_idx):
+        """Anzahl Tastendruecke von old_idx nach new_idx unter Beruecksichtigung der Rotationsregeln; None = nicht erreichbar."""
+        idx = old_idx
+        for steps in range(1, len(MODES) + 1):
+            idx = self.next_mode_idx(idx)
+            if idx == new_idx:
+                return steps
+        return None
+
+    def cat_set_mode(self, raw_mode):
+        """Hamlib 'M <mode>': liefert die Anzahl noetiger Tastendruecke (0 = nichts zu tun) und aktualisiert den Modus.
+        - CWR/NFM/PKTFM werden wie CW bzw. FM behandelt (OpenWebRX meldet CW als 'CWR').
+        - Echo-Schutz: Meldet Hamlib kurz nach einer Modus-Aenderung 'FM', waehrend das Geraet auf PA steht, ist das nur der
+          Rueckwurf der FM-Meldung fuer PA (Hamlib kennt kein PA) - dann KEINE Tastendruecke (sonst springt das Geraet weiter)."""
+        target = {"NFM": "FM", "PKTFM": "FM", "CWR": "CW"}.get(raw_mode.upper(), raw_mode.upper())
+        if target not in MODES:
+            return 0
+        new_idx = MODES.index(target)
+        old_idx = self.mode_idx
+        if new_idx == old_idx:
+            return 0
+        if target == "FM" and MODES[old_idx] == "PA" and time.time() - getattr(self, '_mode_changed_at', 0) < 5.0:
+            print("[CAT-PROXY] Echo 'M FM' bei PA ignoriert (keine Klicks).")
+            return 0
+        steps = self.mode_click_steps(old_idx, new_idx)
+        if steps is None:
+            print(f"[CAT-PROXY] Modus {target} ist mit den aktuellen Rotationsregeln nicht erreichbar - ignoriert.")
+            return 0
+        print(f"[CAT-PROXY] Modus-Wechsel von {MODES[old_idx]} zu {target} erfordert {steps} Klicks.")
+        self.mode_idx = new_idx
+        self.save_config()
+        return steps
+
     def load_config(self):
         default = {
             "ptt_timeout": 300, "last_ch": 1, "last_mode": 2, "skip_pa": False, "skip_cw": False,
@@ -641,41 +700,27 @@ class RadioInterface:
                                 handled = True
                                 continue
                                 
-                            if target_mode == "NFM": 
-                                target_mode = "FM"
-                            
-                            if target_mode in MODES:
-                                new_mode_idx = MODES.index(target_mode)
-                                if self.mode_idx != new_mode_idx:
-                                    # HARDWARE-BERECHNUNG: Wie viele Schritte liegen zwischen Alt und Neu?
-                                    old_idx = self.mode_idx
-                                    steps = (new_mode_idx - old_idx) % len(MODES)
-                                    
-                                    print(f"[CAT-PROXY] Modus-Wechsel von {MODES[old_idx]} zu {target_mode} erfordert {steps} Klicks.")
-                                    
-                                    # RAM aktualisieren und sichern
-                                    self.mode_idx = new_mode_idx
-                                    self.save_config()
-                                    
-                                    # Hintergrund-Rig syncen
-                                    self.forward_to_real_hamlib(line + "\n")
-                                    
-                                    # Physische Klick-Kette an Albrecht senden
-                                    if self.ser and steps > 0:
-                                        with self.lock:
-                                            for s in range(steps):
-                                                # Taste drücken
-                                                self.ser.write(bytes.fromhex("410001000D000006"))
-                                                time.sleep(0.09)
-                                                # Taste loslassen
-                                                self.ser.write(bytes.fromhex("410000000D000006"))
-                                                # Pause für den Albrecht-Prozessor zwischen den Klicks
-                                                time.sleep(0.12)
-                                    
-                                    try:
-                                        socketio.emit('status', get_current_status_dict())
-                                    except:
-                                        pass
+                            steps = self.cat_set_mode(target_mode)
+                            if steps > 0:
+                                # Hintergrund-Rig syncen
+                                self.forward_to_real_hamlib(line + "\n")
+
+                                # Physische Klick-Kette an Albrecht senden
+                                if self.ser:
+                                    with self.lock:
+                                        for _ in range(steps):
+                                            # Taste druecken
+                                            self.ser.write(bytes.fromhex("410001000D000006"))
+                                            time.sleep(0.09)
+                                            # Taste loslassen
+                                            self.ser.write(bytes.fromhex("410000000D000006"))
+                                            # Pause fuer den Albrecht-Prozessor zwischen den Klicks
+                                            time.sleep(0.12)
+
+                                try:
+                                    socketio.emit('status', get_current_status_dict())
+                                except:
+                                    pass
                         
                         resp = "\\set_mode\nRPRT 0\n" if '\\' in line else "RPRT 0\n"
                         client_socket.sendall(resp.encode('utf-8'))
