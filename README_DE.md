@@ -159,11 +159,15 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht (Aktualisierungen immer mit „git pull“ durchführen)
 
-Aktuell: V-131026 SMT – TESTLAUF – // Test abgeschlossen >> Aktuell: V-131026 BGR hochgeladen
+Aktuell: V-141026 MOD
 
-- Zusätzliche Implementierung: Verwendung eines RTL-SDR-Dongles mit dedizierter Antenne als S-Meter (Pakete rtl-sdr und pyrtlsdr erforderlich)
-- Zusätzliche Implementierung: Verwendung eines OpenWebRX-Servers als S-Meter (ein dedizierter, privater, nicht öffentlicher OpenWebRX-Server ist erforderlich)
-- Upload-Funktion für Hintergrundbilder hinzugefügt (just for fun)
+1. Korrektur des Hamlib/Rigctl Code bei Verwendung von Openwebrx als Client und S-SMETER
+
+Vorherige Version: V-131026 SMT – TESTLAUF – // Test abgeschlossen >> Aktuell: V-131026 BGR hochgeladen
+
+1. Zusätzliche Implementierung: Verwendung eines RTL-SDR-Dongles mit dedizierter Antenne als S-Meter (Pakete rtl-sdr und pyrtlsdr erforderlich)
+2. Zusätzliche Implementierung: Verwendung eines OpenWebRX-Servers als S-Meter (ein dedizierter, privater, nicht öffentlicher OpenWebRX-Server ist erforderlich)
+3. Upload-Funktion für Hintergrundbilder hinzugefügt (just for fun)
 
 Vorherige Version: V-121026 BAR
 
