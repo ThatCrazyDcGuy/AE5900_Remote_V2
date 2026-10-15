@@ -25,7 +25,7 @@ Die Statuszeile darunter zeigt den aktuellen dB-Wert. Voreinstellungen: SDR -60 
 
 #### RTL-SDR-Dongle verwenden
 
-Am einfachsten geht es mit dem Installer: `./install.sh --with-sdr` installiert die Werkzeuge, sperrt den DVB-Treiber und prüft den Dongle. Von Hand:
+Am einfachsten geht es mit dem Installer: `bash install.sh --with-sdr` installiert die Werkzeuge, sperrt den DVB-Treiber und prüft den Dongle. Von Hand:
 
 ```bash
 sudo apt install rtl-sdr

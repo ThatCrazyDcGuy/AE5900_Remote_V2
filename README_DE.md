@@ -19,12 +19,11 @@ Klärt das mit eurem Gewissen. Ich bin nicht eure Mutti!
 ```bash
 git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
 cd ~/AE5900_Remote_V2/
-sudo chmod +x install.sh
-./install.sh
+bash install.sh
 reboot
 ```
 
-Der Installer hat einige Optionen, siehe `./install.sh --help`:
+Der Installer hat einige Optionen, siehe `bash install.sh --help`:
 
 - `--with-sdr`: richtet zusätzlich einen RTL-SDR-Dongle als S-Meter ein
 - `--with-mumble`: installiert zusätzlich Mumble (optional, WebAudio braucht es nicht)
@@ -181,6 +180,7 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 - **Läuft das Programm?** `systemctl --user status ae5900`
 - **Log lesen:** `sudo journalctl _SYSTEMD_USER_UNIT=ae5900.service -f` (ohne `sudo` bleibt `journalctl --user` auf dem Raspberry Pi OS leer)
 - **Neu starten:** `systemctl --user restart ae5900`
+- **`git pull` verweigert das Update ("lokale Änderungen" an `install.sh`)?** Einmal `git config core.fileMode false` ausführen (ein früheres `chmod +x` hat die Dateirechte geändert), dann `git pull` erneut. Wenn es weiter meckert: `git checkout -- install.sh`. Eigene Einstellungen (`config.json`) und Hintergrundbild bleiben unberührt.
 - **Probleme bei der Installation:** Das Log liegt unter `~/ae5900-install.log`.
 - **Hilfe holen:** Bitte im Telegram-Kanal schreiben (siehe Kontakt / Feedback unten): was du gemacht hast, die passenden Logzeilen (z. B. `[AUDIO-ROUTING] Karte: ...`), deine Soundkarte (`pactl list short sources`) sowie Browser und Version.
 

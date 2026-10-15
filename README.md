@@ -110,13 +110,12 @@ Simply copy the entire block into the console.
 ```bash
 git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
 cd ~/AE5900_Remote_V2/
-sudo chmod +x install.sh
-./install.sh
+bash install.sh
 reboot
 ```
 
 During the installation Tailscale shows a login link. Open it in a browser and follow the instructions.
-The installer has a few options, see `./install.sh --help`:
+The installer has a few options, see `bash install.sh --help`:
 
 - `--with-sdr`: also set up an RTL-SDR dongle as S-meter
 - `--with-mumble`: also install Mumble (optional, WebAudio does not need it)
@@ -175,6 +174,7 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 - **Is the program running?** `systemctl --user status ae5900`
 - **Read the log:** `sudo journalctl _SYSTEMD_USER_UNIT=ae5900.service -f` (without `sudo`, `journalctl --user` stays empty on Raspberry Pi OS)
 - **Restart:** `systemctl --user restart ae5900`
+- **`git pull` refuses to update ("local changes" in `install.sh`)?** Run `git config core.fileMode false` once (an earlier `chmod +x` changed the file permissions), then `git pull` again. If it still complains: `git checkout -- install.sh`. Your own settings (`config.json`) and background image are not affected.
 - **Installer problems:** the log is `~/ae5900-install.log`.
 - **Asking for help:** please post in the Telegram channel (see Contact / Feedback below): what you did, the relevant log lines (e.g. `[AUDIO-ROUTING] Karte: ...`), your sound card (`pactl list short sources`) and your browser + version.
 

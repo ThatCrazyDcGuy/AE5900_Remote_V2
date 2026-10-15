@@ -8,7 +8,7 @@ Note: some version labels in older entries were corrected (the date part is DDMM
 
 ### V-151026 INS (current)
 
-1. Installer: new option `--with-sdr` for an RTL-SDR dongle as S-meter (installs `rtl-sdr`, blocks the DVB driver, checks the dongle and whether another program such as OpenWebRX uses it). The log hint at the end now shows a command that works.
+1. Installer: new option `--with-sdr` for an RTL-SDR dongle as S-meter (installs `rtl-sdr`, blocks the DVB driver, checks the dongle and whether another program such as OpenWebRX uses it). The log hint at the end now shows a command that works. The installer is started with `bash install.sh` (no `chmod +x` needed) and sets `core.fileMode false`, so `git pull` is no longer blocked by file permissions.
 2. README: installer options, a troubleshooting section, contact/feedback (Telegram). Handbooks: notes on microphone gain, log and contact.
 
 ### V-151026 SVC

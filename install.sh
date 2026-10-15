@@ -3,7 +3,7 @@
 # AE5900 REMOTE CONTROLLER - SYSTEM INSTALLER
 # Raspberry Pi OS (Bookworm/Trixie), Debian, Ubuntu
 #
-# Aufruf:  ./install.sh [Optionen]     (siehe ./install.sh --help)
+# Aufruf:  bash install.sh [Optionen]     (siehe bash install.sh --help)
 # Der Installer ist wiederholbar: er repariert/ergaenzt nur, was fehlt.
 # Log: ~/ae5900-install.log
 # =========================================================================
@@ -16,7 +16,7 @@ usage() {
 cat <<'EOF'
 AE5900 Remote Controller - installer
 
-Usage: ./install.sh [options]
+Usage: bash install.sh [options]
 
   --with-mumble          also install the Mumble client + server (optional - WebAudio does not need it)
   --with-sdr             also set up an RTL-SDR dongle as S-meter (rtl-sdr tools, driver blacklist, quick dongle check)
@@ -44,7 +44,7 @@ for arg in "$@"; do
         --upgrade)             DO_UPGRADE=1 ;;
         --yes|-y)              ASSUME_YES=1 ;;
         -h|--help)             usage; exit 0 ;;
-        *) echo "Unknown option: $arg"; echo "Try: ./install.sh --help"; exit 2 ;;
+        *) echo "Unknown option: $arg"; echo "Try: bash install.sh --help"; exit 2 ;;
     esac
 done
 
@@ -82,7 +82,7 @@ echo "Started: $(date)   |   Project folder: $PROJECT_DIR"
 
 # -------------------------------------------------------------------------
 step "0/8" "Pre-flight checks"
-[ "$(id -u)" -ne 0 ] || fail "Please run this as a normal user - not as root and not with 'sudo ./install.sh'."
+[ "$(id -u)" -ne 0 ] || fail "Please run this as a normal user - not as root and not with 'sudo bash install.sh'."
 command -v apt-get >/dev/null 2>&1 || fail "This installer needs a Debian-based system (Raspberry Pi OS, Debian, Ubuntu)."
 [ -f "$PROJECT_DIR/ae_5900_v2.py" ] || fail "ae_5900_v2.py not found next to install.sh. Run the installer from inside the project folder."
 sudo -v || fail "sudo is required (you will be asked for your password)."
@@ -120,6 +120,9 @@ step "3/8" "User groups and folders"
 sudo usermod -a -G audio,dialout "$USER_NAME" \
     || warn "Could not add '$USER_NAME' to the groups 'audio' and 'dialout' (needed for sound card and serial port)."
 mkdir -p "$PROJECT_DIR/ARC" "$STATE_DIR"
+# Der Installer wird mit 'bash install.sh' gestartet. Wer ihn frueher mit 'chmod +x' ausfuehrbar gemacht hat, wuerde
+# sonst bei 'git pull' eine "lokale Aenderung" an install.sh haben (Dateirechte) und das Update waere blockiert.
+git -C "$PROJECT_DIR" config core.fileMode false 2>/dev/null || true
 ok "Groups set (a re-login or reboot is needed for them to take effect)."
 
 # -------------------------------------------------------------------------
@@ -226,7 +229,7 @@ fi
 # -------------------------------------------------------------------------
 step "6/8" "Optional extras (Mumble, SDR dongle)"
 if [ "$WITH_MUMBLE" -eq 0 ]; then
-    info "Not installed - the web audio does not need it. Add it any time with: ./install.sh --with-mumble"
+    info "Not installed - the web audio does not need it. Add it any time with: bash install.sh --with-mumble"
 else
     $APT install -y mumble mumble-server || warn "Mumble could not be installed completely."
 
@@ -321,9 +324,9 @@ sdr_dongle_seen() { command -v lsusb >/dev/null 2>&1 && lsusb 2>/dev/null | grep
 echo
 if [ "$WITH_SDR" -eq 0 ]; then
     if sdr_dongle_seen; then
-        info "An RTL-SDR dongle was found. To use it as S-meter, run: ./install.sh --with-sdr"
+        info "An RTL-SDR dongle was found. To use it as S-meter, run: bash install.sh --with-sdr"
     else
-        info "SDR dongle (S-meter): not requested. Add it any time with: ./install.sh --with-sdr"
+        info "SDR dongle (S-meter): not requested. Add it any time with: bash install.sh --with-sdr"
     fi
 else
     $APT install -y rtl-sdr usbutils || warn "The package 'rtl-sdr' could not be installed - the SDR S-meter will not work."
@@ -376,7 +379,7 @@ else
     OLD_DESKTOP="$HOME/.config/autostart/ae5900start.desktop"
     if [ -f "$OLD_DESKTOP" ]; then
         mv "$OLD_DESKTOP" "$OLD_DESKTOP.old" && info "Old terminal autostart disabled (kept as ae5900start.desktop.old)."
-        info "Mumble no longer starts automatically - add it back with: ./install.sh --with-mumble"
+        info "Mumble no longer starts automatically - add it back with: bash install.sh --with-mumble"
     fi
     [ -f /usr/local/bin/ae5900starter ] && sudo mv /usr/local/bin/ae5900starter /usr/local/bin/ae5900starter.old
 
