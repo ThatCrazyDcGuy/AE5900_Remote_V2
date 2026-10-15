@@ -6,7 +6,12 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-151026 SVC (current)
+### V-151026 INS (current)
+
+1. Installer: new option `--with-sdr` for an RTL-SDR dongle as S-meter (installs `rtl-sdr`, blocks the DVB driver, checks the dongle and whether another program such as OpenWebRX uses it). The log hint at the end now shows a command that works.
+2. README: installer options, a troubleshooting section, contact/feedback (Telegram). Handbooks: notes on microphone gain, log and contact.
+
+### V-151026 SVC
 
 1. Bugfix: the program now also starts as a system service (`ae5900.service`, e.g. after the installer). Without a terminal it stopped with "The Werkzeug web server is not designed to run in production" and restarted in a loop (HTTP and HTTPS both missing). It worked only when started by hand in a terminal.
 

@@ -24,6 +24,15 @@ sudo chmod +x install.sh
 reboot
 ```
 
+Der Installer hat einige Optionen, siehe `./install.sh --help`:
+
+- `--with-sdr`: richtet zusätzlich einen RTL-SDR-Dongle als S-Meter ein
+- `--with-mumble`: installiert zusätzlich Mumble (optional, WebAudio braucht es nicht)
+- `--no-tailscale`: ohne Tailscale (dann nur HTTP auf Port 5000, kein HTTPS)
+- `--no-service`: ohne Autostart-Dienst
+
+Während der Installation zeigt Tailscale einen Anmelde-Link. Diesen im Browser öffnen und der Anleitung folgen. Der Installer lässt sich jederzeit erneut starten und ergänzt nur, was fehlt. Sein Log liegt unter `~/ae5900-install.log`.
+
 3. Im Browser `http://IP-DES-RASPBERRY:5000` öffnen (oder `https://IP-DES-RASPBERRY:5443`, wenn auch gesendet werden soll).
 4. Ganz unten auf "SETUP & SYNC" tippen und den Sync ausführen.
 5. Die Labels der Tasten P1 bis P4 so eintragen, wie sie am AE5900 eingestellt sind (Mic Type 2).
@@ -166,13 +175,25 @@ Die Quelle wird im "Setup & Sync" unter "S-Meter source" gewählt: ESP32-Hardwar
 ### Es empfiehlt sich, zu Hause einen WebSDR zu betreiben, um die Installation ggf. zu überprüfen (Kanal/Modulation).
 Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RTL-SDR-Dongle (z. B. RTL-SDR Blog V3 oder V4 / Nooelec NESDR V5) und einer Antenne aufbauen.
 
+### Fehlersuche
+
+- **Kein Sendeton?** Prüfe die Mikrofonverstärkung am AE5900 selbst. "MIC +/-" im Webinterface regelt nur die Soundkarte. Die Mikrofonverstärkung am Gerät darf nicht auf 0 stehen. Zum Senden mit dem Handy-Mikrofon wird HTTPS (Port 5443) benötigt.
+- **Läuft das Programm?** `systemctl --user status ae5900`
+- **Log lesen:** `sudo journalctl _SYSTEMD_USER_UNIT=ae5900.service -f` (ohne `sudo` bleibt `journalctl --user` auf dem Raspberry Pi OS leer)
+- **Neu starten:** `systemctl --user restart ae5900`
+- **Probleme bei der Installation:** Das Log liegt unter `~/ae5900-install.log`.
+- **Hilfe holen:** Bitte im Telegram-Kanal schreiben (siehe Kontakt / Feedback unten): was du gemacht hast, die passenden Logzeilen (z. B. `[AUDIO-ROUTING] Karte: ...`), deine Soundkarte (`pactl list short sources`) sowie Browser und Version.
+
 ### Was noch fehlt // Was noch nicht funktioniert
 
 1. Es fehlt immer irgendetwas. Was nicht da ist, das kommt noch.
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-151026 SVC**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-151026 INS**. Aktualisieren immer mit `git pull`.
+
+- Installer: neue Option `--with-sdr` für einen RTL-SDR-Dongle als S-Meter.
+- Das Programm startet jetzt auch als Systemdienst (Fehlerbehebung in V-151026 SVC).
 
 - Hintergrundbild: Das Repository enthält `static/bgr_default.jpg`. Dein eigenes Bild (CHANGE im Setup & Sync) liegt als `static/bgr.jpg` und kollidiert nie mit `git pull`.
 - Moduswechsel über Hamlib/Rigctl beachten jetzt Skip PA / Skip CW.
@@ -218,3 +239,7 @@ Wo die Leute darüber sprechen:
 - [cbfunk.ch](https://cbfunk.ch/)
 - [cbfunker.online](https://cbfunker.online/)
 - [worldwidedx.com](https://www.worldwidedx.com/threads/web-control-of-cb-radio.271268/#post-872377)
+
+### Kontakt / Feedback
+
+Neuigkeiten, Updates und dein Feedback: [t.me/gz62cb](https://t.me/gz62cb)

@@ -25,6 +25,8 @@ The status line below shows the live dB value. Defaults: SDR -60 dB / -20 dB, Op
 
 #### Using an RTL-SDR dongle
 
+The easiest way is the installer: `./install.sh --with-sdr` installs the tools, blocks the DVB driver and checks the dongle. By hand:
+
 ```bash
 sudo apt install rtl-sdr
 ```

@@ -19,6 +19,7 @@ AE5900 Remote Controller - installer
 Usage: ./install.sh [options]
 
   --with-mumble          also install the Mumble client + server (optional - WebAudio does not need it)
+  --with-sdr             also set up an RTL-SDR dongle as S-meter (rtl-sdr tools, driver blacklist, quick dongle check)
   --no-tailscale         skip Tailscale (HTTPS, phone microphone and wake lock need it;
                          plain HTTP on port 5000 works without)
   --no-service           do not set up the autostart service (start by hand: python3 ae_5900_v2.py)
@@ -32,10 +33,11 @@ Log file: ~/ae5900-install.log
 EOF
 }
 
-WITH_MUMBLE=0; NO_TAILSCALE=0; NO_SERVICE=0; KEEP_ONBOARD=0; DO_UPGRADE=0; ASSUME_YES=0
+WITH_MUMBLE=0; WITH_SDR=0; NO_TAILSCALE=0; NO_SERVICE=0; KEEP_ONBOARD=0; DO_UPGRADE=0; ASSUME_YES=0
 for arg in "$@"; do
     case "$arg" in
         --with-mumble)         WITH_MUMBLE=1 ;;
+        --with-sdr)            WITH_SDR=1 ;;
         --no-tailscale)        NO_TAILSCALE=1 ;;
         --no-service)          NO_SERVICE=1 ;;
         --keep-onboard-audio)  KEEP_ONBOARD=1 ;;
@@ -222,7 +224,7 @@ else
 fi
 
 # -------------------------------------------------------------------------
-step "6/8" "Mumble (optional)"
+step "6/8" "Optional extras (Mumble, SDR dongle)"
 if [ "$WITH_MUMBLE" -eq 0 ]; then
     info "Not installed - the web audio does not need it. Add it any time with: ./install.sh --with-mumble"
 else
@@ -306,6 +308,63 @@ EOF
             echo; info "Skipped - start Mumble once by hand later."
         fi
     fi
+fi
+
+
+# --- RTL-SDR-Dongle als S-Meter (optional) -------------------------------
+# Die App liest den Pegel ueber das Programm 'rtl_sdr' (Paket rtl-sdr). Vorab wird geprueft, ob der Dongle da ist,
+# ob der DVB-Treiber ihn blockiert und ob ihn gerade ein anderes Programm (z.B. OpenWebRX) benutzt.
+RTL_USB_RE='0bda:(2832|2838)'
+RTL_BLACKLIST_FILE="${AE_RTL_BLACKLIST:-/etc/modprobe.d/ae5900-rtlsdr.conf}"
+sdr_dongle_seen() { command -v lsusb >/dev/null 2>&1 && lsusb 2>/dev/null | grep -qiE "$RTL_USB_RE"; }
+
+echo
+if [ "$WITH_SDR" -eq 0 ]; then
+    if sdr_dongle_seen; then
+        info "An RTL-SDR dongle was found. To use it as S-meter, run: ./install.sh --with-sdr"
+    else
+        info "SDR dongle (S-meter): not requested. Add it any time with: ./install.sh --with-sdr"
+    fi
+else
+    $APT install -y rtl-sdr usbutils || warn "The package 'rtl-sdr' could not be installed - the SDR S-meter will not work."
+    if command -v rtl_sdr >/dev/null 2>&1; then ok "rtl_sdr tool is installed."
+    else warn "'rtl_sdr' was not found after installing the package - the SDR S-meter will not work."; fi
+
+    # Der DVB-Fernsehtreiber des Kernels belegt RTL-Dongles sonst. Nur eintragen, falls noch keine Sperre existiert.
+    if grep -rhsE '^[[:space:]]*blacklist[[:space:]]+dvb_usb_rtl28xxu' /etc/modprobe.d /lib/modprobe.d /usr/lib/modprobe.d \
+           "$(dirname "$RTL_BLACKLIST_FILE")" 2>/dev/null | grep -q .; then
+        ok "The DVB driver is already blocked for RTL-SDR dongles."
+    else
+        if printf '# AE5900: keep the DVB TV driver away from RTL-SDR dongles\nblacklist dvb_usb_rtl28xxu\n' \
+               | sudo tee "$RTL_BLACKLIST_FILE" >/dev/null; then
+            ok "DVB driver blocked ($RTL_BLACKLIST_FILE). Takes effect after a reboot."
+        else
+            warn "Could not write $RTL_BLACKLIST_FILE - block the module 'dvb_usb_rtl28xxu' by hand if the dongle is not found."
+        fi
+    fi
+    if lsmod 2>/dev/null | grep -q '^dvb_usb_rtl28xxu'; then
+        warn "The DVB driver is loaded right now and holds the dongle. Reboot once (or: sudo modprobe -r dvb_usb_rtl28xxu)."
+    fi
+    if getent group plugdev >/dev/null 2>&1; then
+        sudo usermod -a -G plugdev "$USER_NAME" 2>/dev/null || true
+    fi
+
+    if sdr_dongle_seen; then
+        ok "RTL-SDR dongle detected on USB."
+        if command -v rtl_test >/dev/null 2>&1; then
+            RTL_OUT="$(sudo timeout 10 rtl_test -t 2>&1)"
+            if echo "$RTL_OUT" | grep -qiE 'usb_claim_interface|device or resource busy|kernel driver'; then
+                warn "The dongle is in use by another program (for example OpenWebRX) or by the DVB driver. The SDR S-meter needs a dongle of its own - or use the 'OpenWebRX' S-meter source instead."
+            elif echo "$RTL_OUT" | grep -qE 'Found [1-9]'; then
+                ok "Dongle check passed."
+            else
+                warn "The dongle check gave no clear result - see the log. After a reboot try: rtl_test -t"
+            fi
+        fi
+    else
+        info "No RTL-SDR dongle detected right now - plug it in before using the SDR S-meter."
+    fi
+    info "Then choose 'SDR dongle (RTL-SDR)' under Setup & Sync -> S-Meter source."
 fi
 
 # -------------------------------------------------------------------------
@@ -396,7 +455,7 @@ if ls /dev/ttyUSB* /dev/ttyACM* >/dev/null 2>&1; then ok "Serial port found: $(l
 else info "No serial adapter found right now - connect the radio cable before starting the app."; fi
 
 mkdir -p "$STATE_DIR"
-{ date; echo "options: mumble=$WITH_MUMBLE tailscale_skipped=$NO_TAILSCALE service_skipped=$NO_SERVICE"; } > "$STATE_DIR/installed"
+{ date; echo "options: mumble=$WITH_MUMBLE sdr=$WITH_SDR tailscale_skipped=$NO_TAILSCALE service_skipped=$NO_SERVICE"; } > "$STATE_DIR/installed"
 
 # -------------------------------------------------------------------------
 IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -416,6 +475,6 @@ elif [ -n "$TS_DOMAIN" ]; then
 fi
 echo
 echo "  Service status:   systemctl --user status ae5900"
-echo "  Live log:         journalctl --user -u ae5900 -f"
+echo "  Live log:         sudo journalctl _SYSTEMD_USER_UNIT=ae5900.service -f"
 echo "  Install log:      $LOG"
 echo -e "${BLUE}=========================================================================${NC}"

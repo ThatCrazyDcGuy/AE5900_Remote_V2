@@ -112,10 +112,18 @@ git clone https://github.com/ThatCrazyDcGuy/AE5900_Remote_V2
 cd ~/AE5900_Remote_V2/
 sudo chmod +x install.sh
 ./install.sh
-#If you want to use Tailscale:
-#Copy the generated Tailscale link into your browser and follow the instructions
 reboot
 ```
+
+During the installation Tailscale shows a login link. Open it in a browser and follow the instructions.
+The installer has a few options, see `./install.sh --help`:
+
+- `--with-sdr`: also set up an RTL-SDR dongle as S-meter
+- `--with-mumble`: also install Mumble (optional, WebAudio does not need it)
+- `--no-tailscale`: skip Tailscale (then only HTTP on port 5000, no HTTPS)
+- `--no-service`: no autostart service
+
+You can run the installer again at any time; it only repairs what is missing. Its log is `~/ae5900-install.log`.
 
 Update later with `git pull` and restart the program. Your own settings (`config.json`) and your own background image are not touched.
 
@@ -161,13 +169,25 @@ A good WebSDR can be easily set up with OpenWebRX, a Raspberry Pi, an RTL-SDR do
 
 Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https://www.rtl-sdr.com/v4/
 
+### Troubleshooting
+
+- **No transmit audio?** Check the microphone gain on the AE5900 itself. "MIC +/-" in the web interface only controls the sound card; the microphone gain of the device must not be set to 0. Transmitting with the phone microphone needs HTTPS (port 5443).
+- **Is the program running?** `systemctl --user status ae5900`
+- **Read the log:** `sudo journalctl _SYSTEMD_USER_UNIT=ae5900.service -f` (without `sudo`, `journalctl --user` stays empty on Raspberry Pi OS)
+- **Restart:** `systemctl --user restart ae5900`
+- **Installer problems:** the log is `~/ae5900-install.log`.
+- **Asking for help:** please post in the Telegram channel (see Contact / Feedback below): what you did, the relevant log lines (e.g. `[AUDIO-ROUTING] Karte: ...`), your sound card (`pactl list short sources`) and your browser + version.
+
 ### What's Still Missing // What Doesn't Work Yet
 
 1. There's always something missing. What isn't there, will come later.
 
 ### Version Info & Changelog
 
-Current: **V-151026 SVC**. Always update with `git pull`.
+Current: **V-151026 INS**. Always update with `git pull`.
+
+- Installer: new option `--with-sdr` for an RTL-SDR dongle as S-meter.
+- The program now also starts as a system service (fix in V-151026 SVC).
 
 - Background image: the repository ships `static/bgr_default.jpg`; your own image (CHANGE in Setup & Sync) is stored as `static/bgr.jpg` and never conflicts with `git pull`.
 - Mode changes via Hamlib/Rigctl now respect Skip PA / Skip CW.
@@ -213,3 +233,7 @@ Where the people talking about:
 - [cbfunk.ch](https://cbfunk.ch/)
 - [cbfunker.online](https://cbfunker.online/)
 - [worldwidedx.com](https://www.worldwidedx.com/threads/web-control-of-cb-radio.271268/#post-872377)
+
+### Contact / Feedback
+
+News, updates and your feedback: [t.me/gz62cb](https://t.me/gz62cb)

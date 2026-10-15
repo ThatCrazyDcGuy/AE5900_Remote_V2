@@ -6,7 +6,12 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-151026 SVC (aktuell)
+### V-151026 INS (aktuell)
+
+1. Installer: neue Option `--with-sdr` für einen RTL-SDR-Dongle als S-Meter (installiert `rtl-sdr`, sperrt den DVB-Treiber, prüft den Dongle und ob ihn ein anderes Programm wie OpenWebRX benutzt). Der Log-Hinweis am Ende zeigt jetzt einen Befehl, der funktioniert.
+2. README: Installer-Optionen, Fehlersuche, Kontakt/Feedback (Telegram). Handbücher: Hinweise zu Mikrofonverstärkung, Log und Kontakt.
+
+### V-151026 SVC
 
 1. Fehlerbehebung: Das Programm startet jetzt auch als Systemdienst (`ae5900.service`, z. B. nach dem Installer). Ohne Terminal brach es mit „The Werkzeug web server is not designed to run in production“ ab und startete in einer Schleife neu (weder HTTP noch HTTPS erreichbar). Nur von Hand im Terminal lief es.
 
