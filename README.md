@@ -167,7 +167,7 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current: **V-141026 BGD**. Always update with `git pull`.
+Current: **V-151026 SVC**. Always update with `git pull`.
 
 - Background image: the repository ships `static/bgr_default.jpg`; your own image (CHANGE in Setup & Sync) is stored as `static/bgr.jpg` and never conflicts with `git pull`.
 - Mode changes via Hamlib/Rigctl now respect Skip PA / Skip CW.
@@ -213,7 +213,3 @@ Where the people talking about:
 - [cbfunk.ch](https://cbfunk.ch/)
 - [cbfunker.online](https://cbfunker.online/)
 - [worldwidedx.com](https://www.worldwidedx.com/threads/web-control-of-cb-radio.271268/#post-872377)
-
-### Contact me on:
-
-[TELEGRAM](https://t.me/gz62cb)

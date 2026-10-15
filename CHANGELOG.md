@@ -6,7 +6,11 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-141026 BGD (current)
+### V-151026 SVC (current)
+
+1. Bugfix: the program now also starts as a system service (`ae5900.service`, e.g. after the installer). Without a terminal it stopped with "The Werkzeug web server is not designed to run in production" and restarted in a loop (HTTP and HTTPS both missing). It worked only when started by hand in a terminal.
+
+### V-141026 BGD
 
 1. Background image: the repository ships `static/bgr_default.jpg`. Your own image (CHANGE in Setup & Sync) is stored as `static/bgr.jpg`, which is ignored by git, so `git pull` never conflicts with it. RESET returns to the default image.
 

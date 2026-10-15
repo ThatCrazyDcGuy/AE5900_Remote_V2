@@ -3600,10 +3600,22 @@ if __name__ == '__main__':
     except Exception:
         pass
 
+    # NEU: Als Dienst (systemd) hat der Prozess kein Terminal (stdin ist kein TTY). Flask-SocketIO verweigert dann den
+    # Werkzeug-Server mit "RuntimeError: The Werkzeug web server is not designed to run in production" - das Programm
+    # lief nur von Hand im Terminal. Fuer dieses Heimnetz-/Tailscale-Geraet ist der Werkzeug-Server gewollt, daher
+    # allow_unsafe_werkzeug=True. Aeltere Flask-SocketIO-Versionen kennen den Parameter nicht -> dann ohne ihn.
+    def _socketio_run(**kw):
+        try:
+            socketio.run(app, allow_unsafe_werkzeug=True, **kw)
+        except TypeError as e:
+            if "allow_unsafe_werkzeug" not in str(e):
+                raise
+            socketio.run(app, **kw)
+
     if https_available:
         def _run_https():
             try:
-                socketio.run(app, host='0.0.0.0', port=5443, debug=False, **https_ssl_args)
+                _socketio_run(host='0.0.0.0', port=5443, debug=False, **https_ssl_args)
             except Exception as e:
                 print(f"[HTTPS WARNUNG] HTTPS-Server konnte nicht starten: {e}")
         threading.Thread(target=_run_https, daemon=True).start()
@@ -3611,4 +3623,4 @@ if __name__ == '__main__':
     else:
         print("[HTTPS] Kein Zertifikat verfuegbar - nur HTTP auf Port 5000. Steuerung und RX-Zuhoeren funktionieren trotzdem vollstaendig.")
 
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    _socketio_run(host='0.0.0.0', port=5000, debug=False)

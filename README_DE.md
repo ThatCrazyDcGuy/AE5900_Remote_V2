@@ -172,7 +172,7 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-141026 BGD**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-151026 SVC**. Aktualisieren immer mit `git pull`.
 
 - Hintergrundbild: Das Repository enthält `static/bgr_default.jpg`. Dein eigenes Bild (CHANGE im Setup & Sync) liegt als `static/bgr.jpg` und kollidiert nie mit `git pull`.
 - Moduswechsel über Hamlib/Rigctl beachten jetzt Skip PA / Skip CW.
@@ -218,7 +218,3 @@ Wo die Leute darüber sprechen:
 - [cbfunk.ch](https://cbfunk.ch/)
 - [cbfunker.online](https://cbfunker.online/)
 - [worldwidedx.com](https://www.worldwidedx.com/threads/web-control-of-cb-radio.271268/#post-872377)
-
-### Kontaktiere mich auf:
-
-[TELEGRAM](https://t.me/gz62cb)

@@ -6,7 +6,11 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-141026 BGD (aktuell)
+### V-151026 SVC (aktuell)
+
+1. Fehlerbehebung: Das Programm startet jetzt auch als Systemdienst (`ae5900.service`, z. B. nach dem Installer). Ohne Terminal brach es mit „The Werkzeug web server is not designed to run in production“ ab und startete in einer Schleife neu (weder HTTP noch HTTPS erreichbar). Nur von Hand im Terminal lief es.
+
+### V-141026 BGD
 
 1. Hintergrundbild: Das Repository enthält `static/bgr_default.jpg`. Dein eigenes Bild (CHANGE im Setup & Sync) wird als `static/bgr.jpg` gespeichert. Diese Datei wird von Git ignoriert, ein `git pull` kollidiert also nie damit. RESET stellt das Standardbild wieder her.
 
