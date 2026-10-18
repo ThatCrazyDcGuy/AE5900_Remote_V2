@@ -359,6 +359,61 @@
             }
         }
             .key-flash { box-shadow: 0 0 14px #00ffff !important; }
+
+        /* =========================================================================
+           SMARTPHONE QUERFORMAT (Landscape, niedrige Hoehe): 3 Spalten
+           links: Zahlenfeld (CLAR/STEP ueber MIC/RB), Mitte: Display + Funktionstasten,
+           rechts: PTT, Audio-Tasten (per JS hierher verschoben, siehe unten); SETUP & SYNC bleibt darunter
+           ========================================================================= */
+        .land-right-col { display: none; }
+        @media (orientation: landscape) and (max-height: 560px) {
+            body { padding: 6px; }
+            .main-layout-wrapper {
+                display: grid !important;
+                grid-template-columns: 215px minmax(0, 1fr) 190px;
+                grid-template-rows: auto 1fr;
+                gap: 8px;
+                align-items: start;
+                max-width: none;
+                margin: 0;
+            }
+            .keypad-wrapper {
+                grid-column: 1; grid-row: 1 / span 2;
+                width: 100% !important; max-width: none !important; margin: 0 !important;
+                display: grid !important;
+                grid-template-columns: 1fr 66px !important;
+                gap: 6px !important;
+                align-items: start !important;
+                padding: 0 !important; background: none !important; border: 0 !important; box-shadow: none !important;
+            }
+            .keypad-wrapper > div:nth-child(1) { grid-column: 2; grid-row: 1; display: grid !important; grid-template-columns: 1fr !important; gap: 5px !important; width: 100% !important; }
+            .keypad-wrapper > div:nth-child(3) { grid-column: 2; grid-row: 2; display: grid !important; grid-template-columns: 1fr !important; gap: 5px !important; width: 100% !important; }
+            .keypad-wrapper > .keypad { grid-column: 1; grid-row: 1 / span 2; width: 100% !important; max-width: none !important; gap: 5px !important; }
+            .keypad button { padding: 10px 4px !important; }
+            .display { grid-column: 2; grid-row: 1; width: 100%; max-width: none; height: auto; margin: 0; padding: 12px; display: block; }
+            .freq { font-size: 3.15em; }
+            .mhz { font-size: 1.1em; }
+            #pttStat { top: 62px; left: 10px; font-size: 0.95em; }
+            #modeName { top: 62px; right: 45px; font-size: 0.95em; }
+            #sqDisplayLabel { font-size: 0.9em; bottom: 5px; left: 10px; }
+            .controls { grid-column: 2; grid-row: 2; width: 100%; max-width: none; margin: 0; gap: 5px; grid-template-columns: repeat(4, 1fr); }
+            .land-right-col { grid-column: 3; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 8px; }
+            .land-right-col .btn-ptt { width: 100%; grid-column: auto; min-height: 120px; }
+            .setup-area { width: 100%; max-width: 720px; margin: 14px auto 0 auto; }
+            .land-right-col button { white-space: normal; line-height: 1.15; }
+            button { min-height: 38px; padding: 6px 3px; font-size: 0.85em; }
+            .num-btn { padding: 10px 4px; }
+            .anleitung-box { display: block; }
+        }
+        /* schmale Handys im Querformat (z. B. 667 px Breite): Seitenspalten schmaler, Schrift kleiner */
+        @media (orientation: landscape) and (max-height: 560px) and (max-width: 780px) {
+            .main-layout-wrapper { grid-template-columns: 175px minmax(0, 1fr) 138px; gap: 6px; }
+            .keypad-wrapper { grid-template-columns: 1fr 56px !important; gap: 5px !important; }
+            .freq { font-size: 2.4em; margin-top: 20px; }
+            .mhz { margin-bottom: 34px; }
+            button { font-size: 0.78em; padding: 6px 1px; }
+            .land-right-col .btn-ptt { min-height: 100px; }
+        }
     </style>
 </head>
 <body>
@@ -464,7 +519,8 @@
             <button onclick="toggleWebAudioListen()" id="waListenBtn" style="flex: 1; background: #003300;">🔈 Inactive... (tap to start)</button>
             <button onclick="toggleMicTalk()" id="waMicBtn" style="flex: 1; background: #330000; display: none;">🎤 Inactive... (tap to start)</button>
         </div>
-</div> <details class="setup-area">
+    <div id="landRightCol" class="land-right-col"></div>
+</div> <details class="setup-area" id="setupArea">
     <summary>⚙ SETUP & SYNC</summary>
     <div style="background: #222; padding: 20px; border-radius: 10px;">
         <button id="syncBtn" class="hold-button"><span style="position:relative; z-index:2;">SUPER SYNC (CH 01 - Hold 3s)</span><div class="progress-bar" id="syncProgress"></div></button>
@@ -1550,7 +1606,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-151026 INS";
+                if (vInd) vInd.textContent = "V-181026 LSC";
             });
 
             socket.on('audio', (data) => { 
@@ -2304,6 +2360,34 @@
             if (micBtn) micBtn.style.display = '';
         }
     };
+</script>
+<script>
+// Smartphone-Querformat: PTT und Audio-Tasten wandern in die rechte Spalte, beim Zurueckdrehen
+// (oder am Desktop) exakt an ihre alte Stelle. Keine Funktion haengt an der Position, alles laeuft ueber IDs.
+(function () {
+    const mq = window.matchMedia('(orientation: landscape) and (max-height: 560px)');
+    const col = document.getElementById('landRightCol');
+    const ids = ['pttBtn', 'waListenBtn'];
+    const items = [];
+    function ensure() {
+        if (items.length) return true;
+        for (const id of ids) {
+            let el = document.getElementById(id); if (!el) continue;
+            if (id === 'waListenBtn') el = el.parentNode;       // beide Audio-Tasten liegen in einem gemeinsamen Block
+            const mark = document.createComment('land-' + id);
+            el.parentNode.insertBefore(mark, el);
+            items.push({ el, mark });
+        }
+        return items.length > 0;
+    }
+    function apply() {
+        if (!col || !ensure()) return;
+        if (mq.matches) { for (const it of items) col.appendChild(it.el); }
+        else { for (let i = items.length - 1; i >= 0; i--) { const it = items[i]; it.mark.parentNode.insertBefore(it.el, it.mark.nextSibling); } }
+    }
+    if (mq.addEventListener) mq.addEventListener('change', apply); else mq.addListener(apply);
+    apply();
+})();
 </script>
 </body>
 </html>
