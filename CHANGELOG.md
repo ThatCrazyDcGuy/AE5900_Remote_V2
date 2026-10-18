@@ -6,7 +6,11 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-151026 INS (current)
+### V-181026 LSC (current)
+
+1. Smartphone landscape mode: in landscape orientation the layout has three columns. Left: keypad with CLAR +/STEP/CLAR - above MIC +/RB/MIC -. Middle: display and function keys. Right: PTT and the two audio buttons. SETUP & SYNC stays below the layout. Portrait mode and the desktop layout are unchanged.
+
+### V-151026 INS
 
 1. Installer: new option `--with-sdr` for an RTL-SDR dongle as S-meter (installs `rtl-sdr`, blocks the DVB driver, checks the dongle and whether another program such as OpenWebRX uses it). The log hint at the end now shows a command that works. The installer is started with `bash install.sh` (no `chmod +x` needed) and sets `core.fileMode false`, so `git pull` is no longer blocked by file permissions.
 2. README: installer options, a troubleshooting section, contact/feedback (Telegram). Handbooks: notes on microphone gain, log and contact.

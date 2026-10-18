@@ -6,7 +6,11 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-151026 INS (aktuell)
+### V-181026 LSC (aktuell)
+
+1. Smartphone-Querformat: Im Querformat gibt es drei Spalten. Links das Zahlenfeld mit CLAR +/STEP/CLAR - über MIC +/RB/MIC -, in der Mitte Display und Funktionstasten, rechts PTT und die beiden Audio-Tasten. SETUP & SYNC bleibt darunter. Hochformat und Desktop-Ansicht bleiben unverändert.
+
+### V-151026 INS
 
 1. Installer: neue Option `--with-sdr` für einen RTL-SDR-Dongle als S-Meter (installiert `rtl-sdr`, sperrt den DVB-Treiber, prüft den Dongle und ob ihn ein anderes Programm wie OpenWebRX benutzt). Der Log-Hinweis am Ende zeigt jetzt einen Befehl, der funktioniert. Der Installer wird mit `bash install.sh` gestartet (kein `chmod +x` nötig) und setzt `core.fileMode false`, damit `git pull` nicht mehr an Dateirechten scheitert.
 2. README: Installer-Optionen, Fehlersuche, Kontakt/Feedback (Telegram). Handbücher: Hinweise zu Mikrofonverstärkung, Log und Kontakt.
