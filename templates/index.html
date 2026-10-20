@@ -670,6 +670,29 @@
             </p>
             <p id="smStatus" style="font-size:0.85em; color:#0aa; font-family:monospace;">-</p>
         </div>
+        <p>Camera (watch the radio):
+            <input type="checkbox" id="camEnable" onchange="camApply()" title="Off by default. Needs a USB webcam and the package ffmpeg. No traffic while it is off.">
+            <span id="camHint" style="font-size:0.8em; color:#888;"></span>
+        </p>
+        <div id="camBox" style="display:none; border-left: 2px solid #044; padding-left: 8px; margin: 4px 0;">
+            <p>Device:
+                <select id="camDev" onchange="camApply()" style="width:210px;"></select>
+                <button onclick="camLoad()" style="padding: 2px 8px; font-size: 0.8em;" title="Search again">&#8635;</button>
+            </p>
+            <p>Resolution:
+                <select id="camRes" onchange="camApply()" style="width:110px;"></select>
+            </p>
+            <p>Flip:
+                <label><input type="checkbox" id="camH" onchange="camApply()"> horizontal</label>
+                <label><input type="checkbox" id="camV" onchange="camApply()"> vertical</label>
+            </p>
+            <p>
+                <button id="camPrevBtn" onclick="camPreview()" style="padding: 2px 8px; font-size: 0.8em; background: #004444; border-color: #00ff00;">PREVIEW</button>
+                <a href="/cam" target="_blank" style="font-size:0.85em; color:#0aa;">open picture only (/cam)</a>
+                <span id="camState" style="font-size:0.8em; color:#0aa; font-family:monospace;"></span>
+            </p>
+            <img id="camImg" alt="" style="display:none; max-width:100%; border:1px solid #444;">
+        </div>
         <p>Background image:
             <button onclick="document.getElementById('bgFile').click()" style="padding: 2px 8px; font-size: 0.8em; background: #004444; border-color: #00ff00;">CHANGE</button>
             <button onclick="bgReset()" style="padding: 2px 8px; font-size: 0.8em;">RESET</button>
@@ -1606,7 +1629,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-181026 LSC";
+                if (vInd) vInd.textContent = "V-201026 CAM";
             });
 
             socket.on('audio', (data) => { 
@@ -2271,6 +2294,61 @@
     }
     setInterval(smeterPoll, 1500);
     if (document.getElementById('smSrc')) smeterLoad();
+
+    // ---- Kamera (optional): ffmpeg laeuft nur, solange die Vorschau oder /cam offen ist ----
+    function camPreview(on) {
+        const img = document.getElementById('camImg'), btn = document.getElementById('camPrevBtn');
+        if (on === undefined) on = (img.style.display === 'none');
+        if (on) { img.src = '/cam/stream?t=' + Date.now(); img.style.display = 'block'; btn.textContent = 'STOP PREVIEW'; }
+        else { img.removeAttribute('src'); img.style.display = 'none'; btn.textContent = 'PREVIEW'; }
+    }
+    function camLoad() {
+        fetch('/api/cam').then(r => r.json()).then(d => {
+            const en = document.getElementById('camEnable'), box = document.getElementById('camBox'), hint = document.getElementById('camHint');
+            if (!d.available || !d.ffmpeg) {
+                en.checked = false; en.disabled = true; box.style.display = 'none';
+                hint.textContent = d.available ? ' ffmpeg missing: sudo apt install ffmpeg' : ' camera module missing';
+                return;
+            }
+            en.disabled = false; en.checked = d.enabled;
+            hint.textContent = d.devices.length ? '' : ' no USB camera found';
+            box.style.display = d.enabled ? 'block' : 'none';
+            const sel = document.getElementById('camDev'); sel.innerHTML = '';
+            d.devices.forEach(c => { const o = document.createElement('option'); o.value = c.dev; o.textContent = c.name; sel.appendChild(o); });
+            if (d.dev && !d.devices.some(c => c.dev === d.dev)) {      // gespeicherte Kamera gerade nicht angesteckt
+                const o = document.createElement('option'); o.value = d.dev; o.textContent = '(not connected) ' + d.dev; sel.appendChild(o);
+            }
+            if (d.dev) sel.value = d.dev;
+            const rs = document.getElementById('camRes'); rs.innerHTML = '';
+            d.resolutions.forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; rs.appendChild(o); });
+            rs.value = d.res;
+            document.getElementById('camH').checked = d.hflip;
+            document.getElementById('camV').checked = d.vflip;
+            document.getElementById('camState').textContent = d.enabled ? d.state : '';
+            if (!d.enabled) camPreview(false);
+        }).catch(() => {});
+    }
+    function camApply() {
+        const en = document.getElementById('camEnable').checked;
+        const q = 'enabled=' + (en ? 1 : 0)
+            + (document.getElementById('camDev').selectedOptions.length && document.getElementById('camDev').selectedOptions[0].textContent.indexOf('(not connected)') === 0
+                ? '' : '&dev=' + encodeURIComponent(document.getElementById('camDev').value || ''))
+            + '&res=' + encodeURIComponent(document.getElementById('camRes').value || '640x480')
+            + '&hflip=' + (document.getElementById('camH').checked ? 1 : 0)
+            + '&vflip=' + (document.getElementById('camV').checked ? 1 : 0);
+        fetch('/api/cam/set?' + q).then(r => r.json()).then(d => {
+            if (d.status !== 'success') alert(d.message || 'Could not save camera settings');
+            const img = document.getElementById('camImg');
+            if (img.style.display !== 'none') { camPreview(false); if (en) setTimeout(() => camPreview(true), 800); }
+            camLoad();
+        }).catch(() => {});
+    }
+    setInterval(() => {
+        const box = document.getElementById('camBox');
+        if (!box || box.style.display === 'none' || box.offsetParent === null) return;
+        fetch('/api/cam').then(r => r.json()).then(d => { document.getElementById('camState').textContent = d.enabled ? d.state : ''; }).catch(() => {});
+    }, 2000);
+    if (document.getElementById('camEnable')) camLoad();
 
     function reconnectHardwareBluetooth() {
         const macField = document.getElementById('btMacInput');
