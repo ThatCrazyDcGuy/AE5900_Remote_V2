@@ -1,3 +1,17 @@
+# --- Abhaengigkeits-Pruefung: VOR den eigentlichen Imports, damit der Nutzer statt eines Tracebacks eine klare Anweisung bekommt ---
+import sys as _sys
+import importlib.util as _ilu
+_REQUIRED = [  # (Python-Modul, apt-Paket)
+    ("flask", "python3-flask"), ("flask_socketio", "python3-flask-socketio"), ("serial", "python3-serial"),
+    ("numpy", "python3-numpy"), ("pyaudio", "python3-pyaudio"),
+]
+_missing = [(m, p) for m, p in _REQUIRED if _ilu.find_spec(m) is None]
+if _missing:
+    print("\n[ERROR] Missing Python packages / Fehlende Python-Pakete: " + ", ".join(m for m, _ in _missing))
+    print("  -> sudo apt install " + " ".join(p for _, p in _missing))
+    print("  Or run the installer again / oder den Installer erneut starten:  bash install.sh\n")
+    _sys.exit(1)
+
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 import serial
@@ -510,6 +524,12 @@ class RadioInterface:
             "webaudio_buffer_max_ms": 600,   # harte Obergrenze: darueber wird alter Rueckstau verworfen
             "webaudio_drift_permille": 5,    # max. Tempo-Korrektur zum Halten des Ziel-Puffers (5 = 0,5%), 0 = aus
             "scroll_interval_s": 4.0,         # NEU: Takt des Kanal-Blaetterers (Longpress S-SCAN/MW) in Sekunden
+            "cam_enabled": False,            # NEU: Kamera (Monitoring) in Setup & Sync - aus = kein ffmpeg, kein Netzwerkverkehr
+            "cam_dev": "",                   # "" = erste gefundene USB-Webcam
+            "cam_res": "640x480",
+            "cam_fps": 10,
+            "cam_hflip": False,
+            "cam_vflip": False,
             "audio_card_match": "",          # NEU: nur bei MEHREREN USB-Audiogeraeten: Teil des Kartennamens (z.B. "C-Media"), die verwendet werden soll
             
             # --- NEU: VFO DEFAULTS FÜR DEN HARDWARE-SYNC ---
@@ -3366,6 +3386,90 @@ def api_smeter_set():
         radio.save_config()
     return jsonify({"status": "success"})
 
+# =========================================================================
+# KAMERA (optional, ohne OpenCV: ffmpeg + Video4Linux2, siehe ae_cam.py)
+# =========================================================================
+try:
+    import ae_cam
+    cam_stream = ae_cam.CamStream(lambda: radio.config)
+except Exception as _e:
+    ae_cam = None
+    cam_stream = None
+    print(f"[CAM] Kamera-Modul nicht verfuegbar: {_e}")
+
+@app.route('/api/cam')
+def api_cam_info():
+    if ae_cam is None:
+        return jsonify({"available": False, "reason": "ae_cam.py missing"})
+    c = radio.config
+    return jsonify({
+        "available": True,
+        "ffmpeg": ae_cam.ffmpeg_path() is not None,
+        "enabled": bool(c.get("cam_enabled")),
+        "devices": ae_cam.list_cameras(),
+        "dev": c.get("cam_dev", ""),
+        "res": c.get("cam_res", ae_cam.DEFAULT_RES),
+        "resolutions": list(ae_cam.RESOLUTIONS),
+        "hflip": bool(c.get("cam_hflip")),
+        "vflip": bool(c.get("cam_vflip")),
+        "state": cam_stream.info()["state"],
+        "viewers": cam_stream.info()["viewers"],
+    })
+
+@app.route('/api/cam/set')
+def api_cam_set():
+    if ae_cam is None:
+        return jsonify({"status": "error", "message": "Camera module missing"}), 400
+    a = request.args
+    new = {}
+    if 'enabled' in a:
+        new["cam_enabled"] = a.get('enabled') in ('1', 'true')
+    if 'dev' in a:
+        dev = a.get('dev', '')
+        if dev and not ae_cam.valid_device(dev):    # nur Geraete aus der Liste - nie ein frei eingegebener Pfad
+            return jsonify({"status": "error", "message": "Unknown camera device"}), 400
+        new["cam_dev"] = dev
+    if 'res' in a:
+        if a.get('res') not in ae_cam.RESOLUTIONS:
+            return jsonify({"status": "error", "message": "Unsupported resolution"}), 400
+        new["cam_res"] = a.get('res')
+    for k, key in (('hflip', 'cam_hflip'), ('vflip', 'cam_vflip')):
+        if k in a:
+            new[key] = a.get(k) in ('1', 'true')
+    with radio.lock:
+        radio.config.update(new)
+        radio.save_config()
+    return jsonify({"status": "success"})
+
+@app.route('/cam/stream')
+def cam_stream_route():
+    from flask import Response
+    if ae_cam is None or not radio.config.get("cam_enabled"):
+        return jsonify({"status": "error", "message": "Camera is switched off (Setup & Sync)"}), 404
+    if not cam_stream.acquire():            # Platz pruefen (max. Zuschauer), danach gleich wieder freigeben - frames() holt sich seinen eigenen
+        return jsonify({"status": "error", "message": "Too many viewers"}), 503
+    cam_stream.release()
+    resp = Response(cam_stream.frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['X-Accel-Buffering'] = 'no'
+    return resp
+
+CAM_PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AE5900 CAM</title><style>html,body{margin:0;background:#111;color:#0f0;font-family:sans-serif;text-align:center}
+img{max-width:100%;height:auto;border:1px solid #333}#m{padding:8px;font-size:.9em;color:#888}</style></head><body>
+<div id="m">AE5900 CAM</div><img id="v" alt="">
+<script>
+const v=document.getElementById('v'), m=document.getElementById('m');
+function go(){ v.src='/cam/stream?t='+Date.now(); }
+v.onload=()=>{ m.textContent='AE5900 CAM'; };
+v.onerror=()=>{ m.textContent='No picture - is the camera switched on in Setup & Sync? Retrying ...'; setTimeout(go,4000); };
+go();
+</script></body></html>"""
+
+@app.route('/cam')
+def cam_page():
+    return CAM_PAGE
+
 def audio_broadcast_task():
     while True:
         try:
@@ -3570,6 +3674,16 @@ if __name__ == '__main__':
         print("[STARTUP] UK-Modus-Matrix erfolgreich geladen.")
 
     print("AE5900 Remote V2 mit WebSocket gestartet")
+
+    # NEU: optionale Programme pruefen - fehlt eines, laeuft das Programm trotzdem; nur die Funktion ist nicht verfuegbar.
+    _opt = [("rigctld", "libhamlib-utils", "Hamlib / OpenWebRX"),
+            ("ffmpeg", "ffmpeg", "Camera"),
+            ("rtl_sdr", "rtl-sdr", "SDR S-meter")]
+    _want = {"rigctld": True, "ffmpeg": bool(radio.config.get("cam_enabled")),
+             "rtl_sdr": radio.config.get("smeter_source") == "sdr"}
+    for _prog, _pkg, _what in _opt:
+        if _want.get(_prog) and shutil.which(_prog) is None:
+            print(f"[CHECK] '{_prog}' not found - {_what} will not work.  ->  sudo apt install {_pkg}")
 
     # NEU: HTTP (Port 5000) und HTTPS (Port 5443) laufen jetzt gleichzeitig, nicht mehr entweder-oder.
     # HTTP reicht fuer Steuerung + Zuhoeren (RX-Audio braucht kein HTTPS). Nur wer uebers Handy-Mikro

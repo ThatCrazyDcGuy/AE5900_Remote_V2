@@ -6,7 +6,12 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-181026 LSC (aktuell)
+### V-201026 CAM (aktuell)
+
+1. Kamera in SETUP & SYNC (optional, standardmäßig aus): Das AE5900 lässt sich mit einer USB-Webcam beobachten. Ein Dropdown listet die gefundenen Kameras, dazu Auflösung (320x240 / 640x480 / 1280x720), horizontal spiegeln und vertikal spiegeln. VORSCHAU zeigt das Bild an Ort und Stelle, `/cam` zeigt nur das Bild (für einen zweiten Bildschirm oder als Lesezeichen). Es braucht kein OpenCV, nur das Paket `ffmpeg` (`sudo apt install ffmpeg` oder `bash install.sh --with-cam`). ffmpeg läuft nur, solange jemand zuschaut. Eine ausgeschaltete Kamera verursacht daher weder Last noch Netzwerkverkehr. Die Kamera muss MJPEG liefern (praktisch jede USB-Webcam tut das).
+2. Startprüfung: Fehlt ein benötigtes Python-Paket, zeigt das Programm jetzt die genaue Zeile `sudo apt install ...` statt eines Tracebacks. Optionale Programme (ffmpeg, rigctld, rtl_sdr) werden beim Start nur gemeldet, wenn die zugehörige Funktion eingeschaltet ist.
+
+### V-181026 LSC
 
 1. Smartphone-Querformat: Im Querformat gibt es drei Spalten. Links das Zahlenfeld mit CLAR +/STEP/CLAR - über MIC +/RB/MIC -, in der Mitte Display und Funktionstasten, rechts PTT und die beiden Audio-Tasten. SETUP & SYNC bleibt darunter. Hochformat und Desktop-Ansicht bleiben unverändert.
 

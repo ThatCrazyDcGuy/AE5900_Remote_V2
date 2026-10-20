@@ -20,6 +20,7 @@ Usage: bash install.sh [options]
 
   --with-mumble          also install the Mumble client + server (optional - WebAudio does not need it)
   --with-sdr             also set up an RTL-SDR dongle as S-meter (rtl-sdr tools, driver blacklist, quick dongle check)
+  --with-cam             also install ffmpeg for the optional USB webcam (Setup & Sync -> Camera)
   --no-tailscale         skip Tailscale (HTTPS, phone microphone and wake lock need it;
                          plain HTTP on port 5000 works without)
   --no-service           do not set up the autostart service (start by hand: python3 ae_5900_v2.py)
@@ -33,11 +34,12 @@ Log file: ~/ae5900-install.log
 EOF
 }
 
-WITH_MUMBLE=0; WITH_SDR=0; NO_TAILSCALE=0; NO_SERVICE=0; KEEP_ONBOARD=0; DO_UPGRADE=0; ASSUME_YES=0
+WITH_MUMBLE=0; WITH_SDR=0; WITH_CAM=0; NO_TAILSCALE=0; NO_SERVICE=0; KEEP_ONBOARD=0; DO_UPGRADE=0; ASSUME_YES=0
 for arg in "$@"; do
     case "$arg" in
         --with-mumble)         WITH_MUMBLE=1 ;;
         --with-sdr)            WITH_SDR=1 ;;
+        --with-cam)            WITH_CAM=1 ;;
         --no-tailscale)        NO_TAILSCALE=1 ;;
         --no-service)          NO_SERVICE=1 ;;
         --keep-onboard-audio)  KEEP_ONBOARD=1 ;;
@@ -423,6 +425,20 @@ EOF
 fi
 
 # -------------------------------------------------------------------------
+# Optionale USB-Webcam: das Programm braucht dafuer nur 'ffmpeg' (kein OpenCV) und Zugriff auf /dev/video*
+echo
+if [ "$WITH_CAM" -eq 0 ]; then
+    info "USB webcam: not requested. Add it any time with: bash install.sh --with-cam"
+else
+    $APT install -y ffmpeg || warn "The package 'ffmpeg' could not be installed - the camera will not work."
+    if command -v ffmpeg >/dev/null 2>&1; then ok "ffmpeg is installed."
+    else warn "'ffmpeg' was not found after installing the package - the camera will not work."; fi
+    sudo usermod -a -G video "$USER_NAME" 2>/dev/null \
+        || warn "Could not add '$USER_NAME' to the group 'video' (needed to open the webcam)."
+    info "Switch the camera on in the web page under SETUP & SYNC -> Camera. It uses no network traffic while it is off."
+fi
+
+# -------------------------------------------------------------------------
 step "8/8" "Self-test"
 MISSING="$(python3 - <<'PY' 2>/dev/null
 import importlib
@@ -458,7 +474,7 @@ if ls /dev/ttyUSB* /dev/ttyACM* >/dev/null 2>&1; then ok "Serial port found: $(l
 else info "No serial adapter found right now - connect the radio cable before starting the app."; fi
 
 mkdir -p "$STATE_DIR"
-{ date; echo "options: mumble=$WITH_MUMBLE sdr=$WITH_SDR tailscale_skipped=$NO_TAILSCALE service_skipped=$NO_SERVICE"; } > "$STATE_DIR/installed"
+{ date; echo "options: mumble=$WITH_MUMBLE sdr=$WITH_SDR cam=$WITH_CAM tailscale_skipped=$NO_TAILSCALE service_skipped=$NO_SERVICE"; } > "$STATE_DIR/installed"
 
 # -------------------------------------------------------------------------
 IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"

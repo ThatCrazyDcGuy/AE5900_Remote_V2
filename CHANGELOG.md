@@ -6,7 +6,12 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-181026 LSC (current)
+### V-201026 CAM (current)
+
+1. Camera in SETUP & SYNC (optional, off by default): watch your radio with a USB webcam. A drop-down lists the cameras found, plus resolution (320x240 / 640x480 / 1280x720), horizontal flip and vertical flip. PREVIEW shows the picture in place; `/cam` shows the picture only (for a second screen or a bookmark). It needs no OpenCV, only the package `ffmpeg` (`sudo apt install ffmpeg`, or `bash install.sh --with-cam`). ffmpeg only runs while someone is watching, so a switched-off camera causes no load and no network traffic. The camera has to deliver MJPEG (practically every USB webcam does).
+2. Start check: if a required Python package is missing, the program now prints the exact `sudo apt install ...` line instead of a traceback. Optional programs (ffmpeg, rigctld, rtl_sdr) are reported at start only when the matching function is switched on.
+
+### V-181026 LSC
 
 1. Smartphone landscape mode: in landscape orientation the layout has three columns. Left: keypad with CLAR +/STEP/CLAR - above MIC +/RB/MIC -. Middle: display and function keys. Right: PTT and the two audio buttons. SETUP & SYNC stays below the layout. Portrait mode and the desktop layout are unchanged.
 
