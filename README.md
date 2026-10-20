@@ -184,14 +184,10 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current: **V-151026 INS**. Always update with `git pull`.
+Current: **V-201026 CAM** Always update with `git pull`.
 
-- Installer: new option `--with-sdr` for an RTL-SDR dongle as S-meter.
-- The program now also starts as a system service (fix in V-151026 SVC).
-
-- Background image: the repository ships `static/bgr_default.jpg`; your own image (CHANGE in Setup & Sync) is stored as `static/bgr.jpg` and never conflicts with `git pull`.
-- Mode changes via Hamlib/Rigctl now respect Skip PA / Skip CW.
-- S-meter from an RTL-SDR dongle or from your own OpenWebRX server.
+1. Camera in SETUP & SYNC (optional, off by default): watch your radio with a USB webcam. A drop-down lists the cameras found, plus resolution (320x240 / 640x480 / 1280x720), horizontal flip and vertical flip. PREVIEW shows the picture in place; `/cam` shows the picture only (for a second screen or a bookmark). It needs no OpenCV, only the package `ffmpeg` (`sudo apt install ffmpeg`, or `bash install.sh --with-cam`). ffmpeg only runs while someone is watching, so a switched-off camera causes no load and no network traffic. The camera has to deliver MJPEG (practically every USB webcam does).
+2. Start check: if a required Python package is missing, the program now prints the exact `sudo apt install ...` line instead of a traceback. Optional programs (ffmpeg, rigctld, rtl_sdr) are reported at start only when the matching function is switched on.
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 
