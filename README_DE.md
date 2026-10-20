@@ -190,14 +190,10 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-151026 INS**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-201026 CAM**. Aktualisieren immer mit `git pull`.
 
-- Installer: neue Option `--with-sdr` für einen RTL-SDR-Dongle als S-Meter.
-- Das Programm startet jetzt auch als Systemdienst (Fehlerbehebung in V-151026 SVC).
-
-- Hintergrundbild: Das Repository enthält `static/bgr_default.jpg`. Dein eigenes Bild (CHANGE im Setup & Sync) liegt als `static/bgr.jpg` und kollidiert nie mit `git pull`.
-- Moduswechsel über Hamlib/Rigctl beachten jetzt Skip PA / Skip CW.
-- S-Meter aus einem RTL-SDR-Dongle oder vom eigenen OpenWebRX-Server.
+1. Kamera in SETUP & SYNC (optional, standardmäßig aus): Das AE5900 lässt sich mit einer USB-Webcam beobachten. Ein Dropdown listet die gefundenen Kameras, dazu Auflösung (320x240 / 640x480 / 1280x720), horizontal spiegeln und vertikal spiegeln. VORSCHAU zeigt das Bild an Ort und Stelle, `/cam` zeigt nur das Bild (für einen zweiten Bildschirm oder als Lesezeichen). Es braucht kein OpenCV, nur das Paket `ffmpeg` (`sudo apt install ffmpeg` oder `bash install.sh --with-cam`). ffmpeg läuft nur, solange jemand zuschaut. Eine ausgeschaltete Kamera verursacht daher weder Last noch Netzwerkverkehr. Die Kamera muss MJPEG liefern (praktisch jede USB-Webcam tut das).
+2. Startprüfung: Fehlt ein benötigtes Python-Paket, zeigt das Programm jetzt die genaue Zeile `sudo apt install ...` statt eines Tracebacks. Optionale Programme (ffmpeg, rigctld, rtl_sdr) werden beim Start nur gemeldet, wenn die zugehörige Funktion eingeschaltet ist.
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
