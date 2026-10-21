@@ -190,10 +190,10 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-201026 CAM**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-211026 UIS**. Aktualisieren immer mit `git pull`.
 
-1. Kamera in SETUP & SYNC (optional, standardmäßig aus): Das AE5900 lässt sich mit einer USB-Webcam beobachten. Ein Dropdown listet die gefundenen Kameras, dazu Auflösung (320x240 / 640x480 / 1280x720), horizontal spiegeln und vertikal spiegeln. VORSCHAU zeigt das Bild an Ort und Stelle, `/cam` zeigt nur das Bild (für einen zweiten Bildschirm oder als Lesezeichen). Es braucht kein OpenCV, nur das Paket `ffmpeg` (`sudo apt install ffmpeg` oder `bash install.sh --with-cam`). ffmpeg läuft nur, solange jemand zuschaut. Eine ausgeschaltete Kamera verursacht daher weder Last noch Netzwerkverkehr. Die Kamera muss MJPEG liefern (praktisch jede USB-Webcam tut das).
-2. Startprüfung: Fehlt ein benötigtes Python-Paket, zeigt das Programm jetzt die genaue Zeile `sudo apt install ...` statt eines Tracebacks. Optionale Programme (ffmpeg, rigctld, rtl_sdr) werden beim Start nur gemeldet, wenn die zugehörige Funktion eingeschaltet ist.
+1. Neben den "Bars", "Wasserfall" und "Both" gibt es nun zusätzlich "RF Waterfall" der entweder über einen angeschlossenen RTL-SDR Stick, oder per lokalem Openwebrx in das Displayelement geladen wird.
+2. Benachbarte Kanäle werden in diesem Wasserfall auch angezeigt. Die Wasserfallbreite ist variabel: 40, 60, 100 und 200khz stehen zur Auswahl.
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
