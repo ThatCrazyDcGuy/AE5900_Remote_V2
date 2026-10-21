@@ -544,6 +544,7 @@
                 <option value="bars">Classic (Bars)</option>
                 <option value="waterfall">Waterfall</option>
                 <option value="both">Both (Bars + Waterfall)</option>
+                <option value="rf">RF waterfall (SDR dongle)</option>
             </select>
         </p>
 
@@ -669,6 +670,27 @@
                 <span style="font-size:0.8em; color:#888;">low = calm, 1 = off</span>
             </p>
             <p id="smStatus" style="font-size:0.85em; color:#0aa; font-family:monospace;">-</p>
+            <div id="wfBox" style="display:none; border-top: 1px solid #044; margin-top: 6px; padding-top: 6px;">
+                <p>RF waterfall (around the channel):
+                    <input type="checkbox" id="wfEnable" onchange="wfApply()" title="Off by default. Needs about 10-15 % of one Raspberry Pi 3 core and a few KB/s per viewer while it is open.">
+                    <select id="wfSpan" onchange="wfApply()" style="width:90px;">
+                        <option value="40">40 kHz</option><option value="60">60 kHz</option>
+                        <option value="100">100 kHz</option><option value="200">200 kHz</option>
+                    </select>
+                </p>
+                <p id="wfTxRow"><label><input type="checkbox" id="wfTx" onchange="wfApply()"> keep running while transmitting (shows your own signal)</label><br>
+                    <span style="font-size:0.8em; color:#e90;">Only with a SEPARATE receive antenna and some distance to the transmitter. Never connect the dongle to the transmit antenna or the antenna socket of the radio - it would be destroyed.</span></p>
+                <div id="wfView" style="display:none;">
+                    <div style="position:relative; width:100%; max-width:640px;">
+                        <canvas id="wfCanvas" width="480" height="200" style="width:100%; height:200px; background:#000; display:block; border:1px solid #444;"></canvas>
+                        <canvas id="wfOverlay" width="480" height="200" style="position:absolute; left:0; top:0; width:100%; height:200px; pointer-events:none;"></canvas>
+                    </div>
+                    <p style="font-size:0.85em; margin:4px 0;">Contrast:
+                        <input type="range" id="wfRange" min="20" max="80" value="45" oninput="wfRangeChanged()" style="width:140px; vertical-align:middle;">
+                        <span id="wfInfo" style="color:#0aa; font-family:monospace;"></span>
+                    </p>
+                </div>
+            </div>
         </div>
         <p>Camera (watch the radio):
             <input type="checkbox" id="camEnable" onchange="camApply()" title="Off by default. Needs a USB webcam and the package ffmpeg. No traffic while it is off.">
@@ -1481,7 +1503,21 @@
     let cqRecPendingGlobal = false; // NEU: sperrt CQ REC, solange Speichern/Abbrechen noch offen ist
 
     // --- NEU: WASSERFALL-DISPLAY ALS UMSCHALTBARE, LOKAL GESPEICHERTE ANSICHT ---
-    let visualizerMode = localStorage.getItem('ae5900_viz_mode') || 'bars';
+    // NEU: Anzeige-Einstellungen liegen in der config.json (gelten auf allen Geraeten des Nutzers), sobald er sie einmal aendert.
+    // Solange der Server noch nichts hat, gilt der bisherige Browser-Wert (localStorage) - es geht also nichts verloren.
+    const SRV_UI = { viz: {{ config.get('ui_viz_mode', '')|tojson }}, contrast: {{ config.get('ui_wf_contrast', 0)|tojson }},
+                     speed: {{ config.get('ui_wf_speed', 0)|tojson }}, rf: {{ config.get('ui_rf_range', 0)|tojson }} };
+    let _uiSaveTimer = null, _uiPending = {};
+    function uiSave(k, v) {     // gesammelt und leicht verzoegert senden (Schieberegler loesen viele Ereignisse aus)
+        _uiPending[k] = v;
+        clearTimeout(_uiSaveTimer);
+        _uiSaveTimer = setTimeout(() => {
+            const q = Object.keys(_uiPending).map(x => x + '=' + encodeURIComponent(_uiPending[x])).join('&');
+            _uiPending = {};
+            fetch('/api/ui/set?' + q).catch(() => {});
+        }, 400);
+    }
+    let visualizerMode = SRV_UI.viz || localStorage.getItem('ae5900_viz_mode') || 'bars';
     // NEU: satter/knalliger (X6100-Referenz) - reines Schwarz im Boden fuer max. Kontrast, dann kraeftiges
     // Blau/Cyan/Gruen/Gelb/Orange/Rot statt der vorherigen eher gedaempften navy/dunkelgruenen Zwischentoene.
     const wfColorStops = [
@@ -1515,19 +1551,21 @@
     // Aenderungen hier im <script> sind dauerhaft, in der Konsole nur bis zum naechsten Reload.
     // WICHTIG: steuert NUR den Farbkontrast, NICHT das Scroll-Tempo. Das Scroll-Tempo (wie schnell neue
     // Zeilen reinkommen) haengt am Server-Intervall in audio_broadcast_task() in ae_5900_v2.py.
-    let wfAdaptSpeed = parseFloat(localStorage.getItem('ae5900_wf_speed')) || 0.042;
-    let wfContrastExponent = parseFloat(localStorage.getItem('ae5900_wf_contrast')) || 1.52;
+    let wfAdaptSpeed = SRV_UI.speed || parseFloat(localStorage.getItem('ae5900_wf_speed')) || 0.042;
+    let wfContrastExponent = SRV_UI.contrast || parseFloat(localStorage.getItem('ae5900_wf_contrast')) || 1.52;
     // NEU: live im Setup & Sync einstellbar, statt nur ueber Browser-Konsole/Datei - jeder OM kann
     // selbst rumprobieren. Wert wird lokal je Browser gemerkt (localStorage), nicht global am Server.
     function setWfContrast(v) {
         v = Math.max(0.05, Math.min(2, parseFloat(v) || 1.52));
         wfContrastExponent = v;
         try { localStorage.setItem('ae5900_wf_contrast', v); } catch (e) {}
+        uiSave('wf_contrast', v);
     }
     function setWfSpeed(v) {
         v = Math.max(0.01, Math.min(1, parseFloat(v) || 0.042));
         wfAdaptSpeed = v;
         try { localStorage.setItem('ae5900_wf_speed', v); } catch (e) {}
+        uiSave('wf_speed', v);
     }
     function syncWfInputs() {
         const cIn = document.getElementById('wfContrastInput'); if (cIn) cIn.value = wfContrastExponent;
@@ -1599,17 +1637,19 @@
         const sel = document.getElementById('vzModeSelect');
         if (sel) sel.value = visualizerMode;
         const marker = document.getElementById('splitMarker');
-        if (marker) marker.style.display = (visualizerMode === 'both') ? 'block' : 'none';
+        if (marker) marker.style.display = (visualizerMode === 'both' || visualizerMode === 'rf') ? 'block' : 'none';   // im RF-Modus: Dreieck = Kanalmitte
     }
     function setVisualizerMode(mode) {
-        visualizerMode = (mode === 'waterfall' || mode === 'both') ? mode : 'bars';
+        visualizerMode = (mode === 'waterfall' || mode === 'both' || mode === 'rf') ? mode : 'bars';
         try { localStorage.setItem('ae5900_viz_mode', visualizerMode); } catch (e) {}
+        uiSave('viz', visualizerMode);
         if (ctx && canvas) { ctx.fillStyle = '#00030c'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
         wfFloor = 0; wfCeil = 2; // Kontrastanpassung bei Moduswechsel zuruecksetzen
         syncVzModeSelect();
+        if (typeof rfModeChanged === 'function') rfModeChanged();
     }
 
-    function resizeCanvas() { if (canvas) { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; } }
+    function resizeCanvas() { if (canvas) { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; } if (typeof rfMainResize === 'function') rfMainResize(); }
     window.addEventListener('resize', resizeCanvas);
 
     // =========================================================================
@@ -1629,13 +1669,17 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-201026 CAM";
+                if (vInd) vInd.textContent = "V-211026 UIS";
+                wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
+
+            socket.on('wf', (m) => { if (m && m.r) wfRow(m); });
 
             socket.on('audio', (data) => { 
                 if (!data || !Array.isArray(data.data)) return;
                 if (visualizerMode === 'waterfall') drawWaterfall(data.data);
                 else if (visualizerMode === 'both') drawSplit(data.data);
+                else if (visualizerMode === 'rf') { /* RF-Wasserfall wird ueber das 'wf'-Ereignis gezeichnet */ }
                 else drawAudioBarsCoalesced(data.data);
             });
 
@@ -2239,6 +2283,9 @@
         box.style.display = (src === 'sdr' || src === 'owrx') ? 'block' : 'none';
         document.getElementById('smGainRow').style.display = (src === 'sdr') ? '' : 'none';
         document.getElementById('smAddrRow').style.display = (src === 'owrx') ? '' : 'none';
+        document.getElementById('wfBox').style.display = (src === 'sdr' || src === 'owrx') ? 'block' : 'none';
+        document.getElementById('wfTxRow').style.display = (src === 'sdr') ? '' : 'none';    // "beim Senden weiterlesen" gibt es nur beim Dongle
+        if (typeof wfSync === 'function') wfSync();
         document.getElementById('smHint').textContent = (src === 'owrx')
             ? 'Uses the OpenWebRX running on this Raspberry (it must have an SDR profile covering the channel). Relative reading - calibrate with the two values below.'
             : 'Receive-only second antenna on an RTL-SDR dongle (stop OpenWebRX first, the dongle can only be used once). Relative reading - calibrate with the two values below.';
@@ -2349,6 +2396,195 @@
         fetch('/api/cam').then(r => r.json()).then(d => { document.getElementById('camState').textContent = d.enabled ? d.state : ''; }).catch(() => {});
     }, 2000);
     if (document.getElementById('camEnable')) camLoad();
+
+    // ---- HF-Wasserfall (nur S-Meter-Quelle "SDR dongle"): Zeilen kommen per Socket nur, solange er hier offen ist ----
+    const WF_W = 480, WF_H = 200;
+    let wfJoined = false, wfLastRow = 0, rfFloor = null, wfMeta = null;
+    const wfLUT = (() => {          // dunkelblau -> blau -> tuerkis -> gelb -> rot -> weiss
+        const stops = [[0,0,0,16],[0.2,0,0,140],[0.45,0,150,200],[0.7,240,230,0],[0.9,255,60,0],[1,255,255,255]];
+        const lut = new Uint8ClampedArray(256 * 3);
+        for (let i = 0; i < 256; i++) {
+            const v = i / 255; let a = stops[0], b = stops[stops.length - 1];
+            for (let s = 0; s < stops.length - 1; s++) if (v >= stops[s][0] && v <= stops[s + 1][0]) { a = stops[s]; b = stops[s + 1]; break; }
+            const k = (v - a[0]) / Math.max(1e-6, b[0] - a[0]);
+            for (let c = 0; c < 3; c++) lut[i * 3 + c] = a[c + 1] + (b[c + 1] - a[c + 1]) * k;
+        }
+        return lut;
+    })();
+    function wfRange() { return parseFloat(document.getElementById('wfRange').value) || 45; }
+    function wfRangeChanged() { try { localStorage.setItem('wfRange', document.getElementById('wfRange').value); } catch (e) {} uiSave('rf_range', document.getElementById('wfRange').value); }
+    function wfWantView() {
+        if (visualizerMode === 'rf') return true;
+        const en = document.getElementById('wfEnable'), box = document.getElementById('wfBox');
+        return !!(en && en.checked && box && box.style.display !== 'none' && box.offsetParent !== null);
+    }
+    function wfSync() {             // Raum beitreten/verlassen je nachdem, ob der Wasserfall sichtbar ist
+        const want = wfWantView();
+        const view = document.getElementById('wfView');
+        if (view) view.style.display = (document.getElementById('wfEnable') && document.getElementById('wfEnable').checked) ? 'block' : 'none';
+        if (typeof socket === 'undefined' || !socket || !socket.connected) return;
+        if (want && !wfJoined) { socket.emit('wf_join'); wfJoined = true; }
+        else if (!want && wfJoined) { socket.emit('wf_leave'); wfJoined = false; }
+    }
+    function wfLoad() {
+        fetch('/api/wf').then(r => r.json()).then(d => {
+            document.getElementById('wfEnable').checked = d.enabled;
+            document.getElementById('wfSpan').value = String(d.span);
+            document.getElementById('wfTx').checked = d.tx;
+            try { const v = SRV_UI.rf || localStorage.getItem('wfRange'); if (v) document.getElementById('wfRange').value = v; } catch (e) {}
+            wfSync();
+        }).catch(() => {});
+    }
+    function wfApply() {
+        const q = 'enabled=' + (document.getElementById('wfEnable').checked ? 1 : 0)
+            + '&span=' + encodeURIComponent(document.getElementById('wfSpan').value)
+            + '&tx=' + (document.getElementById('wfTx').checked ? 1 : 0);
+        fetch('/api/wf/set?' + q).then(r => r.json()).then(d => {
+            if (d.status !== 'success') alert(d.message || 'Could not save waterfall settings');
+            rfFloor = null; wfSync();
+        }).catch(() => {});
+    }
+    function wfDrawOverlay(m) {
+        const c = document.getElementById('wfOverlay'); if (!c) return;
+        const g = c.getContext('2d'); g.clearRect(0, 0, WF_W, WF_H);
+        const lo = m.f - m.span / 2;
+        g.font = '10px monospace'; g.textAlign = 'center';
+        (m.chans || []).forEach(ch => {
+            const x = (ch[1] - lo) / m.span * WF_W;
+            const cur = (ch[0] === m.ch);
+            g.strokeStyle = cur ? 'rgba(0,255,0,0.9)' : 'rgba(200,200,200,0.35)';
+            g.lineWidth = cur ? 2 : 1;
+            g.beginPath(); g.moveTo(x, 12); g.lineTo(x, WF_H); g.stroke();
+            g.fillStyle = cur ? '#0f0' : '#ccc'; g.fillText(ch[0], x, 9);
+        });
+    }
+    function wfRow(m) {
+        const bin = atob(m.r), n = bin.length;
+        const vals = new Float32Array(n);
+        for (let i = 0; i < n; i++) vals[i] = bin.charCodeAt(i) - 127;
+        // Untergrund automatisch: langsam nachgefuehrtes unteres Viertel der Zeile
+        const sorted = Array.from(vals).sort((a, b) => a - b);
+        const q = sorted[Math.floor(n * 0.25)];
+        rfFloor = (rfFloor === null) ? q : rfFloor + (q - rfFloor) * 0.05;
+        const range = wfRange();
+        const cv = document.getElementById('wfCanvas'), g = cv.getContext('2d');
+        g.drawImage(cv, 0, 1);
+        const img = g.createImageData(n, 1);
+        for (let i = 0; i < n; i++) {
+            const k = Math.max(0, Math.min(255, Math.round((vals[i] - rfFloor + 6) / range * 255)));
+            img.data[i * 4] = wfLUT[k * 3]; img.data[i * 4 + 1] = wfLUT[k * 3 + 1]; img.data[i * 4 + 2] = wfLUT[k * 3 + 2]; img.data[i * 4 + 3] = 255;
+        }
+        const tmp = document.createElement('canvas'); tmp.width = n; tmp.height = 1;
+        tmp.getContext('2d').putImageData(img, 0, 0);
+        g.imageSmoothingEnabled = false;
+        g.drawImage(tmp, 0, 0, n, 1, 0, 0, WF_W, 1);
+        if (m.tx) { g.fillStyle = '#f00'; g.fillRect(0, 0, 6, 1); }
+        const key = m.f + '|' + m.span + '|' + m.ch;
+        if (!wfMeta || wfMeta.key !== key) { wfMeta = { key: key, f: m.f, span: m.span, ch: m.ch, chans: m.chans }; wfDrawOverlay(wfMeta); }
+        wfLastRow = Date.now();
+        if (visualizerMode === 'rf') rfMainPaint(vals, n, m);
+        const info = document.getElementById('wfInfo');
+        if (info) info.textContent = (m.f / 1000).toFixed(3) + ' MHz  +/-' + (m.span / 2) + ' kHz' + (m.tx ? '  TX' : '');
+    }
+    setInterval(() => {             // keine Zeilen mehr (SDR nicht bereit/Sendepause): Hinweis statt stehendem Bild
+        const info = document.getElementById('wfInfo');
+        if (info && wfJoined && Date.now() - wfLastRow > 3000) info.textContent = 'waiting for SDR data ...  (' + (document.getElementById('smStatus') ? document.getElementById('smStatus').textContent : '') + ')';
+    }, 1500);
+    if (document.getElementById('wfEnable')) wfLoad();
+    document.addEventListener('visibilitychange', () => { if (document.hidden && wfJoined) { socket.emit('wf_leave'); wfJoined = false; } else wfSync(); });
+    const _setupDet = document.getElementById('setupArea');
+    if (_setupDet) _setupDet.addEventListener('toggle', () => wfSync());
+
+    // ---- HF-Wasserfall als 4. Anzeige-Modus: gleiche Zeilen, aber ueber die ganze Display-Flaeche (Rand zu Rand) ----
+    let rfMainOv = null, rfMainTmp = null, rfMainMeta = null, rfMainMsgShown = false;
+    function rfMainOverlay() {
+        if (rfMainOv) return rfMainOv;
+        if (!canvas || !canvas.parentNode) return null;
+        rfMainOv = document.createElement('canvas');
+        rfMainOv.id = 'rfMainOverlay';
+        rfMainOv.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; pointer-events:none;';
+        canvas.parentNode.insertBefore(rfMainOv, canvas.nextSibling);
+        rfMainOv.width = canvas.width; rfMainOv.height = canvas.height;
+        return rfMainOv;
+    }
+    function rfMainResize() {
+        if (!rfMainOv || !canvas) return;
+        rfMainOv.width = canvas.width; rfMainOv.height = canvas.height;
+        if (visualizerMode === 'rf' && rfMainMeta) rfMainDrawMarks(rfMainMeta);
+    }
+    function rfMainClearOverlay() {
+        const o = rfMainOverlay(); if (!o) return;
+        o.getContext('2d').clearRect(0, 0, o.width, o.height);
+    }
+    function rfMainDrawMarks(m) {
+        const o = rfMainOverlay(); if (!o) return;
+        const g = o.getContext('2d'), W = o.width, H = o.height;
+        g.clearRect(0, 0, W, H);
+        const lo = m.f - m.span / 2;
+        g.font = 'bold 11px monospace'; g.textAlign = 'center';
+        (m.chans || []).forEach(ch => {
+            const x = (ch[1] - lo) / m.span * W;
+            const cur = (ch[0] === m.ch);
+            if (!cur) {                  // aktueller Kanal: keine Linie (das Dreieck oben markiert die Mitte, die Linie verdeckte das Signal)
+                g.strokeStyle = 'rgba(220,220,220,0.18)'; g.lineWidth = 1;
+                g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+            }
+            g.fillStyle = cur ? '#0f0' : 'rgba(230,230,230,0.8)';
+            g.shadowColor = '#000'; g.shadowBlur = 3;
+            g.fillText(ch[0], x, 44);
+            g.shadowBlur = 0;
+        });
+    }
+    function rfMainMessage(txt) {
+        const o = rfMainOverlay(); if (!o) return;
+        const g = o.getContext('2d'); g.clearRect(0, 0, o.width, o.height);
+        g.font = '12px monospace'; g.textAlign = 'center'; g.fillStyle = '#9cf';
+        g.shadowColor = '#000'; g.shadowBlur = 4;
+        g.fillText(txt, o.width / 2, o.height / 2);
+        g.shadowBlur = 0;
+    }
+    function rfMainPaint(vals, n, m) {
+        if (!canvas || !ctx || canvas.width < 2 || canvas.height < 2) return;
+        const W = canvas.width, H = canvas.height, range = wfRange();
+        // Scrollen wie im vorhandenen Wasserfall (getImageData/putImageData): ein drawImage des Canvas auf sich selbst
+        // wurde auf manchen Geraeten (Canvas mit desynchronized) nicht uebernommen - dann blieb nur die oberste Zeile.
+        try { ctx.putImageData(ctx.getImageData(0, 0, W, H - 1), 0, 1); } catch (e) { return; }
+        if (!rfMainTmp) rfMainTmp = document.createElement('canvas');
+        if (rfMainTmp.width !== n) rfMainTmp.width = n;
+        rfMainTmp.height = 1;
+        const tg = rfMainTmp.getContext('2d'), img = tg.createImageData(n, 1);
+        for (let i = 0; i < n; i++) {
+            const k = Math.max(0, Math.min(255, Math.round((vals[i] - rfFloor + 6) / range * 255)));
+            img.data[i * 4] = wfLUT[k * 3]; img.data[i * 4 + 1] = wfLUT[k * 3 + 1]; img.data[i * 4 + 2] = wfLUT[k * 3 + 2]; img.data[i * 4 + 3] = 255;
+        }
+        tg.putImageData(img, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(rfMainTmp, 0, 0, n, 1, 0, 0, W, 1);
+        if (m.tx) { ctx.fillStyle = '#f00'; ctx.fillRect(0, 0, 10, 1); }
+        const key = m.f + '|' + m.span + '|' + m.ch;
+        if (!rfMainMeta || rfMainMeta.key !== key || rfMainMsgShown) { rfMainMeta = { key: key, f: m.f, span: m.span, ch: m.ch, chans: m.chans }; rfMainDrawMarks(rfMainMeta); rfMainMsgShown = false; }
+    }
+    function rfModeChanged() {
+        rfMainMeta = null; rfMainMsgShown = false;
+        if (visualizerMode === 'rf') {
+            // Server-seitig einschalten (wirkt nur mit der S-Meter-Quelle "SDR dongle"); gerechnet wird erst, wenn jemand zuschaut
+            fetch('/api/wf/set?enabled=1').then(() => { wfLoad(); }).catch(() => {});
+            rfMainOverlay();
+        } else {
+            rfMainClearOverlay();
+        }
+        wfSync();
+    }
+    setInterval(() => {             // im RF-Modus ohne Zeilen: Hinweis auf dem Display statt eines leeren Bildes
+        if (visualizerMode !== 'rf' || !wfJoined) return;
+        if (Date.now() - wfLastRow > 3000) {
+            fetch('/api/wf').then(r => r.json()).then(d => {
+                rfMainMsgShown = true;
+                rfMainMessage((d.source !== 'sdr' && d.source !== 'owrx') ? 'RF waterfall needs the S-meter source "SDR dongle" or "OpenWebRX" (Setup & Sync)' : 'waiting for SDR / OpenWebRX data ...');
+            }).catch(() => {});
+        }
+    }, 2500);
+    if (visualizerMode === 'rf') setTimeout(rfModeChanged, 600);      // gespeicherter RF-Modus: nach dem Laden wieder anmelden
 
     function reconnectHardwareBluetooth() {
         const macField = document.getElementById('btMacInput');
