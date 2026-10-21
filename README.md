@@ -184,10 +184,10 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current: **V-201026 CAM** Always update with `git pull`.
+Current version: **V-211026 UIS**. Always update using `git pull`.
 
-1. Camera in SETUP & SYNC (optional, off by default): watch your radio with a USB webcam. A drop-down lists the cameras found, plus resolution (320x240 / 640x480 / 1280x720), horizontal flip and vertical flip. PREVIEW shows the picture in place; `/cam` shows the picture only (for a second screen or a bookmark). It needs no OpenCV, only the package `ffmpeg` (`sudo apt install ffmpeg`, or `bash install.sh --with-cam`). ffmpeg only runs while someone is watching, so a switched-off camera causes no load and no network traffic. The camera has to deliver MJPEG (practically every USB webcam does).
-2. Start check: if a required Python package is missing, the program now prints the exact `sudo apt install ...` line instead of a traceback. Optional programs (ffmpeg, rigctld, rtl_sdr) are reported at start only when the matching function is switched on.
+1. In addition to "Bars," "Waterfall," and "Both," there is now an "RF Waterfall" option, which can be loaded into the display element either via a connected RTL-SDR dongle or through a local OpenWebRX instance.
+2. Adjacent channels are also displayed in this waterfall. The waterfall bandwidth is adjustable, with options of 40, 60, 100, and 200 kHz.
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 
