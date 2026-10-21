@@ -6,7 +6,32 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-201026 CAM (current)
+### V-211026 UIS (current)
+
+1. Display settings are now stored in `config.json` and apply on all your devices as soon as you change them once: the display mode (Bars / Waterfall / Both / RF waterfall), the contrast and speed of the audio waterfall and the contrast of the RF waterfall. Until the program has stored a value, the value your browser had remembered is still used, so nothing is lost. The S-meter source and the RF waterfall switches were already stored in `config.json`. Audio settings and keyboard shortcuts stay per device on purpose.
+
+### V-211026 OWF
+
+1. RF waterfall with OpenWebRX as S-meter source: the program now also takes the waterfall rows from your OpenWebRX (spectrum of its whole profile, cut to the window around the channel). So it works without a dongle of its own, e.g. when OpenWebRX already uses the dongle. The display mode "RF waterfall" and the settings (width, contrast) are the same as with the dongle. Your own transmissions are always shown (marked red), because OpenWebRX is only listening. The resolution depends on the OpenWebRX profile (sample rate / FFT size), so it can be coarser than with a dongle of its own. Not tested against a real OpenWebRX yet.
+
+### V-211026 RFF
+
+1. RF waterfall display: the green line on the current channel is gone (it covered the signal). The triangle at the top marks the centre; the channel number and the grey neighbour lines stay.
+
+### V-211026 RFE
+
+1. Fix: in the display mode "RF waterfall" the waterfall now scrolls the same way as the normal waterfall (the new rows did not stay visible on some devices). The triangle marker at the top (centre of the window = the current channel) is shown again, as in "Both".
+
+### V-211026 RFD
+
+1. The RF waterfall is now a fourth DISPLAY MODE (SETUP & SYNC -> Display mode -> "RF waterfall (SDR dongle)"). It fills the whole display from edge to edge, with the channel grid marked (current channel green, number above the S-meter bar) and your own transmissions marked red at the left edge when "keep running while transmitting" is on. The choice is remembered per browser; selecting it switches the waterfall on in the program (it still only calculates while a browser is watching). It needs the S-meter source "SDR dongle" - otherwise the display says so. Width and contrast are set in the SDR section.
+
+### V-211026 WFL
+
+1. RF waterfall (optional, off by default) in SETUP & SYNC: with the S-meter source "SDR dongle" a second display shows the radio spectrum around the current channel, so you can see QSOs on the neighbouring channels. The window (40 / 60 / 100 / 200 kHz wide) is centred on the channel; the channel grid is marked, the current channel in green. The colours follow the noise floor automatically, "Contrast" sets the range. It uses the IQ data the S-meter already reads from the dongle; nothing is calculated and nothing is sent while the waterfall is switched off or not open. Needs roughly 10-15 % of one Raspberry Pi 3 core while open (estimate, not measured).
+2. Optional "keep running while transmitting": the dongle is then not released during TX, so your own signal appears in the waterfall (marked red at the left edge). Only with a separate receive antenna at some distance. Never connect the dongle to the transmit antenna or the antenna socket of the radio. The S-meter value is not updated during TX.
+
+### V-201026 CAM
 
 1. Camera in SETUP & SYNC (optional, off by default): watch your radio with a USB webcam. A drop-down lists the cameras found, plus resolution (320x240 / 640x480 / 1280x720), horizontal flip and vertical flip. PREVIEW shows the picture in place; `/cam` shows the picture only (for a second screen or a bookmark). It needs no OpenCV, only the package `ffmpeg` (`sudo apt install ffmpeg`, or `bash install.sh --with-cam`). ffmpeg only runs while someone is watching, so a switched-off camera causes no load and no network traffic. The camera has to deliver MJPEG (practically every USB webcam does).
 2. Start check: if a required Python package is missing, the program now prints the exact `sudo apt install ...` line instead of a traceback. Optional programs (ffmpeg, rigctld, rtl_sdr) are reported at start only when the matching function is switched on.

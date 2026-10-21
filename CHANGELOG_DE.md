@@ -6,7 +6,32 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-201026 CAM (aktuell)
+### V-211026 UIS (aktuell)
+
+1. Anzeige-Einstellungen werden jetzt in der `config.json` gespeichert und gelten auf allen Geräten, sobald man sie einmal ändert: der Display-Modus (Bars / Waterfall / Both / RF waterfall), Kontrast und Tempo des Audio-Wasserfalls und der Kontrast des HF-Wasserfalls. Solange das Programm noch keinen Wert gespeichert hat, gilt weiterhin der Wert, den sich der Browser gemerkt hatte, es geht also nichts verloren. Die S-Meter-Quelle und die Schalter des HF-Wasserfalls lagen schon in der `config.json`. Audio-Einstellungen und Tastenkürzel bleiben bewusst pro Gerät.
+
+### V-211026 OWF
+
+1. HF-Wasserfall mit OpenWebRX als S-Meter-Quelle: Das Programm übernimmt die Wasserfall-Zeilen jetzt auch aus deinem OpenWebRX (Spektrum des ganzen Profils, auf das Fenster um den Kanal zugeschnitten). So geht es ohne eigenen Dongle, z. B. wenn OpenWebRX den Dongle schon belegt. Anzeige-Modus „RF waterfall" und Einstellungen (Breite, Kontrast) sind dieselben wie beim Dongle. Eigene Sendungen werden immer angezeigt (rot markiert), weil OpenWebRX nur mithört. Die Auflösung hängt vom OpenWebRX-Profil ab (Abtastrate / FFT-Größe) und kann gröber sein als beim eigenen Dongle. Noch nicht gegen ein echtes OpenWebRX getestet.
+
+### V-211026 RFF
+
+1. RF-Wasserfall-Anzeige: Die grüne Linie auf dem aktuellen Kanal entfällt (sie verdeckte das Signal). Das Dreieck oben markiert die Mitte, die Kanalnummer und die grauen Nachbarlinien bleiben.
+
+### V-211026 RFE
+
+1. Fehlerbehebung: Im Display-Modus „RF waterfall" scrollt der Wasserfall jetzt auf dieselbe Weise wie der normale Wasserfall (die neuen Zeilen blieben auf manchen Geräten nicht sichtbar). Das Dreieck oben (Fenstermitte = aktueller Kanal) wird wie bei „Both" wieder angezeigt.
+
+### V-211026 RFD
+
+1. Der HF-Wasserfall ist jetzt ein vierter ANZEIGE-MODUS (SETUP & SYNC -> Display mode -> „RF waterfall (SDR dongle)"). Er füllt das gesamte Display von Rand zu Rand, das Kanalraster ist markiert (aktueller Kanal grün, Nummer über dem S-Meter-Balken). Eigene Sendungen erscheinen bei eingeschaltetem „keep running while transmitting" rot am linken Rand. Die Wahl wird je Browser gemerkt. Das Auswählen schaltet den Wasserfall im Programm ein (gerechnet wird weiterhin nur, solange ein Browser zuschaut). Nötig ist die S-Meter-Quelle „SDR dongle", sonst weist das Display darauf hin. Breite und Kontrast stellst du im SDR-Bereich ein.
+
+### V-211026 WFL
+
+1. HF-Wasserfall (optional, standardmäßig aus) in SETUP & SYNC: Mit der S-Meter-Quelle „SDR dongle" zeigt eine zweite Anzeige das Funkspektrum um den aktuellen Kanal, sodass man QSOs auf den Nachbarkanälen sieht. Das Fenster (40 / 60 / 100 / 200 kHz breit) liegt mittig auf dem Kanal. Das Kanalraster ist markiert, der aktuelle Kanal grün. Die Farben folgen dem Rauschteppich automatisch, „Contrast" stellt den Bereich ein. Genutzt werden die IQ-Daten, die das S-Meter ohnehin vom Dongle liest. Bei ausgeschaltetem oder nicht geöffnetem Wasserfall wird nichts gerechnet und nichts gesendet. Während er offen ist, braucht er grob 10-15 % eines Raspberry-Pi-3-Kerns (Schätzung, nicht gemessen).
+2. Optional „keep running while transmitting": Der Dongle wird beim Senden nicht freigegeben, dein eigenes Signal erscheint im Wasserfall (rot am linken Rand markiert). Nur mit einer eigenen Empfangsantenne in einigem Abstand. Den Dongle niemals an die Sendeantenne oder den Antennenanschluss des Funkgeräts hängen. Der S-Meter-Wert wird beim Senden nicht aktualisiert.
+
+### V-201026 CAM
 
 1. Kamera in SETUP & SYNC (optional, standardmäßig aus): Das AE5900 lässt sich mit einer USB-Webcam beobachten. Ein Dropdown listet die gefundenen Kameras, dazu Auflösung (320x240 / 640x480 / 1280x720), horizontal spiegeln und vertikal spiegeln. VORSCHAU zeigt das Bild an Ort und Stelle, `/cam` zeigt nur das Bild (für einen zweiten Bildschirm oder als Lesezeichen). Es braucht kein OpenCV, nur das Paket `ffmpeg` (`sudo apt install ffmpeg` oder `bash install.sh --with-cam`). ffmpeg läuft nur, solange jemand zuschaut. Eine ausgeschaltete Kamera verursacht daher weder Last noch Netzwerkverkehr. Die Kamera muss MJPEG liefern (praktisch jede USB-Webcam tut das).
 2. Startprüfung: Fehlt ein benötigtes Python-Paket, zeigt das Programm jetzt die genaue Zeile `sudo apt install ...` statt eines Tracebacks. Optionale Programme (ffmpeg, rigctld, rtl_sdr) werden beim Start nur gemeldet, wenn die zugehörige Funktion eingeschaltet ist.

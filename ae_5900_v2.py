@@ -530,6 +530,9 @@ class RadioInterface:
             "cam_fps": 10,
             "cam_hflip": False,
             "cam_vflip": False,
+            "wf_enabled": False,             # NEU: HF-Wasserfall (nur mit S-Meter-Quelle "sdr") - aus = keine FFT, kein Verkehr
+            "wf_span_khz": 60,               # Gesamtbreite des Fensters um den Kanal in kHz (40 / 60 / 100 / 200)
+            "wf_tx": False,                  # Dongle auch waehrend des Sendens weiterlesen (nur mit eigener Empfangsantenne!)
             "audio_card_match": "",          # NEU: nur bei MEHREREN USB-Audiogeraeten: Teil des Kartennamens (z.B. "C-Media"), die verwendet werden soll
             
             # --- NEU: VFO DEFAULTS FÜR DEN HARDWARE-SYNC ---
@@ -3004,6 +3007,201 @@ def sdr_band_power_db(iq, center_hz, freq_hz, sample_rate, nfft=8192, half_bw_hz
     p = float(np.mean(np.sum(spec[:, idx], axis=1))) / (nfft * wpow)
     return 10.0 * np.log10(max(p, 1e-12))
 
+# =========================================================================
+# HF-WASSERFALL (optional, nur mit S-Meter-Quelle "sdr"): dieselben IQ-Daten wie das S-Meter, Spektrum um den Kanal.
+# Es wird nur gerechnet und gesendet, solange mindestens ein Browser zuschaut (wf_clients).
+# =========================================================================
+WF_SPANS = (40, 60, 100, 200)    # kHz
+WF_COLS = 480                    # maximale Spaltenzahl pro Zeile
+WF_ROW_S = 0.1                   # etwa 10 Zeilen pro Sekunde
+wf_clients = set()
+_wf = {"key": None, "sum": None, "n": 0, "t": 0.0}
+
+def wf_channel_list(f_hz, span_hz):
+    """Kanaele des aktuellen Bandes, die im Fenster liegen: [[kanal, kHz], ...]"""
+    out = []
+    try:
+        c_band = radio.config.get("current_band", "EU")
+        matrix = BASE_EU if c_band == "VFO" else bandMatrices.get(c_band, BASE_EU)
+        for ch, fr in matrix.items():
+            fh = float(fr) * 1e6
+            if abs(fh - f_hz) <= span_hz / 2.0:
+                out.append([ch, round(fh / 1000.0, 3)])
+    except Exception:
+        pass
+    return out
+
+def wf_feed(iq, center_hz, f_hz, sample_rate, nfft, tx):
+    """Nimmt einen IQ-Block entgegen, mittelt die Leistung ueber ~0.1 s und sendet dann eine Zeile an die Browser."""
+    span_hz = float(radio.config.get("wf_span_khz", 60)) * 1000.0
+    key = (round(center_hz), round(f_hz), span_hz, bool(tx))
+    if _wf["key"] != key:
+        _wf.update({"key": key, "sum": None, "n": 0, "t": time.time()})
+    n_blocks = len(iq) // nfft
+    if n_blocks < 1:
+        return
+    win = np.hanning(nfft)
+    x = np.asarray(iq[:n_blocks * nfft]).reshape(n_blocks, nfft) * win
+    pw = np.mean(np.abs(np.fft.fft(x, axis=1)) ** 2, axis=0) / (nfft * float(np.sum(win ** 2)))
+    _wf["sum"] = pw if _wf["sum"] is None else _wf["sum"] + pw
+    _wf["n"] += 1
+    if time.time() - _wf["t"] < WF_ROW_S:
+        return
+    avg = _wf["sum"] / max(1, _wf["n"])
+    _wf.update({"sum": None, "n": 0, "t": time.time()})
+    k0 = int(round((f_hz - span_hz / 2.0 - center_hz) / sample_rate * nfft))
+    k1 = int(round((f_hz + span_hz / 2.0 - center_hz) / sample_rate * nfft))
+    if k1 - k0 < 8 or abs(k0) > nfft // 2 * 0.95 or abs(k1) > nfft // 2 * 0.95:
+        return                                   # Fenster liegt ausserhalb des Empfangsbereichs
+    p = avg[np.arange(k0, k1) % nfft]
+    wf_send_row(10.0 * np.log10(np.maximum(p, 1e-12)), f_hz, span_hz, tx)
+
+def wf_send_row(db_bins, f_hz, span_hz, tx):
+    """Eine Zeile (dB je Frequenzbin, niedrigste Frequenz zuerst) auf WF_COLS Spalten verdichten und an die Browser senden."""
+    db_bins = np.asarray(db_bins, dtype=np.float64)
+    cols = min(WF_COLS, len(db_bins))
+    edges = np.linspace(0, len(db_bins), cols + 1).astype(int)
+    db = np.maximum.reduceat(db_bins, edges[:-1])      # Maximum je Spalte: schmale Traeger bleiben sichtbar
+    row = (np.clip(db, -127.0, 0.0) + 127.0).astype(np.uint8)
+    socketio.emit('wf', {
+        "r": base64.b64encode(row.tobytes()).decode("ascii"),
+        "f": round(f_hz / 1000.0, 3), "span": span_hz / 1000.0, "tx": bool(tx),
+        "ch": str(radio.current_ch).zfill(2), "chans": wf_channel_list(f_hz, span_hz),
+    }, to='wf')
+
+# --- Wasserfall-Zeilen aus OpenWebRX: Binaernachricht Typ 0x01 = FFT-Zeile ueber die ganze Bandbreite (samp_rate) um center_freq.
+#     Kompression "adpcm": IMA-ADPCM (je Byte zwei Nibbles, niederwertiges zuerst, Start predictor=0/step=0/index=0, pro Zeile neu),
+#     die ersten 10 Werte sind Fuellwerte, danach dB*100 als int16. Kompression "none": float32 dB. (Nach htdocs/openwebrx.js und
+#     htdocs/lib/AudioEngine.js von OpenWebRX+.) Je Zeile unabhaengig dekodierbar - nicht benoetigte Zeilen werden uebersprungen.
+_IMA_IDX = (-1, -1, -1, -1, 2, 4, 6, 8) * 2
+_IMA_STEP = (7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118,
+             130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060,
+             1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484,
+             7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767)
+OWRX_FFT_PAD = 10
+
+def owrx_adpcm_decode(data, max_out=None):
+    out = []
+    ap = out.append
+    idx_tab, step_tab = _IMA_IDX, _IMA_STEP
+    idx = pred = step = 0
+    for b in data:
+        for nib in (b & 0x0F, b >> 4):
+            idx += idx_tab[nib]
+            idx = 0 if idx < 0 else (88 if idx > 88 else idx)
+            diff = step >> 3
+            if nib & 1: diff += step >> 2
+            if nib & 2: diff += step >> 1
+            if nib & 4: diff += step
+            if nib & 8: diff = -diff
+            pred += diff
+            pred = -32768 if pred < -32768 else (32767 if pred > 32767 else pred)
+            step = step_tab[idx]
+            ap(pred)
+        if max_out is not None and len(out) >= max_out:
+            break
+    return out
+
+_wf_owrx = {"t": 0.0}
+
+def wf_feed_owrx(payload, center_hz, samp_rate, compression, f_hz, tx):
+    """payload = Bytes der OpenWebRX-FFT-Nachricht ohne das Typ-Byte."""
+    if time.time() - _wf_owrx["t"] < WF_ROW_S:
+        return
+    span_hz = float(radio.config.get("wf_span_khz", 60)) * 1000.0
+    if not samp_rate or not center_hz:
+        return
+    if compression == "adpcm":
+        # Zeile ist lang (z.B. 4096 Werte); wir brauchen nur bis zum Ende des Fensters. Dafuer erst die Laenge schaetzen.
+        n_est = (len(payload) * 2) - OWRX_FFT_PAD
+        k1_est = int(((f_hz + span_hz / 2.0 - (center_hz - samp_rate / 2.0)) / samp_rate) * n_est) + 2
+        vals = owrx_adpcm_decode(payload, OWRX_FFT_PAD + max(8, min(n_est, k1_est)) + 4)
+        n = n_est
+        arr = np.asarray(vals[OWRX_FFT_PAD:], dtype=np.float64) / 100.0
+    elif compression == "none":
+        arr = np.frombuffer(payload[:len(payload) // 4 * 4], dtype="<f4").astype(np.float64)
+        n = len(arr)
+    else:
+        return
+    if n < 16:
+        return
+    lo_hz = center_hz - samp_rate / 2.0
+    k0 = int(round((f_hz - span_hz / 2.0 - lo_hz) / samp_rate * n))
+    k1 = int(round((f_hz + span_hz / 2.0 - lo_hz) / samp_rate * n))
+    if k1 - k0 < 8 or k0 < 0 or k1 > n or k1 > len(arr):
+        return                                   # Fenster liegt (teilweise) ausserhalb des OpenWebRX-Bereichs
+    _wf_owrx["t"] = time.time()
+    wf_send_row(arr[k0:k1], f_hz, span_hz, tx)
+
+
+@socketio.on('wf_join')
+def handle_wf_join():
+    from flask_socketio import join_room
+    join_room('wf')
+    wf_clients.add(request.sid)
+
+@socketio.on('wf_leave')
+def handle_wf_leave():
+    from flask_socketio import leave_room
+    leave_room('wf')
+    wf_clients.discard(request.sid)
+
+@socketio.on('disconnect')
+def handle_disconnect_wf(*args):
+    wf_clients.discard(request.sid)
+
+@app.route('/api/ui/set')
+def api_ui_set():
+    """Anzeige-Einstellungen (Display-Modus, Wasserfall-Kontrast/-Tempo, HF-Kontrast) dauerhaft in der config.json,
+    damit sie auf allen Geraeten des Nutzers gelten. Nicht uebergebene Werte bleiben unveraendert."""
+    a = request.args
+    new = {}
+    try:
+        if 'viz' in a:
+            if a.get('viz') not in ('bars', 'waterfall', 'both', 'rf'):
+                return jsonify({"status": "error", "message": "invalid display mode"}), 400
+            new["ui_viz_mode"] = a.get('viz')
+        if 'wf_contrast' in a:
+            new["ui_wf_contrast"] = max(0.05, min(2.0, float(a.get('wf_contrast'))))
+        if 'wf_speed' in a:
+            new["ui_wf_speed"] = max(0.01, min(1.0, float(a.get('wf_speed'))))
+        if 'rf_range' in a:
+            new["ui_rf_range"] = max(20, min(80, int(float(a.get('rf_range')))))
+    except ValueError:
+        return jsonify({"status": "error", "message": "invalid number"}), 400
+    if new:
+        with radio.lock:
+            radio.config.update(new)
+            radio.save_config()
+    return jsonify({"status": "success"})
+
+@app.route('/api/wf')
+def api_wf_info():
+    c = radio.config
+    return jsonify({"enabled": bool(c.get("wf_enabled")), "span": c.get("wf_span_khz", 60), "spans": list(WF_SPANS),
+                    "tx": bool(c.get("wf_tx")), "source": c.get("smeter_source", "esp32"), "viewers": len(wf_clients)})
+
+@app.route('/api/wf/set')
+def api_wf_set():
+    a = request.args
+    new = {}
+    if 'enabled' in a:
+        new["wf_enabled"] = a.get('enabled') in ('1', 'true')
+    if 'tx' in a:
+        new["wf_tx"] = a.get('tx') in ('1', 'true')
+    if 'span' in a:
+        try:
+            sp = int(float(a.get('span')))
+        except ValueError:
+            return jsonify({"status": "error", "message": "invalid span"}), 400
+        if sp not in WF_SPANS:
+            return jsonify({"status": "error", "message": "unsupported span"}), 400
+        new["wf_span_khz"] = sp
+    with radio.lock:
+        radio.config.update(new)
+        radio.save_config()
+    return jsonify({"status": "success"})
+
 def sdr_smeter_worker():
     """Liest rohe IQ-Daten ueber das Kommandozeilenwerkzeug 'rtl_sdr' (Paket rtl-sdr). Bewusst KEIN pyrtlsdr:
     das braucht je nach Version eine neuere librtlsdr als die Distribution mitbringt (rtlsdr_set_dithering)."""
@@ -3042,7 +3240,11 @@ def sdr_smeter_worker():
                 time.sleep(1.0)
                 continue
             smeter_info["src"] = "sdr"
-            if radio.is_tx or radio.is_device_sending:
+            # NEU: Mit eingeschaltetem Wasserfall + "auch beim Senden" laeuft der Dongle waehrend des Sendens weiter.
+            wf_on = bool(radio.config.get("wf_enabled")) and bool(wf_clients)
+            wf_keep_tx = wf_on and bool(radio.config.get("wf_tx"))
+            tx_now = radio.is_tx or radio.is_device_sending
+            if tx_now and not wf_keep_tx:
                 # Waehrend des Sendens nicht lesen und den Dongle freigeben (Pipe wuerde sonst veralten).
                 stop_proc()
                 smoothed = None
@@ -3080,11 +3282,16 @@ def sdr_smeter_worker():
             if skip > 0:
                 skip -= 1
                 continue
-            if radio.is_tx or radio.is_device_sending:
+            tx_now = radio.is_tx or radio.is_device_sending
+            if tx_now and not wf_keep_tx:
                 continue  # Block stammt aus der Zeit vor dem Senden - verwerfen
             raw = np.frombuffer(buf, dtype=np.uint8).astype(np.float32)
             raw = (raw - 127.5) / 127.5
             iq = raw[0::2] + 1j * raw[1::2]
+            if wf_on:
+                wf_feed(iq, center, f, SR, NFFT, tx_now)
+            if tx_now:
+                continue  # S-Meter wird waehrend des Sendens nicht aktualisiert
             db = sdr_band_power_db(iq, center, f, SR, NFFT)
             if db is not None:
                 smoothed = db if smoothed is None else smoothed + (db - smoothed) * max(0.05, min(1.0, float(radio.config.get("sdr_smooth", 0.5))))
@@ -3199,6 +3406,7 @@ def owrx_smeter_worker():
     sent = None          # zuletzt gesendete (offset, mode)
     started = False
     smoothed = None
+    fft_comp = "adpcm"   # NEU: Kompression der OpenWebRX-FFT-Zeilen (kommt in der Konfiguration; Standard ist adpcm)
     while True:
         try:
             if radio.config.get("smeter_source", "esp32") != "owrx":
@@ -3234,6 +3442,8 @@ def owrx_smeter_worker():
                             center, sent = v["center_freq"], None
                         if "samp_rate" in v:
                             srate = v["samp_rate"]
+                        if "fft_compression" in v:
+                            fft_comp = str(v["fft_compression"])
                     elif t == "smeter":
                         if not (radio.is_tx or radio.is_device_sending) and sent is not None:
                             db = 10.0 * np.log10(max(float(j.get("value", 0.0)), 1e-12))
@@ -3243,6 +3453,13 @@ def owrx_smeter_worker():
                             pct = (smoothed - lo) / max(3.0, hi - lo)
                             radio.owrx_rssi_live = int(max(0.0, min(1.0, pct)) * 100)
                             smeter_info.update({"state": "ok", "db": round(float(smoothed), 1)})
+            elif msg is not None and msg[0] == 0x2 and msg[1][:1] == b"\x01":
+                # NEU: FFT-Zeile fuer den HF-Wasserfall (nur wenn eingeschaltet und jemand zuschaut)
+                if wf_clients and radio.config.get("wf_enabled") and center and srate:
+                    try:
+                        wf_feed_owrx(msg[1][1:], center, srate, fft_comp, current_channel_freq_hz(), radio.is_tx or radio.is_device_sending)
+                    except Exception as e:
+                        smeter_info.update({"state": "ok (waterfall: " + str(e)[:40] + ")"})
             # Demodulator auf die aktuelle Kanalfrequenz stellen (nur bei Aenderung senden)
             if center is not None:
                 f = current_channel_freq_hz()
