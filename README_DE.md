@@ -190,10 +190,10 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-211026 UIS**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-221026 TLS**. Aktualisieren immer mit `git pull`.
 
-1. Neben den "Bars", "Wasserfall" und "Both" gibt es nun zusätzlich "RF Waterfall" der entweder über einen angeschlossenen RTL-SDR Stick, oder per lokalem Openwebrx in das Displayelement geladen wird.
-2. Benachbarte Kanäle werden in diesem Wasserfall auch angezeigt. Die Wasserfallbreite ist variabel: 40, 60, 100 und 200khz stehen zur Auswahl.
+1. Fehlerbehebung: HTTPS (Port 5443) stirbt nach einem Netzwechsel, einem Verbindungsabbruch oder einem Tailscale-Neuladen am Handy nicht mehr. Ursache: Der Webserver machte den TLS-Handshake in der Schleife, die Verbindungen annimmt. Eine einzige halbfertige Verbindung blockierte damit jede weitere HTTPS-Verbindung (reines HTTP lief weiter, nur ein Neustart half). Jetzt macht jede Verbindung ihren Handshake im eigenen Thread mit 10 s Zeitlimit, tote Verbindungen räumt TCP-Keepalive auf. Mit einem Testaufbau nachgestellt und geprüft (hängende, kaputte und halb geöffnete Verbindungen). Der echte WebSocket-/Mikrofon-Teil über HTTPS muss noch auf einem echten Gerät geprüft werden.
+2. Mikrofon-Absicherung: Fällt das Mikrofon bei aktivem „Talk (mic)" weg (eingehender Anruf, anderes Programm belegt das Mikrofon, Berechtigung entzogen), schaltet der Browser das Mikrofon jetzt aus und gibt PTT frei, statt ohne Modulation weiterzusenden. Der Knopf zeigt dann „Mic lost (call?)".
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
