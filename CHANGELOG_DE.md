@@ -6,7 +6,12 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-211026 UIS (aktuell)
+### V-221026 TLS (aktuell)
+
+1. Fehlerbehebung: HTTPS (Port 5443) stirbt nach einem Netzwechsel, einem Verbindungsabbruch oder einem Tailscale-Neuladen am Handy nicht mehr. Ursache: Der Webserver machte den TLS-Handshake in der Schleife, die Verbindungen annimmt. Eine einzige halbfertige Verbindung blockierte damit jede weitere HTTPS-Verbindung (reines HTTP lief weiter, nur ein Neustart half). Jetzt macht jede Verbindung ihren Handshake im eigenen Thread mit 10 s Zeitlimit, tote Verbindungen räumt TCP-Keepalive auf. Mit einem Testaufbau nachgestellt und geprüft (hängende, kaputte und halb geöffnete Verbindungen). Der echte WebSocket-/Mikrofon-Teil über HTTPS muss noch auf einem echten Gerät geprüft werden.
+2. Mikrofon-Absicherung: Fällt das Mikrofon bei aktivem „Talk (mic)" weg (eingehender Anruf, anderes Programm belegt das Mikrofon, Berechtigung entzogen), schaltet der Browser das Mikrofon jetzt aus und gibt PTT frei, statt ohne Modulation weiterzusenden. Der Knopf zeigt dann „Mic lost (call?)".
+
+### V-211026 UIS
 
 1. Anzeige-Einstellungen werden jetzt in der `config.json` gespeichert und gelten auf allen Geräten, sobald man sie einmal ändert: der Display-Modus (Bars / Waterfall / Both / RF waterfall), Kontrast und Tempo des Audio-Wasserfalls und der Kontrast des HF-Wasserfalls. Solange das Programm noch keinen Wert gespeichert hat, gilt weiterhin der Wert, den sich der Browser gemerkt hatte, es geht also nichts verloren. Die S-Meter-Quelle und die Schalter des HF-Wasserfalls lagen schon in der `config.json`. Audio-Einstellungen und Tastenkürzel bleiben bewusst pro Gerät.
 

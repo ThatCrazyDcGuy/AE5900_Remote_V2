@@ -6,7 +6,12 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-211026 UIS (current)
+### V-221026 TLS (current)
+
+1. Fix: HTTPS (port 5443) no longer dies after a network change, a dropped connection or a Tailscale reload on a phone. The cause: the web server did the TLS handshake in the loop that accepts connections, so one half-finished connection blocked every further HTTPS connection (plain HTTP kept working, only a restart helped). Now every connection does its handshake in its own thread with a 10 s time limit, and dead connections are cleaned up by TCP keep-alive. Reproduced and checked with a test setup (stalled, garbage and half-open connections); the live WebSocket/microphone part over HTTPS still has to be checked on a real device.
+2. Microphone safety: if the microphone disappears while "Talk (mic)" is active (incoming phone call, another app takes the microphone, permission revoked), the browser now switches the microphone off and releases PTT, instead of carrying on without modulation. The button then shows "Mic lost (call?)".
+
+### V-211026 UIS
 
 1. Display settings are now stored in `config.json` and apply on all your devices as soon as you change them once: the display mode (Bars / Waterfall / Both / RF waterfall), the contrast and speed of the audio waterfall and the contrast of the RF waterfall. Until the program has stored a value, the value your browser had remembered is still used, so nothing is lost. The S-meter source and the RF waterfall switches were already stored in `config.json`. Audio settings and keyboard shortcuts stay per device on purpose.
 

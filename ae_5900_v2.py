@@ -3943,10 +3943,47 @@ if __name__ == '__main__':
                 raise
             socketio.run(app, **kw)
 
+    # NEU: Der Werkzeug-Server verschluesselt bei ssl_context den LAUSCH-Socket - der TLS-Handshake laeuft dann in der
+    # Annahmeschleife selbst. Eine einzige haengende Verbindung (Netzwechsel, Tailscale-Neustart am Handy: der Client
+    # verschwindet mitten im Verbindungsaufbau) blockiert damit ALLE weiteren HTTPS-Verbindungen, HTTP lief weiter, nur ein
+    # Neustart half. Jetzt: normaler Lausch-Socket, der Handshake laeuft pro Verbindung im eigenen Thread mit Zeitlimit,
+    # dazu TCP-Keepalive, damit tote Verbindungen irgendwann aufgeraeumt werden.
+    def _make_tls_server(host, port, wsgi_app, ssl_ctx):
+        from werkzeug.serving import ThreadedWSGIServer
+        class _TlsServer(ThreadedWSGIServer):
+            def finish_request(self, request, client_address):
+                tls = None
+                try:
+                    request.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    for opt, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 10), ("TCP_KEEPCNT", 3)):
+                        if hasattr(socket, opt):
+                            request.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), val)
+                    request.settimeout(10.0)                        # Zeitlimit nur fuer den Handshake
+                    tls = ssl_ctx.wrap_socket(request, server_side=True)
+                    tls.settimeout(None)
+                    super().finish_request(tls, client_address)
+                except (ssl.SSLError, OSError):
+                    pass                                            # abgebrochener/haengender Handshake oder Verbindungsabriss: still verwerfen
+                finally:
+                    if tls is not None:
+                        try: tls.close()
+                        except Exception: pass
+        srv = _TlsServer(host, port, wsgi_app)
+        srv.ssl_context = ssl_ctx    # damit der Request-Handler SSL-Fehler wie bisher still behandelt (Socket bleibt unverschluesselt)
+        return srv
+
     if https_available:
         def _run_https():
             try:
-                _socketio_run(host='0.0.0.0', port=5443, debug=False, **https_ssl_args)
+                try:
+                    _tls_srv = _make_tls_server('0.0.0.0', 5443, app, https_ssl_args['ssl_context'])
+                except Exception as e:
+                    print(f"[HTTPS WARNUNG] Eigener TLS-Server nicht moeglich ({e}) - nutze den Standard-Server.")
+                    _tls_srv = None
+                if _tls_srv is not None:
+                    _tls_srv.serve_forever()
+                else:
+                    _socketio_run(host='0.0.0.0', port=5443, debug=False, **https_ssl_args)
             except Exception as e:
                 print(f"[HTTPS WARNUNG] HTTPS-Server konnte nicht starten: {e}")
         threading.Thread(target=_run_https, daemon=True).start()
