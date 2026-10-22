@@ -406,7 +406,8 @@
             .anleitung-box { display: block; }
         }
         /* Desktop/grosse Fenster nutzen dieselbe 3-Spalten-Darstellung, nur etwas grosszuegiger und mittig begrenzt */
-        @media (min-width: 850px) {
+        /* nur echte Desktop-Bildschirme (Maus): Handys im Querformat sind oft breiter als 850 px, haben aber Touch */
+        @media (min-width: 850px) and (hover: hover) and (pointer: fine) {
             body { padding: 18px; }
             .main-layout-wrapper { grid-template-columns: 300px minmax(0, 1fr) 260px; gap: 14px; max-width: 1560px; margin: 0 auto; }
             .freq { font-size: 5.2em; }
