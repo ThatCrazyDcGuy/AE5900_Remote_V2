@@ -6,7 +6,11 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-221026 TLS (aktuell)
+### V-221026 LAY (aktuell)
+
+1. Die Drei-Spalten-Ansicht, die den Usern am Handy im Querformat so gut gefällt, ist jetzt auch die Desktop-Ansicht (Zahlenfeld links, Display und Funktionstasten in der Mitte, PTT und Audio-Tasten rechts). Auf großen Bildschirmen steht sie mittig und ist auf 1560 px begrenzt, mit deutlich größerer Schrift und größeren Tasten (rund 20 % größer als am Handy, damit man es auch aus der Entfernung gut lesen kann). Handys im Hochformat bleiben unverändert.
+
+### V-221026 TLS
 
 1. Fehlerbehebung: HTTPS (Port 5443) stirbt nach einem Netzwechsel, einem Verbindungsabbruch oder einem Tailscale-Neuladen am Handy nicht mehr. Ursache: Der Webserver machte den TLS-Handshake in der Schleife, die Verbindungen annimmt. Eine einzige halbfertige Verbindung blockierte damit jede weitere HTTPS-Verbindung (reines HTTP lief weiter, nur ein Neustart half). Jetzt macht jede Verbindung ihren Handshake im eigenen Thread mit 10 s Zeitlimit, tote Verbindungen räumt TCP-Keepalive auf. Mit einem Testaufbau nachgestellt und geprüft (hängende, kaputte und halb geöffnete Verbindungen). Der echte WebSocket-/Mikrofon-Teil über HTTPS muss noch auf einem echten Gerät geprüft werden.
 2. Mikrofon-Absicherung: Fällt das Mikrofon bei aktivem „Talk (mic)" weg (eingehender Anruf, anderes Programm belegt das Mikrofon, Berechtigung entzogen), schaltet der Browser das Mikrofon jetzt aus und gibt PTT frei, statt ohne Modulation weiterzusenden. Der Knopf zeigt dann „Mic lost (call?)".

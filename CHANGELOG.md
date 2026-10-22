@@ -6,7 +6,11 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-221026 TLS (current)
+### V-221026 LAY (current)
+
+1. The three-column layout that users liked on the phone in landscape mode is now also the desktop layout (number pad left, display and function keys in the middle, PTT and audio buttons on the right). On large screens it is centred and limited to 1560 px, with clearly larger text and buttons (about 20 % larger than on the phone, so it is easy to read from a distance). Phones in portrait mode are unchanged.
+
+### V-221026 TLS
 
 1. Fix: HTTPS (port 5443) no longer dies after a network change, a dropped connection or a Tailscale reload on a phone. The cause: the web server did the TLS handshake in the loop that accepts connections, so one half-finished connection blocked every further HTTPS connection (plain HTTP kept working, only a restart helped). Now every connection does its handshake in its own thread with a 10 s time limit, and dead connections are cleaned up by TCP keep-alive. Reproduced and checked with a test setup (stalled, garbage and half-open connections); the live WebSocket/microphone part over HTTPS still has to be checked on a real device.
 2. Microphone safety: if the microphone disappears while "Talk (mic)" is active (incoming phone call, another app takes the microphone, permission revoked), the browser now switches the microphone off and releases PTT, instead of carrying on without modulation. The button then shows "Mic lost (call?)".
