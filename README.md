@@ -184,10 +184,10 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current version: **V-211026 UIS**. Always update using `git pull`.
+Current version: **V-221026 TLS**. Always update using `git pull`.
 
-1. In addition to "Bars," "Waterfall," and "Both," there is now an "RF Waterfall" option, which can be loaded into the display element either via a connected RTL-SDR dongle or through a local OpenWebRX instance.
-2. Adjacent channels are also displayed in this waterfall. The waterfall bandwidth is adjustable, with options of 40, 60, 100, and 200 kHz.
+1. Fix: HTTPS (port 5443) no longer dies after a network change, a dropped connection or a Tailscale reload on a phone. The cause: the web server did the TLS handshake in the loop that accepts connections, so one half-finished connection blocked every further HTTPS connection (plain HTTP kept working, only a restart helped). Now every connection does its handshake in its own thread with a 10 s time limit, and dead connections are cleaned up by TCP keep-alive. Reproduced and checked with a test setup (stalled, garbage and half-open connections); the live WebSocket/microphone part over HTTPS still has to be checked on a real device.
+2. Microphone safety: if the microphone disappears while "Talk (mic)" is active (incoming phone call, another app takes the microphone, permission revoked), the browser now switches the microphone off and releases PTT, instead of carrying on without modulation. The button then shows "Mic lost (call?)".
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 
