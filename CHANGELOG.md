@@ -8,7 +8,7 @@ Note: some version labels in older entries were corrected (the date part is DDMM
 
 ### V-221026 LAY (current)
 
-1. The three-column layout that users liked on the phone in landscape mode is now also the desktop layout (number pad left, display and function keys in the middle, PTT and audio buttons on the right). On large screens it is centred and limited to 1560 px, with clearly larger text and buttons (about 20 % larger than on the phone, so it is easy to read from a distance). Phones in portrait mode are unchanged.
+1. The three-column layout that users liked on the phone in landscape mode is now also the desktop layout (number pad left, display and function keys in the middle, PTT and audio buttons on the right). On large screens it is centred and limited to 1560 px, with clearly larger text and buttons (about 20 % larger than on the phone, so it is easy to read from a distance). The enlargement applies only to real desktop screens (mouse); phones and tablets in landscape keep their size, portrait is unchanged.
 
 ### V-221026 TLS
 

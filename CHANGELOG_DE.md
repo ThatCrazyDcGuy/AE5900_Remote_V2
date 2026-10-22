@@ -8,7 +8,7 @@ Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (
 
 ### V-221026 LAY (aktuell)
 
-1. Die Drei-Spalten-Ansicht, die den Usern am Handy im Querformat so gut gefällt, ist jetzt auch die Desktop-Ansicht (Zahlenfeld links, Display und Funktionstasten in der Mitte, PTT und Audio-Tasten rechts). Auf großen Bildschirmen steht sie mittig und ist auf 1560 px begrenzt, mit deutlich größerer Schrift und größeren Tasten (rund 20 % größer als am Handy, damit man es auch aus der Entfernung gut lesen kann). Handys im Hochformat bleiben unverändert.
+1. Die Drei-Spalten-Ansicht, die den Usern am Handy im Querformat so gut gefällt, ist jetzt auch die Desktop-Ansicht (Zahlenfeld links, Display und Funktionstasten in der Mitte, PTT und Audio-Tasten rechts). Auf großen Bildschirmen steht sie mittig und ist auf 1560 px begrenzt, mit deutlich größerer Schrift und größeren Tasten (rund 20 % größer als am Handy, damit man es auch aus der Entfernung gut lesen kann). Die Vergrößerung gilt nur für echte Desktop-Bildschirme (Maus); Handys und Tablets im Querformat behalten ihre Größe, das Hochformat bleibt unverändert.
 
 ### V-221026 TLS
 
