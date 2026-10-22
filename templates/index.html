@@ -1288,6 +1288,12 @@
                         if (socket) socket.emit('mic_pcm', waBytesToBase64(encoded));
                     };
                     waMicActive = true;
+                    // NEU: faellt das Mikrofon weg (eingehender Anruf, anderes Programm belegt es, Berechtigung entzogen),
+                    // melden das 'mute'/'ended' - dann Mikrofon stoppen und die Sendung beenden, statt unmoduliert weiterzusenden.
+                    stream.getAudioTracks().forEach(tr => {
+                        tr.addEventListener('ended', () => micLost('ended'));
+                        tr.addEventListener('mute', () => micLost('muted'));
+                    });
                     if (btn) { btn.textContent = '🎤 Activated... (tap to stop)'; btn.style.background = '#660000'; }
                 }).catch(err => {
                     alert('Mikrofon-Fehler: ' + err.message);
@@ -1296,6 +1302,15 @@
             });
     }
 
+    function micLost(why) {
+        if (!waMicActive) return;
+        console.warn('[MIC] Mikrofon weggefallen (' + why + ') - Mikrofon aus, PTT frei.');
+        _stopMicTalk(document.getElementById('waMicBtn'));
+        // direkt ueber die API, damit es auch bei gesperrter WebUI (LOCK) durchgeht; PTT_OFF tut nichts, wenn nicht gesendet wird
+        fetch('/api/cmd/PTT_OFF').catch(() => {});
+        const btn = document.getElementById('waMicBtn');
+        if (btn) btn.textContent = '🎤 Mic lost (call?) - tap to start';
+    }
     function _stopMicTalk(btn) {
             waMicActive = false;
             if (waMicStream) waMicStream.getTracks().forEach(t => t.stop());
@@ -1669,7 +1684,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-211026 UIS";
+                if (vInd) vInd.textContent = "V-221026 TLS";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
