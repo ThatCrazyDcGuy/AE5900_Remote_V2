@@ -21,6 +21,8 @@ Usage: bash install.sh [options]
   --with-mumble          also install the Mumble client + server (optional - WebAudio does not need it)
   --with-sdr             also set up an RTL-SDR dongle as S-meter (rtl-sdr tools, driver blacklist, quick dongle check)
   --with-cam             also install ffmpeg for the optional USB webcam (Setup & Sync -> Camera)
+  --with-password        ask for the web password right now (otherwise the installer only asks if you want to,
+                         and the web page asks for it at the first visit)
   --no-tailscale         skip Tailscale (HTTPS, phone microphone and wake lock need it;
                          plain HTTP on port 5000 works without)
   --no-service           do not set up the autostart service (start by hand: python3 ae_5900_v2.py)
@@ -34,12 +36,13 @@ Log file: ~/ae5900-install.log
 EOF
 }
 
-WITH_MUMBLE=0; WITH_SDR=0; WITH_CAM=0; NO_TAILSCALE=0; NO_SERVICE=0; KEEP_ONBOARD=0; DO_UPGRADE=0; ASSUME_YES=0
+WITH_MUMBLE=0; WITH_SDR=0; WITH_CAM=0; WITH_PASSWORD=0; NO_TAILSCALE=0; NO_SERVICE=0; KEEP_ONBOARD=0; DO_UPGRADE=0; ASSUME_YES=0
 for arg in "$@"; do
     case "$arg" in
         --with-mumble)         WITH_MUMBLE=1 ;;
         --with-sdr)            WITH_SDR=1 ;;
         --with-cam)            WITH_CAM=1 ;;
+        --with-password)       WITH_PASSWORD=1 ;;
         --no-tailscale)        NO_TAILSCALE=1 ;;
         --no-service)          NO_SERVICE=1 ;;
         --keep-onboard-audio)  KEEP_ONBOARD=1 ;;
@@ -373,6 +376,36 @@ else
 fi
 
 # -------------------------------------------------------------------------
+# Web password (optional here - otherwise the web page asks for it at the first visit, from your own network only)
+echo
+WAS_ACTIVE=0
+if grep -q '"auth_hash"' "$PROJECT_DIR/config.json" 2>/dev/null; then
+    info "Web password: already set. Change it in the web page (Setup & Sync) or with: python3 ae_auth.py --set-password"
+else
+    DO_PW=$WITH_PASSWORD
+    if [ "$DO_PW" -eq 0 ] && [ "$INTERACTIVE" -eq 1 ]; then
+        read -r -p "  Set the web password now? (Otherwise the web page asks for it at the first visit.) [y/N] " PW_ANS
+        case "$PW_ANS" in y|Y|j|J) DO_PW=1 ;; esac
+    fi
+    if [ "$DO_PW" -eq 1 ] && [ "$INTERACTIVE" -ne 1 ]; then
+        warn "No terminal for the password question - the web page asks for the password at the first visit."
+    elif [ "$DO_PW" -eq 1 ]; then
+        # laeuft der Dienst schon (Installer erneut gestartet), wuerde er das neue Passwort beim naechsten Speichern ueberschreiben
+        if systemctl --user is-active --quiet ae5900.service 2>/dev/null; then
+            WAS_ACTIVE=1; systemctl --user stop ae5900.service 2>/dev/null
+        fi
+        if python3 "$PROJECT_DIR/ae_auth.py" --set-password; then
+            ok "Web password set."
+        else
+            warn "No password set - the web page asks for it at the first visit."
+        fi
+        [ "$WAS_ACTIVE" -eq 1 ] && systemctl --user start ae5900.service 2>/dev/null
+    else
+        info "Web password: not set now - the web page asks for it at the first visit (from your own network only)."
+    fi
+fi
+
+# -------------------------------------------------------------------------
 step "7/8" "Autostart service"
 if [ "$NO_SERVICE" -eq 1 ]; then
     info "Skipping the service (--no-service). Start the app by hand: python3 $PROJECT_DIR/ae_5900_v2.py"
@@ -474,7 +507,7 @@ if ls /dev/ttyUSB* /dev/ttyACM* >/dev/null 2>&1; then ok "Serial port found: $(l
 else info "No serial adapter found right now - connect the radio cable before starting the app."; fi
 
 mkdir -p "$STATE_DIR"
-{ date; echo "options: mumble=$WITH_MUMBLE sdr=$WITH_SDR cam=$WITH_CAM tailscale_skipped=$NO_TAILSCALE service_skipped=$NO_SERVICE"; } > "$STATE_DIR/installed"
+{ date; echo "options: mumble=$WITH_MUMBLE sdr=$WITH_SDR cam=$WITH_CAM password_asked=$WITH_PASSWORD tailscale_skipped=$NO_TAILSCALE service_skipped=$NO_SERVICE"; } > "$STATE_DIR/installed"
 
 # -------------------------------------------------------------------------
 IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -492,6 +525,8 @@ if [ "$HTTPS_READY" -eq 1 ]; then
 elif [ -n "$TS_DOMAIN" ]; then
     echo "     HTTPS is not set up yet (see the note above) - control and listening work over HTTP."
 fi
+echo "     On the first visit the page asks you to set a password (unless you did it above)."
+echo -e "${YELLOW}  Security: use it only in your own network or through a VPN (Tailscale). Never open the ports 5000, 5443, 4532 and 2442 to the internet (see README).${NC}"
 echo
 echo "  Service status:   systemctl --user status ae5900"
 echo "  Live log:         sudo journalctl _SYSTEMD_USER_UNIT=ae5900.service -f"

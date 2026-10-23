@@ -6,7 +6,15 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-221026 LAY (current)
+### V-231026 PWD (current)
+
+1. Security: the web interface is now protected by a password. After the update the page asks you to set one at the first visit (only possible from your own network: LAN, Tailscale or the Raspberry Pi itself). A semi-transparent window sits above the interface until you have logged in. The password is stored only as a hash in `config.json` (new keys `auth_hash`, `auth_secret`, `api_key`), the login is remembered for 30 days per device, and wrong passwords are slowed down (5 tries, then 30 s, 60 s, 120 s ... up to 15 minutes per address). Setup & Sync has a new "Security" block: change the password (this logs out all other devices), log out, and the key for other programs. The installer can ask for the password too (`bash install.sh --with-password`, or answer the question at the end). Forgotten: `python3 ae_auth.py --set-password` on the Raspberry Pi (stop the program first: `systemctl --user stop ae5900`).
+2. What is protected: everything except the page itself, i.e. all `/api/...` calls, the WebSocket (audio, microphone, waterfall) and the camera. The camera page `/cam` and the pop-out link work after you have logged in on that device. Requests that a web page from another site sends in your browser are always refused (this closes the way for "drive-by" attacks from the internet while you browse, also without a password). The terminal commands of the custom keys are no longer sent to anyone who is not logged in, and can only be changed after logging in.
+3. Tools on **other** computers: the PTT calls (`/api/rig/ptt/0|1` and `/api/cmd/TX?state=...`) need a key now, because they cannot log in: add `?key=KEY` (or `&key=KEY`), or send it as the header `X-API-Key`. You find the key in Setup & Sync -> Security (SHOW). The key allows PTT only, nothing else. Programs on the Raspberry Pi itself (127.0.0.1), for example `curl` from JS8Call on the Pi, work as before without a key. The OpenWebRX PTT button in the Hamlib/OpenWebRX handbook now has a `ALBRECHT_KEY` line for the key.
+4. Not protected, because these protocols have no login: the Hamlib/rigctl port 4532 and the digimode UDP port 2442. Never make them reachable from the internet. The README now lists all ports and what they do.
+5. The secret that signs the login (replacing the fixed word in the program) is created individually on each installation. `config.json` is set to readable by the owner only.
+
+### V-221026 LAY
 
 1. The three-column layout that users liked on the phone in landscape mode is now also the desktop layout (number pad left, display and function keys in the middle, PTT and audio buttons on the right). On large screens it is centred and limited to 1560 px, with clearly larger text and buttons (about 20 % larger than on the phone, so it is easy to read from a distance). The enlargement applies only to real desktop screens (mouse); phones and tablets in landscape keep their size, portrait is unchanged.
 

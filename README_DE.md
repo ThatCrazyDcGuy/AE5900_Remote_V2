@@ -9,7 +9,37 @@ Ein LAN/Web Remote Rig Control System für das Albrecht AE-5900 Funkgerät, das 
 ### Das Vorwort:
 
 **WARNUNG!!!** Es besteht die Gefahr, dass die Nutzung je nach Landesbestimmung strafbar ist.
-Klärt das mit eurem Gewissen. Ich bin nicht eure Mutti!
+Klärt das mit eurem Gewissen. Ich bin nicht eure Mutti! Aber hier trotzdem einige Details:
+
+#### Sicherheit
+
+Eine solche Oberfläche darf unter keinen Umständen direkt aus dem Internet erreichbar sein. Nutze sie im eigenen Netzwerk oder über ein VPN, zum Beispiel Tailscale.
+
+Die Weboberfläche ist mit einem Passwort geschützt. Nach dem Update (oder einer Neuinstallation) fordert die Seite beim ersten Besuch dazu auf, eines zu setzen. Auch der Installer kann danach fragen (`bash install.sh --with-password`). Vergessen? Auf dem Raspberry Pi: `python3 ae_auth.py --set-password`. Das Passwort schützt die Weboberfläche (Ports 5000 und 5443), **nicht** die übrigen Ports in der Tabelle.
+
+Diese Ports dürfen niemals nach außen erreichbar sein:
+
+| Port | Was es ist | Schutz |
+|---|---|---|
+| 5000/TCP | Weboberfläche (HTTP) | Passwort |
+| 5443/TCP | Weboberfläche (HTTPS, Handy-Mikrofon), nur mit Tailscale | Passwort |
+| 4532/TCP | Hamlib/rigctl-Proxy für fldigi, OpenWebRX, JS8Call, WSJT-X, ... Wer ihn erreicht, kann Kanal und Modus ändern und den Sender tasten. | **nicht möglich** (das rigctl-Protokoll kennt keine Anmeldung) |
+| 2442/UDP | Digimode-Gateway: Statuspakete von JS8Call/WSJT-X schalten PTT. Ein gefälschtes Paket tastet den Sender. | **nicht möglich** |
+| 4533/TCP | internes rigctld, lauscht nur auf 127.0.0.1 | von außen nicht erreichbar |
+| 64738/TCP+UDP | Mumble-Server, nur wenn installiert (`--with-mumble`) | eigene Mumble-Einstellungen |
+| 22/TCP | SSH (der Installer installiert `openssh-server`; gehört nicht zu diesem Projekt) | dein SSH-Setup, am besten nur mit Schlüsseln |
+
+Gib keinen dieser Ports im Router frei und nutze für den Raspberry Pi weder Portweiterleitung noch DMZ oder UPnP.
+
+Programme auf **anderen** Rechnern, die PTT über die Weboberfläche schalten (der PTT-Knopf in OpenWebRX, JS8Call mit `curl`), brauchen den Schlüssel, den du in Setup & Sync unter „Security" findest. Er erlaubt nur PTT, sonst nichts. Programme auf dem Raspberry Pi selbst (127.0.0.1) brauchen keinen Schlüssel.
+
+#### Rechtliches
+
+Als lizenzierter Funkamateur darfst du je nach regionalen Vorschriften möglicherweise eine Fernsteuerung nutzen.
+
+Für nicht lizenzierte Funker, etwa im CB-Funk, ist eine „unbeaufsichtigte" (unbemannte) Funkstelle in der Regel nicht erlaubt. Betreibst du das System jedoch in deinem eigenen privaten Netzwerk, in unmittelbarer Nähe des Funkgeräts, sodass du es bei einer Störung jederzeit von Strom oder Netzwerk trennen könntest, und bleibst du auf deinem eigenen Grundstück, wird das normalerweise nicht als rechtliches Problem angesehen.
+
+Die Regeln unterscheiden sich von Land zu Land. Das ist keine Rechtsberatung; informiere dich über die für dich geltenden Vorschriften.
 
 ### Schnellstart in fünf Schritten
 
@@ -26,13 +56,14 @@ reboot
 Der Installer hat einige Optionen, siehe `bash install.sh --help`:
 
 - `--with-sdr`: richtet zusätzlich einen RTL-SDR-Dongle als S-Meter ein
+- `--with-password`: fragt schon bei der Installation nach dem Web-Passwort (sonst fragt die Seite beim ersten Besuch)
 - `--with-mumble`: installiert zusätzlich Mumble (optional, WebAudio braucht es nicht)
 - `--no-tailscale`: ohne Tailscale (dann nur HTTP auf Port 5000, kein HTTPS)
 - `--no-service`: ohne Autostart-Dienst
 
 Während der Installation zeigt Tailscale einen Anmelde-Link. Diesen im Browser öffnen und der Anleitung folgen. Der Installer lässt sich jederzeit erneut starten und ergänzt nur, was fehlt. Sein Log liegt unter `~/ae5900-install.log`.
 
-3. Im Browser `http://IP-DES-RASPBERRY:5000` öffnen (oder `https://IP-DES-RASPBERRY:5443`, wenn auch gesendet werden soll).
+3. Im Browser `http://IP-DES-RASPBERRY:5000` öffnen (oder `https://IP-DES-RASPBERRY:5443`, wenn auch gesendet werden soll). Beim ersten Besuch fordert die Seite dazu auf, ein Passwort zu setzen (einmal pro Gerät, mit dem du dich anmeldest).
 4. Ganz unten auf "SETUP & SYNC" tippen und den Sync ausführen.
 5. Die Labels der Tasten P1 bis P4 so eintragen, wie sie am AE5900 eingestellt sind (Mic Type 2).
 
@@ -144,7 +175,7 @@ Wer Tailscale nutzen möchte: Den erzeugten Tailscale-Link in den Browser kopier
 6. Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
 7. Stelle an deinem AE5900 Mikrofon TYPE 2 ein und setze deine P1 - P4 Key-Shortcuts.
 8. Führe `python3 ae_5900_v2.py` auf dem Hostrechner/Server aus (der Installer startet es beim Booten bereits automatisch).
-9. Öffne auf dem Endgerät `http://HOSTNAMEIP:5000` oder `https://HOSTNAMEIP:5443` in deinem Browser. Du solltest nun bereits Kontrolle über dein AE5900 haben.
+9. Öffne auf dem Endgerät `http://HOSTNAMEIP:5000` oder `https://HOSTNAMEIP:5443` in deinem Browser. Beim ersten Besuch setzt du ein Passwort. Danach solltest du bereits Kontrolle über dein AE5900 haben.
 10. Öffne ganz unten im WebUI das Setup und führe den Sync aus.
 11. Setze die entsprechenden Labels für die P1 bis P4 Tasten so, wie du sie am AE5900 gesetzt hast.
 12. Auf dem Hostrechner solltest du im Lautstärkeregler (pavucontrol) gegebenenfalls Anpassungen machen. Typische Anpassung: Menüpunkt "Konfiguration", Standard-Soundkarte deine im Netzwerk angebundene Soundkarte.

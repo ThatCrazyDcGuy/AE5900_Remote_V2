@@ -12,6 +12,12 @@ if _missing:
     print("  Or run the installer again / oder den Installer erneut starten:  bash install.sh\n")
     _sys.exit(1)
 
+try:
+    import ae_auth          # Zugriffsschutz (Passwort), liegt neben dieser Datei
+except ImportError as _e:
+    print("\n[ERROR] ae_auth.py is missing or cannot be loaded / ae_auth.py fehlt oder laesst sich nicht laden: %s" % _e)
+    print("  -> Please update ALL files of the project (git pull) / Bitte ALLE Dateien des Projekts aktualisieren (git pull)\n")
+    _sys.exit(1)
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 import serial
@@ -1198,6 +1204,170 @@ def play_roger_beep():
     except Exception as e:
         print(f"Rogerbeep Fehler: {e}")
 
+# =========================================================================
+# ZUGRIFFSSCHUTZ (Passwort) - Logik in ae_auth.py
+# Die Seite selbst (/) ist immer abrufbar und zeigt ohne Anmeldung nur die Oberflaeche hinter einem Anmelde-Fenster.
+# Alles andere (/api/*, /cam*, WebSocket) verlangt die Anmeldung. Ausnahmen:
+#   * Aufrufe vom Geraet selbst (127.0.0.1), z. B. curl aus JS8Call auf dem Pi
+#   * PTT-Aufrufe anderer Programme mit dem API-Schluessel (nur /api/rig/ptt/* und /api/cmd/TX)
+# Browser-Anfragen von fremden Webseiten (Sec-Fetch-Site: cross-site) werden immer abgewiesen.
+# =========================================================================
+def _persist_config():
+    with radio.lock:
+        radio.save_config()
+
+auth = ae_auth.AuthGuard(radio.config, _persist_config)
+try:
+    os.chmod(CONFIG_FILE, 0o600)        # enthaelt Passwort-Hash und Schluessel
+except OSError:
+    pass
+app.config['SECRET_KEY'] = radio.config['auth_secret']
+_AUTH_SECRET_CFG = ('auth_hash', 'auth_secret', 'api_key')
+_auth_setup_lock = threading.Lock()
+
+
+def _cross_site():
+    return request.headers.get('Sec-Fetch-Site') == 'cross-site'
+
+
+def _request_authed():
+    if ae_auth.is_loopback(request.remote_addr):
+        return True
+    return auth.token_ok(request.cookies.get(ae_auth.COOKIE_NAME))
+
+
+def _auth_state(authed):
+    if not auth.configured:
+        return 'setup'
+    return 'ok' if authed else 'login'
+
+
+def _is_key_route(path):
+    return path.startswith('/api/rig/ptt/') or path == '/api/cmd/TX'
+
+
+def _request_has_key():
+    return auth.key_ok(request.headers.get('X-API-Key') or request.args.get('key'))
+
+
+@app.before_request
+def _auth_gate():
+    p = request.path
+    if p == '/' or p.startswith('/static/') or p.startswith('/api/auth/') or p.startswith('/socket.io'):
+        return None
+    if _is_key_route(p) and _request_has_key():
+        return None
+    if _cross_site():
+        return jsonify({"status": "error", "message": "cross-site request blocked"}), 403
+    if _request_authed():                # Loopback immer, sonst gueltiges Anmelde-Cookie (setzt ein Passwort voraus)
+        return None
+    if p == '/cam':                      # Kamera-Seite direkt geoeffnet: kurzer Hinweis statt rohem JSON
+        return ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                '<body style="background:#111;color:#ccc;font-family:sans-serif;text-align:center;padding:40px">'
+                'Login required. <a style="color:#0cf" href="/">Open the main page</a>, log in, then open the camera again.</body>'), 401
+    return jsonify({"status": "error", "message": "login required", "auth": _auth_state(False)}), 401
+
+
+def _login_cookie(resp):
+    resp.set_cookie(ae_auth.COOKIE_NAME, auth.make_token(), max_age=ae_auth.COOKIE_MAX_AGE,
+                    httponly=True, samesite='Strict', secure=request.is_secure)
+    return resp
+
+
+def _auth_error(msg, code, **extra):
+    d = {"status": "error", "message": msg}
+    d.update(extra)
+    return jsonify(d), code
+
+
+@app.route('/api/auth/setup', methods=['POST'])
+def api_auth_setup():
+    """Ersteinrichtung: nur solange noch kein Passwort gesetzt ist und nur aus privaten Netzen (LAN, Tailscale, lokal)."""
+    if _cross_site():
+        return _auth_error("cross-site request blocked", 403)
+    addr = request.remote_addr
+    d = request.get_json(silent=True) or {}
+    with _auth_setup_lock:
+        if auth.configured:
+            return _auth_error("A password is already set.", 403, auth='login')
+        if not ae_auth.is_private_addr(addr):
+            print("[AUTH] Ersteinrichtung aus oeffentlichem Netz abgelehnt: %s" % addr)
+            return _auth_error("The first password can only be set from your own network (LAN or Tailscale).", 403)
+        pw = d.get('password')
+        if pw != d.get('password2', pw):
+            return _auth_error("The two entries differ.", 400)
+        err = auth.set_password(pw)
+        if err:
+            return _auth_error(err, 400)
+    print("[AUTH] Passwort wurde eingerichtet (von %s)." % addr)
+    return _login_cookie(jsonify({"status": "success"}))
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def api_auth_login():
+    if _cross_site():
+        return _auth_error("cross-site request blocked", 403)
+    if not auth.configured:
+        return _auth_error("No password set yet.", 409, auth='setup')
+    addr = request.remote_addr
+    wait = auth.wait_time(addr)
+    if wait:
+        return _auth_error("Too many attempts. Try again in %d s." % wait, 429, retry_after=wait)
+    d = request.get_json(silent=True) or {}
+    if auth.verify(d.get('password')):
+        auth.register_success(addr)
+        return _login_cookie(jsonify({"status": "success"}))
+    n = auth.register_failure(addr)
+    print("[AUTH] Falsches Passwort von %s (Versuch %d)." % (addr, n))
+    wait = auth.wait_time(addr)
+    msg = "Wrong password." if not wait else "Wrong password. Try again in %d s." % wait
+    return _auth_error(msg, 401, auth='login', retry_after=wait)
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def api_auth_logout():
+    resp = jsonify({"status": "success"})
+    resp.delete_cookie(ae_auth.COOKIE_NAME, samesite='Strict')
+    return resp
+
+
+@app.route('/api/auth/password', methods=['POST'])
+def api_auth_password():
+    if _cross_site():
+        return _auth_error("cross-site request blocked", 403)
+    if not auth.configured:
+        return _auth_error("No password set yet.", 409, auth='setup')
+    if not _request_authed():
+        return _auth_error("login required", 401, auth='login')
+    addr = request.remote_addr
+    wait = auth.wait_time(addr)
+    if wait:
+        return _auth_error("Too many attempts. Try again in %d s." % wait, 429, retry_after=wait)
+    d = request.get_json(silent=True) or {}
+    if not auth.verify(d.get('old')):
+        auth.register_failure(addr)
+        return _auth_error("The current password is wrong.", 403)
+    auth.register_success(addr)
+    err = auth.set_password(d.get('new'))
+    if err:
+        return _auth_error(err, 400)
+    print("[AUTH] Passwort geaendert (von %s). Alte Anmeldungen sind damit ungueltig." % addr)
+    return _login_cookie(jsonify({"status": "success"}))
+
+
+@app.route('/api/auth/key', methods=['GET', 'POST'])
+def api_auth_key():
+    """API-Schluessel fuer PTT-Aufrufe anderer Programme anzeigen (GET) bzw. neu erzeugen (POST)."""
+    if _cross_site():
+        return _auth_error("cross-site request blocked", 403)
+    if not (auth.configured and _request_authed()):
+        return _auth_error("login required", 401, auth=_auth_state(False))
+    key = auth.new_api_key() if request.method == 'POST' else radio.config.get('api_key', '')
+    if request.method == 'POST':
+        print("[AUTH] Neuer API-Schluessel erzeugt.")
+    return jsonify({"status": "success", "key": key})
+
+
 @app.route('/')
 def index():
     browser_languages = request.accept_languages.values()
@@ -1219,8 +1389,14 @@ def index():
             break
     print(f"SPRACHE: Browser-Erkennung ergab: '{erkannte_sprache}'")
     
+    state = _auth_state(_request_authed())
+    view = {k: v for k, v in radio.config.items() if k not in _AUTH_SECRET_CFG}
+    if state != 'ok':                    # Terminal-Befehle der Custom-Tasten nicht an Unangemeldete ausliefern
+        for i in range(1, 5):
+            view['cust_cmd_%d' % i] = ''
     return render_template('index.html', 
-                           config=radio.config, 
+                           config=view, 
+                           auth_state=state,
                            beeps_list=radio.beeps_list, 
                            lang=erkannte_sprache,
                            bg_url=background_url())
@@ -1776,7 +1952,9 @@ def api_cmd(cmd):
         # === UNIVERSAL DIGIMODE TRIGGER FOR JS8CALL ===
         # Use: curl -s http://127.0.0.1:5000/api/cmd/TX?state=%1
         elif cmd == 'TX':
-            raw_query = request.query_string.decode('utf-8', errors='ignore')
+            # den API-Schluessel (key=...) vorher entfernen: er koennte zufaellig "on" oder "1" enthalten
+            raw_query = "&".join(q for q in request.query_string.decode('utf-8', errors='ignore').split("&")
+                                 if not q.lower().startswith("key="))
             
             is_on = "on" in raw_query or "ON" in raw_query or "1" in raw_query
             
@@ -3703,6 +3881,8 @@ socketio.start_background_task(audio_broadcast_task)
 
 @socketio.on('connect')
 def handle_connect():
+    if _cross_site() or not (auth.configured and _request_authed()):
+        return False                      # nicht angemeldet (oder fremde Webseite): Verbindung abgelehnt
     print("WebSocket Client verbunden")
     try: 
         emit('status', get_current_status_dict())

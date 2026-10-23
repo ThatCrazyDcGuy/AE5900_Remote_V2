@@ -9,7 +9,37 @@ A LAN/Web Remote Rig Control System for the Albrecht AE-5900 radio, simulating t
 ### The Foreword:
 
 **WARNING!!!** There is a risk that using this equipment may be illegal, depending on the laws of your country.
-Consider this with your conscience. I'm not your mother!
+Consider this with your conscience. I'm not your mother! But anyway, here are some details:
+
+#### Security
+
+Under no circumstances should such an interface be made accessible directly over the internet. Use it within your local network or via a VPN, such as Tailscale.
+
+The web interface is protected by a password. After the update (or a fresh installation) the page asks you to set one at the first visit; the installer can ask for it too (`bash install.sh --with-password`). Forgotten? On the Raspberry Pi: `python3 ae_auth.py --set-password`. The password protects the web interface (ports 5000 and 5443), **not** the other ports below.
+
+The following ports must never be exposed to the outside world:
+
+| Port | What it is | Protection |
+|---|---|---|
+| 5000/TCP | Web interface (HTTP) | password |
+| 5443/TCP | Web interface (HTTPS, phone microphone), only with Tailscale | password |
+| 4532/TCP | Hamlib/rigctl proxy for fldigi, OpenWebRX, JS8Call, WSJT-X, ... Anyone who reaches it can change channel and mode and key the transmitter. | **none possible** (the rigctl protocol has no login) |
+| 2442/UDP | Digimode gateway: JS8Call/WSJT-X status packets switch PTT. A forged packet keys the transmitter. | **none possible** |
+| 4533/TCP | internal rigctld, listens on 127.0.0.1 only | not reachable from outside |
+| 64738/TCP+UDP | Mumble server, only if installed (`--with-mumble`) | Mumble's own settings |
+| 22/TCP | SSH (the installer installs `openssh-server`; not part of this project) | your SSH setup, ideally keys only |
+
+Do not forward any of these ports in your router, and do not use "port forwarding", "DMZ" or UPnP for the Raspberry Pi.
+
+Programs on **other** computers that switch PTT through the web interface (the OpenWebRX PTT button, JS8Call with `curl`) need the key shown in Setup & Sync under "Security". It allows PTT only, nothing else. Programs on the Raspberry Pi itself (127.0.0.1) need no key.
+
+#### Legal aspects
+
+As a licensed radio operator, you may be permitted to use remote control, depending on regional regulations.
+
+For an unlicensed operator, such as in the CB radio service, an "unattended" (or unmanned) radio station is generally not permitted. However, if you operate the system within your own private network, in close proximity to the radio equipment, such that you could physically disconnect it from the power or network at any moment should a malfunction occur, and you remain within the confines of your own property, this would typically not be considered a legal issue.
+
+Rules differ from country to country. This is not legal advice; check the regulations that apply to you.
 
 ### Main Goal of the Project:
 
@@ -118,6 +148,7 @@ During the installation Tailscale shows a login link. Open it in a browser and f
 The installer has a few options, see `bash install.sh --help`:
 
 - `--with-sdr`: also set up an RTL-SDR dongle as S-meter
+- `--with-password`: ask for the web password during the installation (otherwise the page asks at the first visit)
 - `--with-mumble`: also install Mumble (optional, WebAudio does not need it)
 - `--no-tailscale`: skip Tailscale (then only HTTP on port 5000, no HTTPS)
 - `--no-service`: no autostart service
@@ -136,7 +167,7 @@ Update later with `git pull` and restart the program. Your own settings (`config
 6. Ideally, the AE5900 should already be set to FM and channel 1.
 7. Set the microphone type to "TYPE 2" on your AE5900 and configure your P1–P4 key shortcuts.
 8. Run `python3 ae_5900_v2.py` on the host machine/server (the installer already starts it automatically at boot).
-9. Open `http://HOSTNAMEIP:5000` or `https://HOSTNAMEIP:5443` in your browser on your client device. You should now have control over your AE5900.
+9. Open `http://HOSTNAMEIP:5000` or `https://HOSTNAMEIP:5443` in your browser on your client device. At the first visit the page asks you to set a password (once per device you log in with). Then you should have control over your AE5900.
 10. Open the "Setup" section at the very bottom of the WebUI and perform the sync.
 11. Set the labels for the P1–P4 buttons to match the settings on your AE5900.
 12. You may need to make adjustments in the volume control (pavucontrol) on the host machine. Typical adjustments include setting your network-connected sound card as the default sound card under the "Configuration" tab.

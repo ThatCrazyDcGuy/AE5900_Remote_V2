@@ -14,13 +14,15 @@ The program offers a rigctl-compatible server on **port 4532** of the Raspberry 
 
 **1. PTT button in OpenWebRX**
 
-In the OpenWebRX settings under *settings/general*, edit the *Photo description* field and paste the code below. Enter the hostname or IP address of your Raspberry Pi at `ALBRECHT_HOST`:
+In the OpenWebRX settings under *settings/general*, edit the *Photo description* field and paste the code below. Enter the hostname or IP address of your Raspberry Pi at `ALBRECHT_HOST`, and the key from the web page (Setup & Sync -> Security -> SHOW) at `ALBRECHT_KEY`. The key allows PTT only. Without it the button is refused, because the web interface is password-protected:
 
 ```html
 <script type="text/javascript">
 // === CONFIGURATION ===
 // Enter the hostname or IP address of your Albrecht Pi below, after ALBRECHT_HOST = (e.g. 'ae5900ctrl' or '192.168.122.50')
 var ALBRECHT_HOST = '127.0.0.1';
+// Key from the Albrecht web page: Setup & Sync -> Security -> SHOW (allows PTT only)
+var ALBRECHT_KEY = 'PASTE-KEY-HERE';
 // =====================
 
 if (document.getElementsByTagName('a')[0]) {
@@ -50,7 +52,7 @@ if (!document.getElementById('owrx-cat-ptt')) {
         window.owrxPttState = !window.owrxPttState;
         var pttVal = window.owrxPttState ? '1' : '0';
 
-        fetch('http://' + ALBRECHT_HOST + ':5000/api/rig/ptt/' + pttVal, { mode: 'cors' })
+        fetch('http://' + ALBRECHT_HOST + ':5000/api/rig/ptt/' + pttVal + '?key=' + encodeURIComponent(ALBRECHT_KEY), { mode: 'cors' })
             .then(function(r) { return r.text(); })
             .then(function(text) {
                 if (window.owrxPttState) {
