@@ -432,9 +432,100 @@
             button { font-size: 0.78em; padding: 6px 1px; }
             .land-right-col .btn-ptt { min-height: 100px; }
         }
+
+        /* ===== Anmelde-Fenster (Passwortschutz): Oberflaeche bleibt halbtransparent sichtbar ===== */
+        #authOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100000; display: none;
+            align-items: center; justify-content: center; padding: 12px; box-sizing: border-box; overflow: auto;
+            background: rgba(0,0,0,0.58); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+        .auth-card { width: 100%; max-width: 340px; box-sizing: border-box; background: #1d1d1d; border: 1px solid #3a3a3a;
+            border-radius: 12px; padding: 20px 18px 16px 18px; box-shadow: 0 8px 40px rgba(0,0,0,0.7); text-align: center; }
+        .auth-title { font-size: 1.25em; font-weight: bold; color: #00ff66; letter-spacing: 1px; margin-bottom: 4px; font-family: monospace; }
+        .auth-sub { color: #ccc; font-size: 0.92em; margin-bottom: 12px; line-height: 1.35; }
+        .auth-card input { display: block; width: 100%; box-sizing: border-box; margin: 0 0 8px 0; padding: 10px; font-size: 16px;
+            background: #111; color: #fff; border: 1px solid #555; border-radius: 6px; }
+        .auth-card input:focus { outline: none; border-color: #00ccff; }
+        .auth-card button { width: 100%; min-height: 44px !important; font-size: 1em !important; margin-top: 2px; }
+        .auth-msg { min-height: 1.3em; color: #ff6666; font-size: 0.88em; margin: 2px 0 6px 0; }
+        .auth-hint { color: #888; font-size: 0.76em; margin-top: 10px; line-height: 1.35; }
+        @media (max-height: 420px) { .auth-card { padding: 10px 14px; } .auth-sub { margin-bottom: 6px; } .auth-hint { display: none; } }
     </style>
 </head>
 <body>
+<div id="authOverlay">
+    <form class="auth-card" id="authForm" onsubmit="authSubmit(); return false;">
+        <div class="auth-title">AE-5900 Remote</div>
+        <div class="auth-sub" id="authSub"></div>
+        <input type="password" id="authPw" autocomplete="current-password" placeholder="Password" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <input type="password" id="authPw2" autocomplete="new-password" placeholder="Repeat password" autocapitalize="off" autocorrect="off" spellcheck="false" style="display:none;">
+        <div class="auth-msg" id="authMsg"></div>
+        <button type="submit" id="authBtn">Log in</button>
+        <div class="auth-hint" id="authHint"></div>
+    </form>
+</div>
+<script>
+// Zugriffsschutz: Zustand vom Server ('ok' | 'login' | 'setup'). Solange gesperrt, wird nichts an den Server gesendet
+// (keine Flut von 401-Antworten im Log) und der WebSocket nicht aufgebaut. Nach erfolgreicher Anmeldung wird neu geladen.
+const AUTH_STATE = {{ auth_state|tojson }};
+let authLocked = AUTH_STATE !== 'ok';
+let authMode = 'login';
+const _fetchOrig = window.fetch.bind(window);
+const _authPending = new Promise(() => {});
+function _ownUrl(u) { return u.charAt(0) === '/' || u.indexOf(location.origin) === 0; }
+window.fetch = function (input, init) {
+    const url = (typeof input === 'string') ? input : ((input && input.url) || '');
+    if (!_ownUrl(url) || url.indexOf('/api/auth/') >= 0) return _fetchOrig(input, init);
+    if (authLocked) return _authPending;      // gesperrt: Abruf bleibt offen, die Anzeige hinter dem Fenster behaelt ihren Anfangszustand
+    return _fetchOrig(input, init).then(r => { if (r.status === 401) authShow('login'); return r; });
+};
+function authShow(mode) {
+    authLocked = true; authMode = mode;
+    const setup = (mode === 'setup');
+    document.getElementById('authSub').textContent = setup
+        ? 'First start with password protection: please set a password for this web interface.'
+        : 'Password required.';
+    document.getElementById('authPw2').style.display = setup ? 'block' : 'none';
+    document.getElementById('authPw').autocomplete = setup ? 'new-password' : 'current-password';
+    document.getElementById('authBtn').textContent = setup ? 'Set password' : 'Log in';
+    document.getElementById('authHint').textContent = setup
+        ? 'At least 6 characters. Stored only as a hash on your Raspberry Pi. You enter it once on every device (phone, PC).'
+        : 'Forgot it? On the Raspberry Pi: python3 ae_auth.py --set-password';
+    document.getElementById('authOverlay').style.display = 'flex';
+    try { document.body.style.overflow = 'hidden'; } catch (e) {}
+    setTimeout(() => { try { document.getElementById('authPw').focus(); } catch (e) {} }, 50);
+}
+async function authSubmit() {
+    const pw = document.getElementById('authPw'), pw2 = document.getElementById('authPw2');
+    const msg = document.getElementById('authMsg'), btn = document.getElementById('authBtn');
+    const setup = (authMode === 'setup');
+    msg.textContent = ''; btn.disabled = true;
+    try {
+        const r = await _fetchOrig('/api/auth/' + (setup ? 'setup' : 'login'), {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(setup ? { password: pw.value, password2: pw2.value } : { password: pw.value })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.status === 'success') { location.reload(); return; }
+        msg.textContent = d.message || ('Error ' + r.status);
+        if (d.auth && d.auth !== authMode) authShow(d.auth);
+    } catch (e) {
+        msg.textContent = 'No connection to the server.';
+    }
+    btn.disabled = false; pw.value = ''; pw2.value = '';
+    try { pw.focus(); } catch (e) {}
+}
+if (AUTH_STATE === 'ok') { try { sessionStorage.removeItem('ae_auth_retry'); } catch (e) {} }
+if (authLocked) {
+    authShow(AUTH_STATE === 'setup' ? 'setup' : 'login');
+    if (AUTH_STATE === 'login') {
+        // Evtl. ist die Anmeldung gueltig, wurde aber beim Seitenaufruf nicht mitgeschickt (z. B. Link aus einer anderen App/Webseite).
+        // Ein Abruf von der Seite aus schickt das Cookie mit: klappt er, die Seite einmal neu laden.
+        _fetchOrig('/api/cmd/STATUS', { credentials: 'same-origin' }).then(r => {
+            let tried = null; try { tried = sessionStorage.getItem('ae_auth_retry'); } catch (e) {}
+            if (r.ok && !tried) { try { sessionStorage.setItem('ae_auth_retry', '1'); } catch (e) {} location.replace(location.pathname); }
+        }).catch(() => {});
+    }
+}
+</script>
 <audio id="waAudioElement" style="display:none;" playsinline></audio>
 <div class="ios-wakelock"></div>
 <div class="main-layout-wrapper">
@@ -542,6 +633,23 @@
     <summary>⚙ SETUP & SYNC</summary>
     <div style="background: #222; padding: 20px; border-radius: 10px;">
         <button id="syncBtn" class="hold-button"><span style="position:relative; z-index:2;">SUPER SYNC (CH 01 - Hold 3s)</span><div class="progress-bar" id="syncProgress"></div></button>
+        <div style="border-left: 2px solid #aa6600; padding-left: 8px; margin: 4px 0 16px 0;">
+            <p style="margin-bottom:6px;"><b>Security</b> <span style="font-size:0.8em; color:#888;">password for this web interface</span></p>
+            <p>Change password:
+                <input type="password" id="pwOld" placeholder="current" autocomplete="current-password" style="width:105px;">
+                <input type="password" id="pwNew" placeholder="new (min. 6)" autocomplete="new-password" style="width:105px;">
+                <button type="button" onclick="pwChange()" style="min-height:0; padding:4px 10px;">CHANGE</button>
+                <span id="pwMsg" style="font-size:0.85em;"></span></p>
+            <p><button type="button" onclick="authLogout()" style="min-height:0; padding:4px 10px;">LOG OUT</button>
+                <span style="font-size:0.8em; color:#888;">this device only</span></p>
+            <p>Key for other programs (PTT only):
+                <button type="button" onclick="keyShow()" style="min-height:0; padding:4px 10px;">SHOW</button>
+                <button type="button" onclick="keyNew()" style="min-height:0; padding:4px 10px;">NEW KEY</button><br>
+                <code id="keyOut" style="word-break:break-all; color:#0cf;"></code></p>
+            <p style="font-size:0.8em; color:#888; margin-top:2px;">For programs on <b>other</b> computers (JS8Call, the OpenWebRX PTT button): add the key to the call,
+                e.g. <code>/api/rig/ptt/1?key=KEY</code> or <code>/api/cmd/TX?state=1&amp;key=KEY</code>. The key allows nothing but PTT.
+                Programs on the Raspberry Pi itself (127.0.0.1) need no key. A new key makes the old one useless.</p>
+        </div>
         <p>PTT Timeout: <input type="number" id="pttInput" value="{{ config.ptt_timeout }}" style="width: 60px;" onchange="updateTimeout()"> s</p>
         <p>Mode-Skip (FW v1.12): 
             <label><input type="checkbox" onchange="fetch('/api/cmd/SET_SKIP_PA?val=' + this.checked)" {% if config.skip_pa %}checked{% endif %}> PA</label>
@@ -1689,6 +1797,7 @@
     // ABSOLUT STABILES AUTOMATISCHES FALLBACK-TIMING FÜR NOTEBOOKS
     // =========================================================================
     function initSocket() {
+        if (authLocked) return;          // ohne Anmeldung kein WebSocket (der Server wuerde ihn ablehnen)
         // 400ms Atempause für das Notebook-Backend, um Session-Konflikte zu vermeiden
         setTimeout(() => {
 
@@ -1702,7 +1811,7 @@
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-221026 LAY";
+                if (vInd) vInd.textContent = "V-231026 PWD";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2234,6 +2343,43 @@
     }
 
     function changeVol(direction) { send(direction === 'up' ? 'VOLUP' : 'VOLDOWN'); }
+
+    // --- Sicherheit (Passwort) in Setup & Sync ---
+    async function _authPost(url, body) {
+        const r = await _fetchOrig(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+        let d = {}; try { d = await r.json(); } catch (e) {}
+        return { ok: r.ok && d.status === 'success', d: d, code: r.status };
+    }
+    async function pwChange() {
+        const o = document.getElementById('pwOld'), n = document.getElementById('pwNew'), m = document.getElementById('pwMsg');
+        m.style.color = '#ff6666'; m.textContent = '';
+        try {
+            const r = await _authPost('/api/auth/password', { old: o.value, new: n.value });
+            if (r.ok) { m.style.color = '#6f6'; m.textContent = 'Password changed. Other devices have to log in again.'; o.value = ''; n.value = ''; }
+            else if (r.code === 401) { authShow('login'); }
+            else m.textContent = r.d.message || 'Error';
+        } catch (e) { m.textContent = 'No connection to the server.'; }
+    }
+    function authLogout() {
+        _authPost('/api/auth/logout').finally(() => location.reload());
+    }
+    async function keyShow() {
+        const out = document.getElementById('keyOut');
+        try {
+            const r = await _fetchOrig('/api/auth/key', { credentials: 'same-origin' });
+            const d = await r.json().catch(() => ({}));
+            out.textContent = (r.ok && d.key) ? d.key : (d.message || 'Error');
+        } catch (e) { out.textContent = 'No connection to the server.'; }
+    }
+    async function keyNew() {
+        if (!confirm('Create a new key? Programs that use the old key stop working until you enter the new one.')) return;
+        const out = document.getElementById('keyOut');
+        try {
+            const r = await _authPost('/api/auth/key');
+            out.textContent = r.ok ? r.d.key : (r.d.message || 'Error');
+        } catch (e) { out.textContent = 'No connection to the server.'; }
+    }
+
     function setCfg(p, val) { fetch('/api/cmd/SET_' + p + '_LABEL?val=' + encodeURIComponent(val)); }
     function updateTimeout() { const pInput = document.getElementById('pttInput'); if (pInput) fetch('/api/cmd/T' + pInput.value); }
 
