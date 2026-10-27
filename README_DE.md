@@ -233,8 +233,11 @@ Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
 ### Extras und Testläufe
 
-1. JS8Call funktioniert damit recht gut. Man muss natürlich etwas an den Settings rumspielen und VOX aktivieren.
-Es sollte allerdings eine Kleinigkeit sein, hier noch eine PTT-Funktion für entsprechende Software zu bauen.
+1. WSJT-CB funktioniert damit recht gut. Konfiguriere dazu unter „Radio“ die Option „Hamlib Net rigctl“ (Hostname:4532). Für den Bereich „Audio“ ist eine Verbindung (Crossover) erforderlich; alternativ kannst du einfach die Monitor-Funktion deines Audiogeräts für den Eingang aktivieren.
+
+![AE5900_Remote_v2](/pictures/wsjt-cb.jpg)
+
+Link zu [WSJT-CB](https://github.com/vash909/WSJT-CB)
 
 2. User-Feedback vom 30. April 2026: Linux Mint um die Version 21.3 und darunter versteht die Python-Vol- und Vol+ nicht.
 Nur falls jemand auf so einem System testet. Ein Mint-Upgrade hilft, das Problem zu lösen.
