@@ -2505,7 +2505,10 @@ def api_cmd(cmd):
                         try:
                             outs = subprocess.run(["pw-link", "-o"], capture_output=True, text=True, timeout=3).stdout.splitlines()
                             ins = subprocess.run(["pw-link", "-i"], capture_output=True, text=True, timeout=3).stdout.splitlines()
-                            src = [l.strip() for l in outs if ("ae_mic_tx" in l.lower() or "mumble" in l.lower()) and l.strip().lower().endswith(("fl", "left", "mono"))]
+                            def _mic_ports(names):
+                                return [l.strip() for l in outs if any(n in l.lower() for n in names) and l.strip().lower().endswith(("fl", "left", "mono"))]
+                            # Der Stream heisst je nach PipeWire/ALSA-Weg "AE_MIC_TX" oder "alsa_playback.python3.xx" (so bei dir)
+                            src = _mic_ports(("ae_mic_tx", "mumble")) or _mic_ports(("alsa_playback.python",))
                             dst = [l.strip() for l in ins if "record" in l.lower()]
                             for o in src:
                                 for i in dst:
