@@ -131,6 +131,15 @@
 		}
 
         
+        .pblk { display: none; }
+        .pblk.on { display: contents; }
+        .pblk button { touch-action: pan-y; }
+        .controls { position: relative; }
+        .controls .pArrow { position: absolute; z-index: 3; width: 13px; min-width: 0; min-height: 0; height: 30px; padding: 0; margin: 0;
+            background: transparent; border: none; box-shadow: none; color: #0a6; opacity: 0.55; font-size: 26px; line-height: 26px; font-weight: 300; }
+        .controls .pArrow:active { opacity: 1; background: transparent; }
+        .pset { display: none; }
+        .pset.on { display: block; }
         .controls { 
             display: grid; 
             grid-template-columns: repeat(4, 1fr); 
@@ -187,6 +196,15 @@
         .btn-ptt.active { background: #ff0000; box-shadow: 0 0 20px red; }
         .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 200px; margin: 0 auto; }
         .num-btn { background: #333; color: white; padding: 12px 5px; border: 1px solid transparent; }
+        .setsec { border: 1px solid #3a3a3a; border-radius: 8px; margin: 10px 0; background: #1b1b1b; }
+        .setsec > summary { cursor: pointer; padding: 10px 12px; color: #0f0; font-weight: bold; list-style: none; }
+        .setsec > summary::-webkit-details-marker { display: none; }
+        .setsec > summary::before { content: "\25B8"; display: inline-block; width: 1em; transition: transform .15s; }
+        .setsec[open] > summary::before { transform: rotate(90deg); }
+        .setsec .sechint { color: #777; font-weight: normal; font-size: 0.8em; margin-left: 6px; }
+        .setsec .secbody { padding: 2px 12px 12px 12px; }
+        .setsec .secbody button { background: #0a2a2a; color: #0f0; border: 1px solid #0a0; border-radius: 4px; }
+        .setsec .secbody button:hover { background: #134; }
         .setup-area { margin-top: 30px; border-top: 1px solid #333; padding-top: 20px; color: #888; text-align: left; max-width: 420px; margin: 0 auto; }
         .hold-button { 
             position: relative; 
@@ -600,7 +618,16 @@ if (authLocked) {
         <button onclick="send('ASQ_ON_OFF')" id="asqBtn">ASQ</button>
         <button id="sqResetBtn" onclick="send('FULL_ASQ_SQ_SYNC')" style="font-size:0.85em;">A/SQ Res.</button>
 
-        {% if config.active_p_block == 'voice' %}
+        {% set apb = config.active_p_block if config.active_p_block in ('voice', 'custom') else 'standard' %}
+        <button type="button" class="pArrow" id="pArrL" aria-label="previous key set" onclick="pStep(-1)">&#8249;</button>
+        <button type="button" class="pArrow" id="pArrR" aria-label="next key set" onclick="pStep(1)">&#8250;</button>
+        <div class="pblk{% if apb == 'standard' %} on{% endif %}" data-p="standard">
+            <button onclick="send('P1')" id="lbl-p1">P1 {{config.p1_label}}</button>
+            <button onclick="send('P2')" id="lbl-p2">P2 {{config.p2_label}}</button>
+            <button onclick="send('P3')" id="lbl-p3">P3 {{config.p3_label}}</button>
+            <button onclick="send('P4')" id="lbl-p4">P4 {{config.p4_label}}</button>
+        </div>
+        <div class="pblk{% if apb == 'voice' %} on{% endif %}" data-p="voice">
             <button onclick="send('VOICE_REC')" id="btn-rec" style="color: #ff3333;">REC</button>
             <button onclick="send('VOICE_PLAY')" id="btn-rplay" style="color: #00ff00;">RPLAY</button>
             <button onclick="send('CQ_REC')" id="btn-cqrec" style="color: #ffaa00;">CQ REC</button>
@@ -610,17 +637,13 @@ if (authLocked) {
                 <button onclick="send('CQ_REC_SAVE')" style="color:#00ff00; border-color:#00ff00;">💾 Save</button>
                 <button onclick="send('CQ_REC_DISCARD')" style="color:#ff3333; border-color:#ff3333;">✖ Discard</button>
             </div>
-        {% elif config.active_p_block == 'custom' %}
+        </div>
+        <div class="pblk{% if apb == 'custom' %} on{% endif %}" data-p="custom">
             <button onclick="send('CUST_1')" id="btn-cust1">{{ config.cust_lbl_1 or 'CUST 1' }}</button>
             <button onclick="send('CUST_2')" id="btn-cust2">{{ config.cust_lbl_2 or 'CUST 2' }}</button>
             <button onclick="send('CUST_3')" id="btn-cust3">{{ config.cust_lbl_3 or 'CUST 3' }}</button>
             <button onclick="send('CUST_4')" id="btn-cust4">{{ config.cust_lbl_4 or 'CUST 4' }}</button>
-        {% else %}
-            <button onclick="send('P1')" id="lbl-p1">P1 {{config.p1_label}}</button>
-            <button onclick="send('P2')" id="lbl-p2">P2 {{config.p2_label}}</button>
-            <button onclick="send('P3')" id="lbl-p3">P3 {{config.p3_label}}</button>
-            <button onclick="send('P4')" id="lbl-p4">P4 {{config.p4_label}}</button>
-        {% endif %}
+        </div>
 
         <button onclick="send('P')" id="pttBtn" class="btn-ptt">PTT TOGGLE</button>
     </div>
@@ -633,23 +656,9 @@ if (authLocked) {
     <summary>⚙ SETUP & SYNC</summary>
     <div style="background: #222; padding: 20px; border-radius: 10px;">
         <button id="syncBtn" class="hold-button"><span style="position:relative; z-index:2;">SUPER SYNC (CH 01 - Hold 3s)</span><div class="progress-bar" id="syncProgress"></div></button>
-        <div style="border-left: 2px solid #aa6600; padding-left: 8px; margin: 4px 0 16px 0;">
-            <p style="margin-bottom:6px;"><b>Security</b> <span style="font-size:0.8em; color:#888;">password for this web interface</span></p>
-            <p>Change password:
-                <input type="password" id="pwOld" placeholder="current" autocomplete="current-password" style="width:105px;">
-                <input type="password" id="pwNew" placeholder="new (min. 6)" autocomplete="new-password" style="width:105px;">
-                <button type="button" onclick="pwChange()" style="min-height:0; padding:4px 10px;">CHANGE</button>
-                <span id="pwMsg" style="font-size:0.85em;"></span></p>
-            <p><button type="button" onclick="authLogout()" style="min-height:0; padding:4px 10px;">LOG OUT</button>
-                <span style="font-size:0.8em; color:#888;">this device only</span></p>
-            <p>Key for other programs (PTT only):
-                <button type="button" onclick="keyShow()" style="min-height:0; padding:4px 10px;">SHOW</button>
-                <button type="button" onclick="keyNew()" style="min-height:0; padding:4px 10px;">NEW KEY</button><br>
-                <code id="keyOut" style="word-break:break-all; color:#0cf;"></code></p>
-            <p style="font-size:0.8em; color:#888; margin-top:2px;">For programs on <b>other</b> computers (JS8Call, the OpenWebRX PTT button): add the key to the call,
-                e.g. <code>/api/rig/ptt/1?key=KEY</code> or <code>/api/cmd/TX?state=1&amp;key=KEY</code>. The key allows nothing but PTT.
-                Programs on the Raspberry Pi itself (127.0.0.1) need no key. A new key makes the old one useless.</p>
-        </div>
+
+<details class="setsec" id="sec_radio" data-sec="radio"><summary>Radio &amp; keys <span class="sechint">PTT, 4th row, bands, steps</span></summary>
+<div class="secbody">
         <p>PTT Timeout: <input type="number" id="pttInput" value="{{ config.ptt_timeout }}" style="width: 60px;" onchange="updateTimeout()"> s</p>
         <p>Mode-Skip (FW v1.12): 
             <label><input type="checkbox" onchange="fetch('/api/cmd/SET_SKIP_PA?val=' + this.checked)" {% if config.skip_pa %}checked{% endif %}> PA</label>
@@ -658,20 +667,11 @@ if (authLocked) {
         <p>Multi-Watch-CH ( 09,19,28): <input type="text" value="{{ config.mw_label if config.mw_label else '09,19' }}" onchange="fetch('/api/cmd/SET_MW_LABEL?val=' + encodeURIComponent(this.value))" style="width:100px;"></p>
 
         <p>Modular keys in the 4th row: 
-               <select onchange="fetch('/api/cmd/SET_ACTIVE_P_BLOCK?val=' + this.value).then(() => { setTimeout(() => location.reload(), 150); })" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
-                   <option value="standard" {% if config.active_p_block == 'standard' %}selected{% endif %}>AMM-500 default (P1-P4)</option>
+               <select id="pBlockSelect" onchange="pSet(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
+                   <option value="standard" {% if apb == 'standard' %}selected{% endif %}>AMM-500 default (P1-P4)</option>
                    <option value="voice" {% if config.active_p_block == 'voice' %}selected{% endif %}>QSO (REC/PLAY) CQ (REC/PLAY)</option>
                    <option value="custom" {% if config.active_p_block == 'custom' %}selected{% endif %}>Custom terminal commands</option>
                </select>
-        </p>
-
-        <p>Display mode: 
-            <select id="vzModeSelect" onchange="setVisualizerMode(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
-                <option value="bars">Classic (Bars)</option>
-                <option value="waterfall">Waterfall</option>
-                <option value="both">Both (Bars + Waterfall)</option>
-                <option value="rf">RF waterfall (SDR dongle)</option>
-            </select>
         </p>
 
         <p>Multinorm bands: 
@@ -687,14 +687,14 @@ if (authLocked) {
             </select>
         </p>
 
-        {% if config.active_p_block == 'standard' or not config.active_p_block %}
+        <div class="pset{% if apb == 'standard' %} on{% endif %}" data-p="standard">
             <p>P1 Label: <input type="text" value="{{config.p1_label}}" onchange="setCfg('P1', this.value)" style="width:100px;"></p>
             <p>P2 Label: <input type="text" value="{{config.p2_label}}" onchange="setCfg('P2', this.value)" style="width:100px;"></p>
             <p>P3 Label: <input type="text" value="{{config.p3_label}}" onchange="setCfg('P3', this.value)" style="width:100px;"></p>
             <p>P4 Label: <input type="text" value="{{config.p4_label}}" onchange="setCfg('P4', this.value)" style="width:100px;"></p>
-        {% endif %}
+        </div>
 
-        {% if config.active_p_block == 'custom' %}
+        <div class="pset{% if apb == 'custom' %} on{% endif %}" data-p="custom">
             <div style="border-left: 2px solid #00ff00; padding-left: 10px; margin: 10px 0;">
                 <p style="color: #00ff00; font-weight: bold; margin-bottom: 5px;"> Button 1 (e.g. Antenna 1):</p>
                 <p>Label: <input type="text" value="{{config.cust_lbl_1}}" onchange="setCfg('CUST_LBL_1', this.value)" style="width:100px;">
@@ -715,7 +715,7 @@ if (authLocked) {
                 <p>Label: <input type="text" value="{{config.cust_lbl_4}}" onchange="setCfg('CUST_LBL_4', this.value)" style="width:100px;">
                    Terminal command: <input type="text" value="{{config.cust_cmd_4}}" onchange="setCfg('CUST_CMD_4', this.value)" style="width:160px;"></p>
             </div>
-        {% endif %}
+        </div>
 
         <p>Scan Speed (ms): <input type="number" id="scanSpeedInput" value="{{ config.scan_speed * 1000 | int }}" style="width: 70px;" onchange="send('SETSPEED_' + this.value)"> </p>
         <p>Scroll interval (ms): <input type="number" id="scrollIntervalInput" min="500" max="30000" step="100" value="{{ (config.scroll_interval_s * 1000) | int }}" style="width: 70px;" onchange="send('SETSCROLL_' + this.value)" title="Step time of the long-press channel scroll (S-SCAN / MW). Minimum 500 ms."> </p>
@@ -730,8 +730,16 @@ if (authLocked) {
                 <option value="1000000" {% if config.vfo_step == 1000000 %}selected{% endif %}>1 MHz</option>
             </select>
         </p>
-        <p>FFT Gain RX: <input type="number" value="{{config.fft_rx_gain}}" onchange="send('SETGAIN_RX_' + this.value)" style="width:80px;"></p>
-        <p>FFT Gain TX: <input type="number" value="{{config.fft_tx_gain}}" onchange="send('SETGAIN_TX_' + this.value)" style="width:80px;"></p>
+        <p>PTT Hotkey (e.g. F6, Space, p): 
+            <input type="text" id="pttHotkeyInput" value="{{ config.ptt_hotkey if config.ptt_hotkey else 'F6' }}" style="width:100px;" readonly>
+            <button onclick="changePTTHotkey()" style="padding: 2px 8px; font-size: 0.8em; background: #575757;">Change button</button>
+        </p>
+        <p>Keyboard shortcuts on this device (U/D channel, M mode, A ASQ, S scan, hold S scroll): <input type="checkbox" id="kbdShortcutsToggle" onchange="setKbdShortcuts(this.checked)" title="Off by default. Can also be switched on once with the address ?keys=1 (off again with ?keys=0)."></p>
+
+
+</div></details>
+<details class="setsec" id="sec_audio" data-sec="audio"><summary>Audio <span class="sechint">WebAudio, roger beep</span></summary>
+<div class="secbody">
         <p>WebAudio streaming (server, ADPCM): <input type="checkbox" id="webaudioToggle" onchange="send('WEBAUDIO_TOGGLE')"></p>
         <p>WebAudio rate (Hz): <select id="waRateSel" onchange="send('SETWA_RATE_' + this.value)" title="Capture rate on the server AND playback rate in the browser. Changing it re-opens the audio streams (~1 s).">
             <option value="16000" {% if config.webaudio_rate == 16000 %}selected{% endif %}>16000</option>
@@ -746,23 +754,72 @@ if (authLocked) {
         <p>WebAudio buffer max (ms): <input type="number" id="waBufMaxInput" min="150" max="3000" step="50" value="{{config.webaudio_buffer_max_ms}}" onchange="send('SETWA_BUFMAX_' + this.value)" style="width:80px;" title="Above this the backlog is dropped and playback jumps back to the target."></p>
         <p>WebAudio drift correction (&permil;, 0 = off): <input type="number" id="waDriftInput" min="0" max="20" step="1" value="{{config.webaudio_drift_permille}}" onchange="send('SETWA_DRIFT_' + this.value)" style="width:80px;" title="Maximum playback-speed adjustment used to keep the buffer at its target (5 = 0.5 %). A large backlog is caught up faster, at up to 2 %."></p>
         <p style="font-size:0.8em; color:#9a9; margin-top:-6px;">Live: <span id="waStats">not listening</span><br><span id="waSrvStats">-</span><br><span id="waNetDiag">-</span></p>
-        <p>Waterfall contrast (0.05-2.0): <input type="number" id="wfContrastInput" step="0.01" min="0.05" max="2" value="1.52" onchange="setWfContrast(this.value)" style="width:80px;"></p>
-        <p>Waterfall adapt speed (0.01-1.0): <input type="number" id="wfSpeedInput" step="0.01" min="0.01" max="1" value="0.042" onchange="setWfSpeed(this.value)" style="width:80px;"></p>
-        <p>PTT Hotkey (e.g. F6, Space, p): 
-            <input type="text" id="pttHotkeyInput" value="{{ config.ptt_hotkey if config.ptt_hotkey else 'F6' }}" style="width:100px;" readonly>
-            <button onclick="changePTTHotkey()" style="padding: 2px 8px; font-size: 0.8em; background: #575757;">Change button</button>
-        </p>
-        <p>Keyboard shortcuts on this device (U/D channel, M mode, A ASQ, S scan, hold S scroll): <input type="checkbox" id="kbdShortcutsToggle" onchange="setKbdShortcuts(this.checked)" title="Off by default. Can also be switched on once with the address ?keys=1 (off again with ?keys=0)."></p>
-
         <p>Rogerbeep:
-            <select id="rogerbeepSelect" onchange="send('SET_BEEP?val=' + this.value)" style="width:100px;">
+            <select id="rogerbeepSelect" onchange="send('SET_BEEP?val=' + this.value); beepSync()" style="width:150px;">
                 <option value="None" {% if config.current_beep == 'None' %}selected{% endif %}>None (Aus)</option>
                 {% for beep in beeps_list %}
                 <option value="{{ beep }}" {% if config.current_beep == beep %}selected{% endif %}>{{ beep }}</option>
                 {% endfor %}
             </select>
+        <button onclick="beepPlay()" title="Listen on this device" style="padding: 2px 8px; font-size: 0.8em;">&#9654;</button>
+            <button onclick="document.getElementById('beepFile').click()" style="padding: 2px 8px; font-size: 0.8em; background: #004444; border-color: #00ff00;">UPLOAD</button>
+            <button id="beepDelBtn" onclick="beepDelete()" style="padding: 2px 8px; font-size: 0.8em; display:none;">DELETE</button>
+            <input type="file" id="beepFile" accept="audio/*,.wav,.mp3,.ogg,.m4a" style="display:none;" onchange="beepUpload(this)">
+            <span id="beepStatus" style="font-size:0.8em; color:#0aa;"></span>
         </p>
 
+
+</div></details>
+<details class="setsec" id="sec_display" data-sec="display"><summary>Display &amp; background <span class="sechint">waterfall, FFT, picture</span></summary>
+<div class="secbody">
+        <p>Display mode: 
+            <select id="vzModeSelect" onchange="setVisualizerMode(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
+                <option value="bars">Classic (Bars)</option>
+                <option value="waterfall">Waterfall</option>
+                <option value="both">Both (Bars + Waterfall)</option>
+                <option value="rf">RF waterfall (SDR dongle)</option>
+            </select>
+        </p>
+            <div id="wfBox" style="border-top: 1px solid #333; margin-top: 8px; padding-top: 8px;">
+                <p>RF waterfall source: <select id="wfSrc" onchange="wfApply(); wfShowSrc()" style="width:150px;"><option value="owrx">OpenWebRX (local)</option><option value="sdr">SDR dongle (RTL-SDR)</option></select>
+                    <span style="font-size:0.8em; color:#888;">independent of the S-meter source</span></p>
+                <p>RF waterfall (around the channel):
+                    <input type="checkbox" id="wfEnable" onchange="wfApply()" title="Off by default. Needs about 10-15 % of one Raspberry Pi 3 core and a few KB/s per viewer while it is open.">
+                    <select id="wfSpan" onchange="wfApply()" style="width:90px;">
+                        <option value="40">40 kHz</option><option value="60">60 kHz</option>
+                        <option value="100">100 kHz</option><option value="200">200 kHz</option>
+                    </select>
+                </p>
+                <p id="wfTxRow"><label><input type="checkbox" id="wfTx" onchange="wfApply()"> keep running while transmitting (shows your own signal)</label><br>
+                    <span style="font-size:0.8em; color:#e90;">Only with a SEPARATE receive antenna and some distance to the transmitter. Never connect the dongle to the transmit antenna or the antenna socket of the radio - it would be destroyed.</span></p>
+                <div id="wfView" style="display:none;">
+                    <div style="position:relative; width:100%; max-width:640px;">
+                        <canvas id="wfCanvas" width="480" height="200" style="width:100%; height:200px; background:#000; display:block; border:1px solid #444;"></canvas>
+                        <canvas id="wfOverlay" width="480" height="200" style="position:absolute; left:0; top:0; width:100%; height:200px; pointer-events:none;"></canvas>
+                    </div>
+                    <p style="font-size:0.85em; margin:4px 0;">Contrast:
+                        <input type="range" id="wfRange" min="20" max="80" value="45" oninput="wfRangeChanged()" style="width:140px; vertical-align:middle;">
+                        <span id="wfInfo" style="color:#0aa; font-family:monospace;"></span>
+                    </p>
+                </div>
+            </div>
+
+
+        <p>FFT Gain RX: <input type="number" value="{{config.fft_rx_gain}}" onchange="send('SETGAIN_RX_' + this.value)" style="width:80px;"></p>
+        <p>FFT Gain TX: <input type="number" value="{{config.fft_tx_gain}}" onchange="send('SETGAIN_TX_' + this.value)" style="width:80px;"></p>
+        <p>Waterfall contrast (0.05-2.0): <input type="number" id="wfContrastInput" step="0.01" min="0.05" max="2" value="1.52" onchange="setWfContrast(this.value)" style="width:80px;"></p>
+        <p>Waterfall adapt speed (0.01-1.0): <input type="number" id="wfSpeedInput" step="0.01" min="0.01" max="1" value="0.042" onchange="setWfSpeed(this.value)" style="width:80px;"></p>
+        <p>Background image:
+            <button onclick="document.getElementById('bgFile').click()" style="padding: 2px 8px; font-size: 0.8em; background: #004444; border-color: #00ff00;">CHANGE</button>
+            <button onclick="bgReset()" style="padding: 2px 8px; font-size: 0.8em;">RESET</button>
+            <input type="file" id="bgFile" accept="image/*" style="display:none;" onchange="bgUpload(this)">
+            <span id="bgStatus" style="font-size:0.8em; color:#0aa;"></span>
+        </p>        
+        
+
+</div></details>
+<details class="setsec" id="sec_smeter" data-sec="smeter"><summary>S-meter &amp; RF waterfall <span class="sechint">ESP32, SDR, OpenWebRX</span></summary>
+<div class="secbody">
 <p>Bluetooth S-Meter MAC: 
             <input type="text" id="btMacInput" value="{{ config.bt_mac_address if config.bt_mac_address and config.bt_mac_address != '00:00:00:00:00:00' else '' }}" placeholder="AA:BB:CC:DD:EE:FF" style="width:160px; font-family:monospace; text-align:center;">
             <button onclick="reconnectHardwareBluetooth()" style="padding: 2px 8px; font-size: 0.8em; background: #004444; border-color: #00ff00;">CONNECT</button>
@@ -784,40 +841,25 @@ if (authLocked) {
                 <input type="text" id="smAddr" value="{{ config.get('owrx_addr','127.0.0.1:8073') }}" style="width:140px; text-align:center; font-family:monospace;" onchange="smeterApply()">
             </p>
             <p>Floor (0 %):
-                <input type="number" id="smFloor" step="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()"> dB
+                <input type="number" id="smFloor" step="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()"> <span class="smUnit">dB</span>
                 <button onclick="smeterSetFromNow('smFloor')" style="padding: 2px 8px; font-size: 0.8em;">= now</button>
             </p>
             <p>Full (100 %):
-                <input type="number" id="smFull" step="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()"> dB
+                <input type="number" id="smFull" step="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()"> <span class="smUnit">dB</span>
                 <button onclick="smeterSetFromNow('smFull')" style="padding: 2px 8px; font-size: 0.8em;">= now</button>
             </p>
-            <p>Smoothing (0.05-1):
+            <p id="smSmoothRow">Smoothing (0.05-1):
                 <input type="number" id="smSmooth" step="0.05" min="0.05" max="1" value="" style="width:65px; text-align:center;" onchange="smeterApply()">
                 <span style="font-size:0.8em; color:#888;">low = calm, 1 = off</span>
             </p>
+            <p id="smEspReset" style="display:none;"><button onclick="smeterEspReset()" style="padding: 2px 8px; font-size: 0.8em;">RESET (60 / 98)</button></p>
             <p id="smStatus" style="font-size:0.85em; color:#0aa; font-family:monospace;">-</p>
-            <div id="wfBox" style="display:none; border-top: 1px solid #044; margin-top: 6px; padding-top: 6px;">
-                <p>RF waterfall (around the channel):
-                    <input type="checkbox" id="wfEnable" onchange="wfApply()" title="Off by default. Needs about 10-15 % of one Raspberry Pi 3 core and a few KB/s per viewer while it is open.">
-                    <select id="wfSpan" onchange="wfApply()" style="width:90px;">
-                        <option value="40">40 kHz</option><option value="60">60 kHz</option>
-                        <option value="100">100 kHz</option><option value="200">200 kHz</option>
-                    </select>
-                </p>
-                <p id="wfTxRow"><label><input type="checkbox" id="wfTx" onchange="wfApply()"> keep running while transmitting (shows your own signal)</label><br>
-                    <span style="font-size:0.8em; color:#e90;">Only with a SEPARATE receive antenna and some distance to the transmitter. Never connect the dongle to the transmit antenna or the antenna socket of the radio - it would be destroyed.</span></p>
-                <div id="wfView" style="display:none;">
-                    <div style="position:relative; width:100%; max-width:640px;">
-                        <canvas id="wfCanvas" width="480" height="200" style="width:100%; height:200px; background:#000; display:block; border:1px solid #444;"></canvas>
-                        <canvas id="wfOverlay" width="480" height="200" style="position:absolute; left:0; top:0; width:100%; height:200px; pointer-events:none;"></canvas>
-                    </div>
-                    <p style="font-size:0.85em; margin:4px 0;">Contrast:
-                        <input type="range" id="wfRange" min="20" max="80" value="45" oninput="wfRangeChanged()" style="width:140px; vertical-align:middle;">
-                        <span id="wfInfo" style="color:#0aa; font-family:monospace;"></span>
-                    </p>
-                </div>
-            </div>
+
         </div>
+
+</div></details>
+<details class="setsec" id="sec_camera" data-sec="camera"><summary>Camera <span class="sechint">preview of the radio</span></summary>
+<div class="secbody">
         <p>Camera (watch the radio):
             <input type="checkbox" id="camEnable" onchange="camApply()" title="Off by default. Needs a USB webcam and the package ffmpeg. No traffic while it is off.">
             <span id="camHint" style="font-size:0.8em; color:#888;"></span>
@@ -841,17 +883,33 @@ if (authLocked) {
             </p>
             <img id="camImg" alt="" style="display:none; max-width:100%; border:1px solid #444;">
         </div>
-        <p>Background image:
-            <button onclick="document.getElementById('bgFile').click()" style="padding: 2px 8px; font-size: 0.8em; background: #004444; border-color: #00ff00;">CHANGE</button>
-            <button onclick="bgReset()" style="padding: 2px 8px; font-size: 0.8em;">RESET</button>
-            <input type="file" id="bgFile" accept="image/*" style="display:none;" onchange="bgUpload(this)">
-            <span id="bgStatus" style="font-size:0.8em; color:#0aa;"></span>
-        </p>        
-        
+
+</div></details>
+<details class="setsec" id="sec_security" data-sec="security"><summary>Security <span class="sechint">password, PTT key</span></summary>
+<div class="secbody">
+        <div style="border-left: 2px solid #aa6600; padding-left: 8px; margin: 4px 0 16px 0;">
+            <p style="margin-bottom:6px;"><b>Security</b> <span style="font-size:0.8em; color:#888;">password for this web interface</span></p>
+            <p>Change password:
+                <input type="password" id="pwOld" placeholder="current" autocomplete="current-password" style="width:105px;">
+                <input type="password" id="pwNew" placeholder="new (min. 6)" autocomplete="new-password" style="width:105px;">
+                <button type="button" onclick="pwChange()" style="min-height:0; padding:4px 10px;">CHANGE</button>
+                <span id="pwMsg" style="font-size:0.85em;"></span></p>
+            <p><button type="button" onclick="authLogout()" style="min-height:0; padding:4px 10px;">LOG OUT</button>
+                <span style="font-size:0.8em; color:#888;">this device only</span></p>
+            <p>Key for other programs (PTT only):
+                <button type="button" onclick="keyShow()" style="min-height:0; padding:4px 10px;">SHOW</button>
+                <button type="button" onclick="keyNew()" style="min-height:0; padding:4px 10px;">NEW KEY</button><br>
+                <code id="keyOut" style="word-break:break-all; color:#0cf;"></code></p>
+            <p style="font-size:0.8em; color:#888; margin-top:2px;">For programs on <b>other</b> computers (JS8Call, the OpenWebRX PTT button): add the key to the call,
+                e.g. <code>/api/rig/ptt/1?key=KEY</code> or <code>/api/cmd/TX?state=1&amp;key=KEY</code>. The key allows nothing but PTT.
+                Programs on the Raspberry Pi itself (127.0.0.1) need no key. A new key makes the old one useless.</p>
+        </div>
+
+</div></details>
     </div>
 
-    <div style="border-top: 1px solid #444; margin-top: 15px; padding-top: 15px;">
-        <strong style="color: #0f0;">🔧 Status correction override:</strong>
+    <details class="setsec" id="sec_repair" data-sec="repair" style="margin-top:12px;"><summary>🔧 Status correction override <span class="sechint">if the display and the radio disagree</span></summary>
+    <div class="secbody" style="padding-top:8px;">
         <p style="font-size: 0.85em; color: #888; margin-top: 5px;">If you face some asyncron issues, e.g. ASQ is of but the WebUI shows on or you're on FM but the WebUI shows USB, select the checkbox or modulation to force synchronisation...</p>
         
         <table style="width: 100%; color: #aaa; font-size: 0.95em; margin-bottom: 10px;">
@@ -877,7 +935,7 @@ if (authLocked) {
             </tr>
         </table>
         <button onclick="submitConfigOverride()" style="width: 100%; background: #4a4a00; color: #fff; padding: 8px; font-weight: bold;">REVERSE & CORRECT ALL STATES</button>
-    </div>
+    </div></details>
 
     <div class="anleitung-box" style="background: #111; border: 1px solid #333; padding: 10px; margin-top: 10px; font-size: 0.9em; line-height: 1.4;">
         {% if lang == 'de' %}
@@ -1811,7 +1869,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-231026 PWD";
+                if (vInd) vInd.textContent = "V-281026 WFS";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2053,6 +2111,7 @@ if (authLocked) {
             else { mwBtn.style.background = ""; mwBtn.style.boxShadow = "none"; mwBtn.innerText = "MW"; }
         }
 
+        if (data.ACTIVE_P_BLOCK && data.ACTIVE_P_BLOCK !== pCur()) pApply(data.ACTIVE_P_BLOCK);
         const voiceButtons = [document.getElementById('btn-rec'), document.getElementById('btn-rplay'), document.getElementById('btn-cqrec'), document.getElementById('btn-cqcall')];
         if (data.PTT === "ON" && data.ACTIVE_P_BLOCK === "voice") { voiceButtons.forEach(b => { if (b) { b.classList.add('click-blocked'); b.style.opacity = "0.3"; } }); }
         else if (data.AUDIO_RECORDING !== true) { voiceButtons.forEach(b => { if (b) { b.classList.remove('click-blocked'); b.style.opacity = ""; } }); }
@@ -2454,25 +2513,151 @@ if (authLocked) {
         }).catch(() => {});
     }
 
+    // Setup-Abschnitte: offen/zu pro Geraet merken (mehrere duerfen gleichzeitig offen sein)
+    (function () {
+        let st = {};
+        try { st = JSON.parse(localStorage.getItem('ae_setsec') || '{}') || {}; } catch (e) {}
+        document.querySelectorAll('details.setsec').forEach(d => {
+            const id = d.dataset.sec;
+            if (st[id]) d.open = true;
+            d.addEventListener('toggle', () => {
+                st[id] = d.open;
+                if (typeof wfSync === 'function') setTimeout(wfSync, 0);
+                try { localStorage.setItem('ae_setsec', JSON.stringify(st)); } catch (e) {}
+            });
+        });
+    })();
+
+    // --- 4. Tastenreihe: Wischen oder Pfeile, gilt fuer alle Geraete (Server merkt sich den Satz) ---
+    const P_ORDER = ['standard', 'voice', 'custom'];
+    function pCur() { const e = document.querySelector('.pblk.on'); return e ? e.dataset.p : 'standard'; }
+    function pPlace() {
+        const L = document.getElementById('pArrL'), R = document.getElementById('pArrR'), box = document.querySelector('.controls');
+        const first = document.querySelector('.pblk.on button');
+        if (!L || !R || !box || !first) return;
+        const top = first.offsetTop + Math.max(0, (first.offsetHeight - L.offsetHeight) / 2);
+        L.style.top = R.style.top = top + 'px';
+        L.style.left = '-11px'; R.style.right = '-11px';
+    }
+    function pApply(v) {
+        if (P_ORDER.indexOf(v) < 0) v = 'standard';
+        document.querySelectorAll('.pblk').forEach(e => e.classList.toggle('on', e.dataset.p === v));
+        document.querySelectorAll('.pset').forEach(e => e.classList.toggle('on', e.dataset.p === v));
+        const sel = document.getElementById('pBlockSelect'); if (sel && sel.value !== v) sel.value = v;
+        pPlace();
+    }
+    function pSet(v) {
+        if (v === pCur()) return;
+        pApply(v);
+        fetch('/api/cmd/SET_ACTIVE_P_BLOCK?val=' + encodeURIComponent(v)).catch(() => {});
+    }
+    function pStep(d) { pSet(P_ORDER[(P_ORDER.indexOf(pCur()) + d + P_ORDER.length) % P_ORDER.length]); }
+    (function () {
+        let x0 = null, y0 = 0, swiped = false;
+        const box = document.querySelector('.controls');
+        if (!box) return;
+        box.addEventListener('pointerdown', e => { if (e.target.closest('.pblk')) { x0 = e.clientX; y0 = e.clientY; swiped = false; } });
+        box.addEventListener('pointermove', e => {
+            if (x0 === null || swiped) return;
+            const dx = e.clientX - x0, dy = e.clientY - y0;
+            if (Math.abs(dx) > 40 && Math.abs(dx) > 2 * Math.abs(dy)) { swiped = true; pStep(dx < 0 ? 1 : -1); }
+        });
+        const end = () => { x0 = null; };
+        box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+        box.addEventListener('click', e => { if (swiped && e.target.closest('.pblk')) { e.stopPropagation(); e.preventDefault(); } swiped = false; }, true);
+        window.addEventListener('resize', pPlace);
+        window.addEventListener('load', pPlace);
+        pPlace(); setTimeout(pPlace, 300);
+    })();
+
+    // --- Roger-Beep: eigene Datei hochladen (jedes Browser-Audioformat -> Mono-WAV 22,05 kHz, max. 5 s) ---
+    function beepStatus(t) { const e = document.getElementById('beepStatus'); if (e) e.textContent = t ? ' ' + t : ''; }
+    function beepSync() {
+        const sel = document.getElementById('rogerbeepSelect'), b = document.getElementById('beepDelBtn');
+        if (b && sel) b.style.display = sel.value.indexOf('user_') === 0 ? '' : 'none';
+    }
+    function beepFillList(list, pick) {
+        const sel = document.getElementById('rogerbeepSelect');
+        sel.innerHTML = '';
+        const none = document.createElement('option'); none.value = 'None'; none.textContent = 'None (Aus)'; sel.appendChild(none);
+        list.forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+        sel.value = list.indexOf(pick) >= 0 || pick === 'None' ? pick : 'None';
+        beepSync();
+    }
+    function beepPlay() {
+        const v = document.getElementById('rogerbeepSelect').value;
+        if (v === 'None') return;
+        new Audio('/api/beeps/file?name=' + encodeURIComponent(v)).play().catch(() => {});
+    }
+    function beepWav(buf) {          // AudioBuffer (Mono) -> 16-Bit-WAV
+        const x = buf.getChannelData(0), n = x.length, out = new DataView(new ArrayBuffer(44 + n * 2));
+        const w = (o, t) => { for (let i = 0; i < t.length; i++) out.setUint8(o + i, t.charCodeAt(i)); };
+        w(0, 'RIFF'); out.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); out.setUint32(16, 16, true);
+        out.setUint16(20, 1, true); out.setUint16(22, 1, true); out.setUint32(24, buf.sampleRate, true);
+        out.setUint32(28, buf.sampleRate * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+        w(36, 'data'); out.setUint32(40, n * 2, true);
+        for (let i = 0; i < n; i++) out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x[i])) * 32767, true);
+        return new Blob([out], { type: 'audio/wav' });
+    }
+    async function beepUpload(inp) {
+        const file = inp.files && inp.files[0];
+        inp.value = '';
+        if (!file) return;
+        beepStatus('converting...');
+        try {
+            const AC = window.AudioContext || window.webkitAudioContext, ctx = new AC();
+            const dec = await ctx.decodeAudioData(await file.arrayBuffer());
+            ctx.close();
+            if (dec.duration > 5) throw new Error('longer than 5 seconds');
+            const RATE = 22050, len = Math.max(1, Math.ceil(dec.duration * RATE));
+            const off = new OfflineAudioContext(1, len, RATE), src = off.createBufferSource();
+            src.buffer = dec; src.connect(off.destination); src.start();
+            const wav = beepWav(await off.startRendering());
+            const r = await fetch('/api/beeps/upload?name=' + encodeURIComponent(file.name), { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: wav });
+            const d = await r.json();
+            if (d.status !== 'success') throw new Error(d.message || 'upload failed');
+            beepFillList(d.beeps, d.name);
+            send('SET_BEEP?val=' + d.name);
+            beepStatus('saved');
+        } catch (e) {
+            beepStatus('');
+            alert('Beep not added: ' + (e && e.message ? e.message : e));
+        }
+    }
+    function beepDelete() {
+        const v = document.getElementById('rogerbeepSelect').value;
+        if (v.indexOf('user_') !== 0 || !confirm('Delete ' + v + '?')) return;
+        fetch('/api/beeps/delete?name=' + encodeURIComponent(v), { method: 'POST' }).then(r => r.json()).then(d => {
+            if (d.status !== 'success') { alert(d.message || 'Delete failed'); return; }
+            beepFillList(d.beeps, 'None');
+            beepStatus('deleted');
+        }).catch(() => {});
+    }
+    if (document.getElementById('rogerbeepSelect')) beepSync();
+
     // --- S-Meter-Quelle (ESP32 / SDR-Dongle / OpenWebRX / aus) ---
     // Floor/Full gelten je Quelle getrennt (die Skalen von rtl_sdr und OpenWebRX sind verschieden) und werden vom Server geladen.
     let smLastDb = null;
     function smShowBox(src) {
         const box = document.getElementById('smSdrBox');
-        box.style.display = (src === 'sdr' || src === 'owrx') ? 'block' : 'none';
+        box.style.display = (src === 'sdr' || src === 'owrx' || src === 'esp32') ? 'block' : 'none';
+        const esp = (src === 'esp32');
+        document.getElementById('smSmoothRow').style.display = esp ? 'none' : '';
+        document.getElementById('smEspReset').style.display = esp ? '' : 'none';
+        document.querySelectorAll('.smUnit').forEach(e => e.textContent = esp ? 'steps' : 'dB');
         document.getElementById('smGainRow').style.display = (src === 'sdr') ? '' : 'none';
         document.getElementById('smAddrRow').style.display = (src === 'owrx') ? '' : 'none';
-        document.getElementById('wfBox').style.display = (src === 'sdr' || src === 'owrx') ? 'block' : 'none';
-        document.getElementById('wfTxRow').style.display = (src === 'sdr') ? '' : 'none';    // "beim Senden weiterlesen" gibt es nur beim Dongle
         if (typeof wfSync === 'function') wfSync();
-        document.getElementById('smHint').textContent = (src === 'owrx')
+        document.getElementById('smHint').textContent = esp
+            ? 'Hardware mod: the ESP32 sends 0-100 (38 steps of resolution). Floor = reading with no signal (noise) -> 0 %, Full = reading at full scale -> 100 %. Hold the squelch open without signal and press "= now" for Floor; with a strong signal for Full.'
+            : (src === 'owrx')
             ? 'Uses the OpenWebRX running on this Raspberry (it must have an SDR profile covering the channel). Relative reading - calibrate with the two values below.'
             : 'Receive-only second antenna on an RTL-SDR dongle (stop OpenWebRX first, the dongle can only be used once). Relative reading - calibrate with the two values below.';
     }
     function smeterLoad() {
         const src = document.getElementById('smSrc').value;
         smShowBox(src);
-        if (src !== 'sdr' && src !== 'owrx') return;
+        if (src !== 'sdr' && src !== 'owrx' && src !== 'esp32') return;
         fetch('/api/smeter?src=' + src).then(r => r.json()).then(d => {
             document.getElementById('smFloor').value = d.floor;
             document.getElementById('smFull').value = d.full;
@@ -2494,6 +2679,10 @@ if (authLocked) {
         let q = 'src=' + encodeURIComponent(src);
         if (src === 'sdr') q += '&gain=' + encodeURIComponent(document.getElementById('smGain').value.trim() || '30');
         if (src === 'owrx') q += '&addr=' + encodeURIComponent(document.getElementById('smAddr').value.trim());
+        if (src === 'esp32') {
+            q += '&floor=' + encodeURIComponent(document.getElementById('smFloor').value)
+              + '&full=' + encodeURIComponent(document.getElementById('smFull').value);
+        }
         if (src === 'sdr' || src === 'owrx') {
             q += '&smooth=' + encodeURIComponent(document.getElementById('smSmooth').value)
               + '&floor=' + encodeURIComponent(document.getElementById('smFloor').value)
@@ -2502,6 +2691,11 @@ if (authLocked) {
         fetch('/api/smeter/set?' + q).then(r => r.json()).then(d => {
             if (d.status !== 'success') { alert(d.message || 'Could not save S-Meter settings'); smeterLoad(); }
         }).catch(() => {});
+    }
+    function smeterEspReset() {
+        document.getElementById('smFloor').value = 60;
+        document.getElementById('smFull').value = 98;
+        smeterApply();
     }
     function smeterSetFromNow(id) {
         if (smLastDb === null) { alert('No reading available yet.'); return; }
@@ -2513,9 +2707,10 @@ if (authLocked) {
         if (!box || box.style.display === 'none' || box.offsetParent === null) return;
         const src = document.getElementById('smSrc').value;
         fetch('/api/smeter?src=' + src).then(r => r.json()).then(d => {
-            smLastDb = (d.db === null || d.db === undefined) ? null : d.db;
+            smLastDb = (src === 'esp32') ? ((d.esp_raw === null || d.esp_raw === undefined) ? null : d.esp_raw) : ((d.db === null || d.db === undefined) ? null : d.db);
             const st = document.getElementById('smStatus');
-            if (st) st.textContent = (src === 'owrx' ? 'OpenWebRX: ' : 'SDR: ') + d.state + (smLastDb !== null ? '  |  ' + smLastDb.toFixed(1) + ' dB' : '');
+            if (st && src === 'esp32') st.textContent = smLastDb !== null ? 'ESP32: reading ' + smLastDb : 'ESP32: no data (Bluetooth connected?)';
+            else if (st) st.textContent = (src === 'owrx' ? 'OpenWebRX: ' : 'SDR: ') + d.state + (smLastDb !== null ? '  |  ' + smLastDb.toFixed(1) + ' dB' : '');
         }).catch(() => {});
     }
     setInterval(smeterPoll, 1500);
@@ -2605,8 +2800,14 @@ if (authLocked) {
         if (want && !wfJoined) { socket.emit('wf_join'); wfJoined = true; }
         else if (!want && wfJoined) { socket.emit('wf_leave'); wfJoined = false; }
     }
+    function wfShowSrc() {         // "beim Senden weiterlesen" gibt es nur beim Dongle
+        const sel = document.getElementById('wfSrc'), row = document.getElementById('wfTxRow');
+        if (sel && row) row.style.display = (sel.value === 'sdr') ? '' : 'none';
+    }
     function wfLoad() {
         fetch('/api/wf').then(r => r.json()).then(d => {
+            if (d.wf_source) document.getElementById('wfSrc').value = d.wf_source;
+            wfShowSrc();
             document.getElementById('wfEnable').checked = d.enabled;
             document.getElementById('wfSpan').value = String(d.span);
             document.getElementById('wfTx').checked = d.tx;
@@ -2615,7 +2816,7 @@ if (authLocked) {
         }).catch(() => {});
     }
     function wfApply() {
-        const q = 'enabled=' + (document.getElementById('wfEnable').checked ? 1 : 0)
+        const q = 'source=' + encodeURIComponent(document.getElementById('wfSrc').value) + '&enabled=' + (document.getElementById('wfEnable').checked ? 1 : 0)
             + '&span=' + encodeURIComponent(document.getElementById('wfSpan').value)
             + '&tx=' + (document.getElementById('wfTx').checked ? 1 : 0);
         fetch('/api/wf/set?' + q).then(r => r.json()).then(d => {
@@ -2746,7 +2947,7 @@ if (authLocked) {
     function rfModeChanged() {
         rfMainMeta = null; rfMainMsgShown = false;
         if (visualizerMode === 'rf') {
-            // Server-seitig einschalten (wirkt nur mit der S-Meter-Quelle "SDR dongle"); gerechnet wird erst, wenn jemand zuschaut
+            // Server-seitig einschalten; gerechnet wird erst, wenn jemand zuschaut
             fetch('/api/wf/set?enabled=1').then(() => { wfLoad(); }).catch(() => {});
             rfMainOverlay();
         } else {
@@ -2759,7 +2960,7 @@ if (authLocked) {
         if (Date.now() - wfLastRow > 3000) {
             fetch('/api/wf').then(r => r.json()).then(d => {
                 rfMainMsgShown = true;
-                rfMainMessage((d.source !== 'sdr' && d.source !== 'owrx') ? 'RF waterfall needs the S-meter source "SDR dongle" or "OpenWebRX" (Setup & Sync)' : 'waiting for SDR / OpenWebRX data ...');
+                rfMainMessage('waiting for ' + (d.wf_source === 'sdr' ? 'SDR dongle' : 'OpenWebRX') + ' data ...' + ((d.state && d.state !== '-') ? ' (' + d.state + ')' : ''));
             }).catch(() => {});
         }
     }, 2500);
