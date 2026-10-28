@@ -2495,17 +2495,34 @@ def api_cmd(cmd):
                     str(cq_tmp_path)
                 ])
                 
-                time.sleep(0.060)
-                
-                try:
-                    res_links = subprocess.run(["pw-link", "-i"], capture_output=True, text=True).stdout
-                    record_ports = [l.strip() for l in res_links.split('\n') if "pw-record" in l.lower() or "record" in l.lower()]
-                    if record_ports:
-                        target_port = record_ports[-1]
-                        subprocess.run(["pw-link", "Mumble:output_FL", target_port], check=False)
-                        print("[PAPAGEI-WEICHE GEKOPPELT]")
-                except Exception as e:
-                    print(f"Fehler beim dynamischen PipeWire-Link: {e}")
+                # Die Aufnahme haengt "ungelinkt" im Graph; der Mikrofon-Ausgang (PyAudio-Stream "AE_MIC_TX" mit der Stimme vom
+                # Browser-Mikrofon, frueher Mumble) wird von Hand verbunden. Der Port existiert erst, wenn das Browser-Mikrofon laeuft - darum wiederholt versuchen,
+                # solange die Aufnahme laeuft (vorher: ein einziger Versuch nach 60 ms, bei Misserfolg blieb die Datei leer).
+                def cq_link_loop():
+                    linked_once = False
+                    t_end = time.time() + 12.5
+                    while time.time() < t_end and proc.poll() is None and getattr(radio, 'is_recording_live', False):
+                        try:
+                            outs = subprocess.run(["pw-link", "-o"], capture_output=True, text=True, timeout=3).stdout.splitlines()
+                            ins = subprocess.run(["pw-link", "-i"], capture_output=True, text=True, timeout=3).stdout.splitlines()
+                            def _mic_ports(names):
+                                return [l.strip() for l in outs if any(n in l.lower() for n in names) and l.strip().lower().endswith(("fl", "left", "mono"))]
+                            # Der Stream heisst je nach PipeWire/ALSA-Weg "AE_MIC_TX" oder "alsa_playback.python3.xx" (so bei dir)
+                            src = _mic_ports(("ae_mic_tx", "mumble")) or _mic_ports(("alsa_playback.python",))
+                            dst = [l.strip() for l in ins if "record" in l.lower()]
+                            for o in src:
+                                for i in dst:
+                                    r = subprocess.run(["pw-link", o, i], capture_output=True, text=True, timeout=3)
+                                    if r.returncode == 0 and not linked_once:
+                                        linked_once = True
+                                        print("[PAPAGEI-WEICHE GEKOPPELT] %s -> %s" % (o, i))
+                        except Exception as e:
+                            print(f"Fehler beim dynamischen PipeWire-Link: {e}")
+                        time.sleep(0.25)
+                    if not linked_once:
+                        print("[PAPAGEI-WEICHE] Kein Mikrofon-Port (AE_MIC_TX) gefunden/verbunden - die Aufnahme bleibt leer. "
+                              "Das Browser-Mikrofon muss dafuer laufen. Pruefen: 'pw-link -o | grep -i ae_mic' und 'pw-link -i | grep -i record' waehrend der Aufnahme.")
+                threading.Thread(target=cq_link_loop, daemon=True).start()
 
                 def auto_stop_cq_rec():
                     if proc.poll() is None:
