@@ -6,7 +6,19 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-231026 PWD (current)
+### V-281026 WFS (current)
+
+1. RF waterfall and S-meter are independent now: you can use the ESP32 S-meter together with the OpenWebRX (or SDR dongle) waterfall. A new selection "RF waterfall source" sits in Setup & Sync -> Display & background, together with all waterfall options (on/off, span, "keep running while transmitting"). Switching the S-meter source no longer touches the waterfall, so the display mode does not have to be changed a second time. OpenWebRX is only contacted while the waterfall is switched on and someone is watching it. Existing installations keep the behaviour they had (the waterfall uses the S-meter source) until you choose a source.
+2. The waterfall message on the display now names the chosen source and shows its state (for example "waiting for OpenWebRX data ... (connected, waiting for config)").
+
+### V-281026 SET
+
+1. S-meter, hardware mod (ESP32): new calibration. In Setup & Sync -> S-meter & RF waterfall you now find Floor (0 %) and Full (100 %) with the live reading of the ESP32 and the "= now" buttons, plus RESET (60 / 98). Before, the values 60 and 98 were fixed in the program. The ESP32 itself sends only 0-100, so the resolution is about 38 steps; the firmware is unchanged.
+2. Roger beep: your own sounds can be uploaded (UPLOAD next to the selection). Any common audio file (WAV, MP3, OGG, M4A, up to 5 seconds) is converted in the browser to a small mono WAV. A play button lets you listen to a beep on the device you use; your own beeps can be deleted again. They are stored as `beeps/user_NAME.wav` (add `beeps/user_*.wav` to `.gitignore`). The beep setting is now checked on the server (only existing files).
+3. Setup & Sync is tidied up into collapsible sections: Radio & keys, Audio, Display & background, S-meter & RF waterfall, Camera, Security, and the status correction. Several sections can be open at the same time, so you can keep the camera preview in view while adjusting settings. Which sections are open is remembered per device. Nothing was removed.
+4. 4th key row: swipe left/right on the row, or use the two slim arrows beside it, to switch between P1-P4, REC/CQ and the custom keys. The choice is stored on the server and applies to all devices at once; no page reload any more. Works the same on phone, tablet and desktop.
+
+### V-231026 PWD
 
 1. Security: the web interface is now protected by a password. After the update the page asks you to set one at the first visit (only possible from your own network: LAN, Tailscale or the Raspberry Pi itself). A semi-transparent window sits above the interface until you have logged in. The password is stored only as a hash in `config.json` (new keys `auth_hash`, `auth_secret`, `api_key`), the login is remembered for 30 days per device, and wrong passwords are slowed down (5 tries, then 30 s, 60 s, 120 s ... up to 15 minutes per address). Setup & Sync has a new "Security" block: change the password (this logs out all other devices), log out, and the key for other programs. The installer can ask for the password too (`bash install.sh --with-password`, or answer the question at the end). Forgotten: `python3 ae_auth.py --set-password` on the Raspberry Pi (stop the program first: `systemctl --user stop ae5900`).
 2. What is protected: everything except the page itself, i.e. all `/api/...` calls, the WebSocket (audio, microphone, waterfall) and the camera. The camera page `/cam` and the pop-out link work after you have logged in on that device. Requests that a web page from another site sends in your browser are always refused (this closes the way for "drive-by" attacks from the internet while you browse, also without a password). The terminal commands of the custom keys are no longer sent to anyone who is not logged in, and can only be changed after logging in.

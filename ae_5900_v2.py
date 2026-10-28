@@ -18,7 +18,8 @@ except ImportError as _e:
     print("\n[ERROR] ae_auth.py is missing or cannot be loaded / ae_auth.py fehlt oder laesst sich nicht laden: %s" % _e)
     print("  -> Please update ALL files of the project (git pull) / Bitte ALLE Dateien des Projekts aktualisieren (git pull)\n")
     _sys.exit(1)
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
+import re
 from flask_socketio import SocketIO, emit
 import serial
 import serial.tools.list_ports
@@ -514,6 +515,8 @@ class RadioInterface:
             "max_asq_steps": 9, "current_sq_level": 0, "current_asq_level": 1, "full_sync_active": False,
             "bt_mac_address": "00:00:00:00:00:00",
             "smeter_source": "esp32",   # "esp32" (Hardware-Mod, Bluetooth) | "sdr" (RTL-SDR-Dongle) | "owrx" (lokales OpenWebRX) | "off"
+            "esp_floor": 60,            # ESP32: Wert (0-100, wie vom ESP gesendet) bei dem die Anzeige 0 % zeigt (Eichung)
+            "esp_full": 98,             # ESP32: Wert (0-100) bei dem die Anzeige 100 % zeigt (Eichung)
             "sdr_gain": "30",           # Tuner-Gain in dB oder "auto"
             "sdr_floor_db": -60.0,      # Pegel (dBFS) bei dem die Anzeige 0 % zeigt (Eichung)
             "sdr_full_db": -20.0,       # Pegel (dBFS) bei dem die Anzeige 100 % zeigt (Eichung)
@@ -2777,7 +2780,8 @@ def api_cmd(cmd):
             elif "MUTE" in cmd: radio.config["mute_enabled"] = (val.lower() == 'true')
             elif "ASQ" in cmd: radio.config["asq_enabled"] = (val.lower() == 'true')
             elif "LOCK" in cmd: radio.config["lock_enabled"] = (val.lower() == 'true')
-            elif "BEEP" in cmd: radio.config["current_beep"] = val
+            elif "BEEP" in cmd:
+                if val == "None" or val in list_beeps(): radio.config["current_beep"] = val
             elif "PTTHOTKEY" in cmd: radio.config["ptt_hotkey"] = val
             elif "MW_LABEL" in cmd: radio.config["mw_label"] = val
             elif "SKIP" in cmd: 
@@ -3113,6 +3117,8 @@ def api_bluetooth_connect():
         return jsonify({"status": "error", "message": str(e)}), 500
 # =========================================================================
 
+esp_state = {"raw": None, "t": 0.0}
+
 def bluetooth_rssi_receiver_worker():
     import serial
     bt_port = '/dev/rfcomm0'
@@ -3124,20 +3130,17 @@ def bluetooth_rssi_receiver_worker():
                 while True:
                     line = bt_ser.readline().decode('utf-8', errors='ignore').strip()
                     if line.isdigit():
-                        raw_adc = int(line)
-                        
-
-                        if raw_adc <= 100:
-                            min_p = 60  # Prozentwert den dein Rauschen aktuell hat
-                            max_p = 98  # Prozentwert für Vollanschlag
-                            percent = (raw_adc - min_p) / (max_p - min_p)
-                        else:
-                            min_adc = radio.rssi_min_adc
-                            max_adc = radio.rssi_max_adc
-                            percent = (raw_adc - min_adc) / (max_adc - min_adc)
-                        
-                        # Begrenzen auf saubere 0 bis 100%
-                        percent = max(0.0, min(1.0, percent))
+                        raw_adc = int(line)          # Der ESP32 sendet 0-100 (siehe Albrecht_SMeter_BT.ino)
+                        esp_state["raw"] = raw_adc
+                        esp_state["t"] = time.time()
+                        try:
+                            lo = float(radio.config.get("esp_floor", 60))
+                            hi = float(radio.config.get("esp_full", 98))
+                        except (TypeError, ValueError):
+                            lo, hi = 60.0, 98.0
+                        if hi < lo + 3.0:
+                            hi = lo + 3.0
+                        percent = max(0.0, min(1.0, (raw_adc - lo) / (hi - lo)))
                         # Nur uebernehmen, wenn der ESP32 als S-Meter-Quelle gewaehlt ist (sonst SDR bzw. aus).
                         if radio.config.get("smeter_source", "esp32") == "esp32":
                             radio.owrx_rssi_live = int(percent * 100)
@@ -3154,6 +3157,20 @@ threading.Thread(target=bluetooth_rssi_receiver_worker, daemon=True).start()
 # Waehrend des Sendens wird nicht gelesen (Uebersteuerung durch die eigene Sendeleistung).
 # =========================================================================
 smeter_info = {"state": "off", "db": None}
+wf_info = {"state": "-"}      # Status der Wasserfall-Quelle, wenn sie NICHT zugleich die S-Meter-Quelle ist
+
+def wf_source():
+    """Quelle des HF-Wasserfalls: 'owrx' oder 'sdr'. Unabhaengig von der S-Meter-Quelle (z. B. ESP32-S-Meter + OpenWebRX-Wasserfall).
+    Ohne eigene Einstellung (aeltere Installationen) gilt die S-Meter-Quelle, sonst OpenWebRX."""
+    c = radio.config
+    v = c.get("wf_source")
+    if v in ("owrx", "sdr"):
+        return v
+    sm = c.get("smeter_source", "esp32")
+    return sm if sm in ("owrx", "sdr") else "owrx"
+
+def wf_wanted():
+    return bool(radio.config.get("wf_enabled")) and bool(wf_clients)
 
 def current_channel_freq_hz():
     """Frequenz des aktuell eingestellten Kanals (gleiche Zuordnung wie beim Hamlib-Sync)."""
@@ -3357,7 +3374,8 @@ def api_ui_set():
 def api_wf_info():
     c = radio.config
     return jsonify({"enabled": bool(c.get("wf_enabled")), "span": c.get("wf_span_khz", 60), "spans": list(WF_SPANS),
-                    "tx": bool(c.get("wf_tx")), "source": c.get("smeter_source", "esp32"), "viewers": len(wf_clients)})
+                    "tx": bool(c.get("wf_tx")), "source": c.get("smeter_source", "esp32"), "wf_source": wf_source(),
+                    "state": (smeter_info["state"] if c.get("smeter_source", "esp32") == wf_source() else wf_info["state"]), "viewers": len(wf_clients)})
 
 @app.route('/api/wf/set')
 def api_wf_set():
@@ -3365,6 +3383,10 @@ def api_wf_set():
     new = {}
     if 'enabled' in a:
         new["wf_enabled"] = a.get('enabled') in ('1', 'true')
+    if 'source' in a:
+        if a.get('source') not in ('owrx', 'sdr'):
+            return jsonify({"status": "error", "message": "invalid source"}), 400
+        new["wf_source"] = a.get('source')
     if 'tx' in a:
         new["wf_tx"] = a.get('tx') in ('1', 'true')
     if 'span' in a:
@@ -3410,16 +3432,20 @@ def sdr_smeter_worker():
 
     while True:
         try:
-            if radio.config.get("smeter_source", "esp32") != "sdr":
+            sm = (radio.config.get("smeter_source", "esp32") == "sdr")
+            info = smeter_info if sm else wf_info
+            if not (sm or (wf_source() == "sdr" and wf_wanted())):
                 stop_proc()
+                wf_info["state"] = "-"
                 if smeter_info.get("src") == "sdr":
                     smeter_info.update({"state": "off", "db": None, "src": None})
                 smoothed = None
                 time.sleep(1.0)
                 continue
-            smeter_info["src"] = "sdr"
+            if sm:
+                smeter_info["src"] = "sdr"
             # NEU: Mit eingeschaltetem Wasserfall + "auch beim Senden" laeuft der Dongle waehrend des Sendens weiter.
-            wf_on = bool(radio.config.get("wf_enabled")) and bool(wf_clients)
+            wf_on = wf_wanted() and wf_source() == "sdr"
             wf_keep_tx = wf_on and bool(radio.config.get("wf_tx"))
             tx_now = radio.is_tx or radio.is_device_sending
             if tx_now and not wf_keep_tx:
@@ -3429,7 +3455,7 @@ def sdr_smeter_worker():
                 time.sleep(0.1)
                 continue
             if shutil.which("rtl_sdr") is None:
-                smeter_info.update({"state": "rtl_sdr not found (sudo apt install rtl-sdr)", "db": None})
+                info.update({"state": "rtl_sdr not found (sudo apt install rtl-sdr)", "db": None})
                 time.sleep(5.0)
                 continue
             gain_cfg = str(radio.config.get("sdr_gain", "30")).strip().lower()
@@ -3453,7 +3479,7 @@ def sdr_smeter_worker():
                     reason = lines[-1] if lines else "no data"
                 except Exception:
                     reason = "no data"
-                smeter_info.update({"state": "rtl_sdr: " + reason[:80], "db": None})
+                info.update({"state": "rtl_sdr: " + reason[:80], "db": None})
                 stop_proc()
                 time.sleep(3.0)
                 continue
@@ -3468,7 +3494,7 @@ def sdr_smeter_worker():
             iq = raw[0::2] + 1j * raw[1::2]
             if wf_on:
                 wf_feed(iq, center, f, SR, NFFT, tx_now)
-            if tx_now:
+            if tx_now or not sm:
                 continue  # S-Meter wird waehrend des Sendens nicht aktualisiert
             db = sdr_band_power_db(iq, center, f, SR, NFFT)
             if db is not None:
@@ -3479,7 +3505,7 @@ def sdr_smeter_worker():
                 radio.owrx_rssi_live = int(max(0.0, min(1.0, pct)) * 100)
                 smeter_info.update({"state": "ok", "db": round(float(smoothed), 1)})
         except Exception as e:
-            smeter_info.update({"state": "error: " + str(e)[:60], "db": None})
+            info.update({"state": "error: " + str(e)[:60], "db": None})
             stop_proc()
             time.sleep(3.0)
 
@@ -3587,17 +3613,21 @@ def owrx_smeter_worker():
     fft_comp = "adpcm"   # NEU: Kompression der OpenWebRX-FFT-Zeilen (kommt in der Konfiguration; Standard ist adpcm)
     while True:
         try:
-            if radio.config.get("smeter_source", "esp32") != "owrx":
+            sm = (radio.config.get("smeter_source", "esp32") == "owrx")
+            info = smeter_info if sm else wf_info
+            if not (sm or (wf_source() == "owrx" and wf_wanted())):
                 if ws is not None:
                     ws.close(); ws = None
                 center = srate = sent = None
                 started = False
                 smoothed = None
+                wf_info["state"] = "-"
                 if smeter_info.get("src") == "owrx":
                     smeter_info.update({"state": "off", "db": None, "src": None})
                 time.sleep(1.0)
                 continue
-            smeter_info["src"] = "owrx"
+            if sm:
+                smeter_info["src"] = "owrx"
             if ws is None:
                 host, _, port = str(radio.config.get("owrx_addr", "127.0.0.1:8073")).strip().partition(":")
                 ws = MiniWebSocket(host or "127.0.0.1", port or 8073, "/ws/", timeout=1.0)
@@ -3607,7 +3637,7 @@ def owrx_smeter_worker():
                 center = srate = sent = None
                 started = False
                 smoothed = None
-                smeter_info.update({"state": "connected, waiting for config", "db": None})
+                info.update({"state": "connected, waiting for config", "db": None})
             msg = ws.recv()
             if msg is not None and msg[0] == 0x1:
                 text = msg[1].decode("utf-8", "ignore")
@@ -3623,7 +3653,7 @@ def owrx_smeter_worker():
                         if "fft_compression" in v:
                             fft_comp = str(v["fft_compression"])
                     elif t == "smeter":
-                        if not (radio.is_tx or radio.is_device_sending) and sent is not None:
+                        if sm and not (radio.is_tx or radio.is_device_sending) and sent is not None:
                             db = 10.0 * np.log10(max(float(j.get("value", 0.0)), 1e-12))
                             smoothed = db if smoothed is None else smoothed + (db - smoothed) * max(0.05, min(1.0, float(radio.config.get("owrx_smooth", 0.3))))
                             lo = float(radio.config.get("owrx_floor_db", -85.0))
@@ -3633,11 +3663,11 @@ def owrx_smeter_worker():
                             smeter_info.update({"state": "ok", "db": round(float(smoothed), 1)})
             elif msg is not None and msg[0] == 0x2 and msg[1][:1] == b"\x01":
                 # NEU: FFT-Zeile fuer den HF-Wasserfall (nur wenn eingeschaltet und jemand zuschaut)
-                if wf_clients and radio.config.get("wf_enabled") and center and srate:
+                if wf_wanted() and wf_source() == "owrx" and center and srate:
                     try:
                         wf_feed_owrx(msg[1][1:], center, srate, fft_comp, current_channel_freq_hz(), radio.is_tx or radio.is_device_sending)
                     except Exception as e:
-                        smeter_info.update({"state": "ok (waterfall: " + str(e)[:40] + ")"})
+                        info.update({"state": "ok (waterfall: " + str(e)[:40] + ")"})
             # Demodulator auf die aktuelle Kanalfrequenz stellen (nur bei Aenderung senden)
             if center is not None:
                 f = current_channel_freq_hz()
@@ -3646,7 +3676,7 @@ def owrx_smeter_worker():
                 if srate and abs(off) > half - 5000:
                     sent = None
                     smoothed = None
-                    smeter_info.update({"state": "frequency outside OpenWebRX range", "db": None})
+                    info.update({"state": "frequency outside OpenWebRX range", "db": None})
                 else:
                     mod, lo_cut, hi_cut = OWRX_MODS.get(MODES[radio.mode_idx].upper(), OWRX_MODS["FM"])
                     want = (off, mod)
@@ -3660,7 +3690,9 @@ def owrx_smeter_worker():
                         sent = want
                         smoothed = None
         except Exception as e:
-            smeter_info.update({"state": "OpenWebRX: " + str(e)[:70], "db": None, "src": "owrx"})
+            info.update({"state": "OpenWebRX: " + str(e)[:70], "db": None})
+            if sm:
+                smeter_info["src"] = "owrx"
             if ws is not None:
                 ws.close(); ws = None
             center = srate = sent = None
@@ -3691,6 +3723,78 @@ def background_url():
         except Exception:
             pass
     return ""
+
+# --- Roger-Beep-Upload: eigene WAV-Dateien liegen als beeps/user_<name>.wav neben den mitgelieferten ---
+BEEP_DIR = os.path.join(SCRIPT_DIR, "beeps")
+BEEP_MAX_BYTES = 1024 * 1024
+BEEP_MAX_SECONDS = 5.0
+
+def list_beeps():
+    try:
+        return sorted(f for f in os.listdir(BEEP_DIR) if f.lower().endswith('.wav'))
+    except OSError:
+        return []
+
+def _beep_name(raw):
+    """Nur harmlose Zeichen, immer mit Praefix user_ und Endung .wav."""
+    base = os.path.splitext(os.path.basename(str(raw or "")))[0]
+    base = re.sub(r'[^A-Za-z0-9_-]+', '_', base).strip('_')[:40] or "beep"
+    return "user_" + base + ".wav"
+
+@app.route('/api/beeps')
+def api_beeps_list():
+    return jsonify({"beeps": list_beeps(), "current": radio.config.get("current_beep", "None")})
+
+@app.route('/api/beeps/upload', methods=['POST'])
+def api_beeps_upload():
+    import wave, io
+    n = request.content_length
+    if n is not None and n > BEEP_MAX_BYTES:
+        return jsonify({"status": "error", "message": "File too large (max 1 MB)"}), 413
+    data = request.get_data(cache=False)
+    if len(data) > BEEP_MAX_BYTES:
+        return jsonify({"status": "error", "message": "File too large (max 1 MB)"}), 413
+    try:
+        with wave.open(io.BytesIO(data), 'rb') as w:
+            frames, rate, ch, width = w.getnframes(), w.getframerate(), w.getnchannels(), w.getsampwidth()
+        if rate <= 0 or ch not in (1, 2) or width not in (1, 2) or frames / float(rate) > BEEP_MAX_SECONDS:
+            raise ValueError("limit")
+    except Exception:
+        return jsonify({"status": "error", "message": "Not a usable WAV (PCM 8/16 bit, mono/stereo, max 5 s)"}), 400
+    name = _beep_name(request.args.get('name'))
+    try:
+        os.makedirs(BEEP_DIR, exist_ok=True)
+        tmp = os.path.join(BEEP_DIR, name + ".tmp")
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, os.path.join(BEEP_DIR, name))
+    except Exception as e:
+        return jsonify({"status": "error", "message": "Could not save: " + str(e)[:80]}), 500
+    radio.beeps_list = list_beeps()
+    return jsonify({"status": "success", "name": name, "beeps": radio.beeps_list})
+
+@app.route('/api/beeps/delete', methods=['POST'])
+def api_beeps_delete():
+    name = request.args.get('name', '')
+    if not name.startswith("user_") or name not in list_beeps():
+        return jsonify({"status": "error", "message": "Only your own uploaded beeps can be deleted"}), 400
+    try:
+        os.remove(os.path.join(BEEP_DIR, name))
+    except OSError as e:
+        return jsonify({"status": "error", "message": str(e)[:80]}), 500
+    with radio.lock:
+        if radio.config.get("current_beep") == name:
+            radio.config["current_beep"] = "None"
+            radio.save_config()
+    radio.beeps_list = list_beeps()
+    return jsonify({"status": "success", "beeps": radio.beeps_list})
+
+@app.route('/api/beeps/file')
+def api_beeps_file():
+    name = request.args.get('name', '')
+    if name not in list_beeps():
+        return jsonify({"status": "error"}), 404
+    return send_from_directory(BEEP_DIR, name, mimetype="audio/wav")
 
 @app.route('/api/background', methods=['POST'])
 def api_background_upload():
@@ -3725,7 +3829,8 @@ def api_background_reset():
         return jsonify({"status": "error", "message": str(e)[:80]}), 500
     return jsonify({"status": "success", "url": background_url()})
 
-SMETER_CAL_KEYS = {"sdr": ("sdr_floor_db", "sdr_full_db", -60.0, -20.0, "sdr_smooth", 0.5),
+SMETER_CAL_KEYS = {"esp32": ("esp_floor", "esp_full", 60, 98, "esp_smooth", 1.0),
+                   "sdr": ("sdr_floor_db", "sdr_full_db", -60.0, -20.0, "sdr_smooth", 0.5),
                    "owrx": ("owrx_floor_db", "owrx_full_db", -85.0, -30.0, "owrx_smooth", 0.3)}
 
 @app.route('/api/smeter')
@@ -3733,7 +3838,9 @@ def api_smeter_info():
     src = request.args.get('src') or radio.config.get("smeter_source", "esp32")
     lo_k, hi_k, lo_d, hi_d, sm_k, sm_d = SMETER_CAL_KEYS.get(src, SMETER_CAL_KEYS["sdr"])
     active = (src == radio.config.get("smeter_source", "esp32"))
+    esp_raw = esp_state["raw"] if time.time() - esp_state["t"] < 3 else None
     return jsonify({
+        "esp_raw": esp_raw,
         "source": radio.config.get("smeter_source", "esp32"),
         "state": smeter_info["state"] if active and smeter_info.get("src") == src else "-",
         "db": smeter_info["db"] if active and smeter_info.get("src") == src else None,
@@ -3768,8 +3875,11 @@ def api_smeter_set():
             lo_k, hi_k, lo_d, hi_d = SMETER_CAL_KEYS[src][:4]
             floor = float(request.args.get('floor', radio.config.get(lo_k, lo_d)))
             full = float(request.args.get('full', radio.config.get(hi_k, hi_d)))
+            unit = "steps" if src == "esp32" else "dB"
+            if src == "esp32" and not (0 <= floor <= 100 and 0 <= full <= 100):
+                return jsonify({"status": "error", "message": "Values must be between 0 and 100"}), 400
             if full < floor + 3.0:
-                return jsonify({"status": "error", "message": "Full must be at least 3 dB above Floor"}), 400
+                return jsonify({"status": "error", "message": "Full must be at least 3 %s above Floor" % unit}), 400
             new[lo_k], new[hi_k] = floor, full
     except ValueError:
         return jsonify({"status": "error", "message": "invalid number"}), 400
