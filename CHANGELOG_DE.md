@@ -6,7 +6,13 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-281026 WFS (aktuell)
+### V-291026 AUD (aktuell)
+
+1. Fix: "CQ REC" nahm nur eine leere Datei auf (44 Byte). Die Aufnahme suchte die alte Mumble-Verbindung und fand den Mikrofon-Stream der WebUI nie, also nahm sie Stille auf. Jetzt verbindet sie sich mit dem Mikrofon-Stream (und versucht es während der Aufnahme weiter), und das Log meldet, wenn sie keinen findet. Das Browser-Mikrofon (🎤) muss dafür laufen.
+2. Neu: Mikrofonauswahl (Setup & Sync -> Audio). "Device microphone" nimmt das eigene Mikrofon von Handy oder Computer, damit ein Bluetooth-Headset beim Start des Mikrofons nicht mehr ins Freisprechprofil (schlechter Ton) gezwungen wird. Alternativ lässt sich jedes einzelne Eingabegerät wählen. Wird pro Gerät gespeichert; ist das gewählte Gerät nicht verfügbar, gilt der Systemstandard. Getestet mit Android und Desktop; Browser ohne Auswahlmöglichkeit (iPhone/Safari) bleiben beim Standard - Rückmeldungen von iPhone-Nutzern stehen noch aus.
+3. Neu: Auswahl des Audio-Ausgabegeräts (Setup & Sync -> Audio). Der Empfangston kann auf ein gewähltes Gerät des Computers gespielt werden, z. B. den Monitor der Soundkarte oder ein virtuelles Audiokabel, so dass WSJT-X oder JS8Call auf demselben Computer ihn ohne weitere Hilfsprogramme dekodieren. Getestet mit WSJT-X und JS8Call unter Ubuntu mit Brave, Chrome und Firefox. Braucht einen Browser, der die Wahl der Ausgabe unterstützt (Chrome, Edge, Brave, aktuelles Firefox am Desktop).
+
+### V-281026 WFS
 
 1. HF-Wasserfall und S-Meter sind jetzt unabhängig: ESP32-S-Meter zusammen mit dem Wasserfall von OpenWebRX (oder vom SDR-Dongle) ist möglich. Neue Auswahl "RF waterfall source" in Setup & Sync -> Display & background, dort liegen jetzt auch alle Wasserfall-Optionen (ein/aus, Spanne, "beim Senden weiterlaufen"). Das Umschalten der S-Meter-Quelle ändert den Wasserfall nicht mehr, der Anzeigemodus muss nicht ein zweites Mal umgestellt werden. OpenWebRX wird nur kontaktiert, solange der Wasserfall eingeschaltet ist und jemand zuschaut. Bestehende Installationen behalten ihr bisheriges Verhalten (Wasserfall nutzt die S-Meter-Quelle), bis eine Quelle gewählt wird.
 2. Die Wasserfall-Meldung auf dem Display nennt jetzt die gewählte Quelle und ihren Zustand (z. B. "waiting for OpenWebRX data ... (connected, waiting for config)").

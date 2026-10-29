@@ -6,7 +6,13 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-281026 WFS (current)
+### V-291026 AUD (current)
+
+1. Fix: "CQ REC" recorded only an empty file (44 bytes). The recorder looked for the old Mumble connection and never found the microphone stream of the WebUI, so it recorded silence. It now connects to the microphone stream (it keeps trying while recording) and the log tells you if it cannot find one. The browser microphone (🎤) must be running while you record.
+2. New: microphone selection (Setup & Sync -> Audio). "Device microphone" uses the phone's or computer's own microphone, so a Bluetooth headset is no longer forced into hands-free mode (poor sound) when you start the microphone. You can also pick any single input. Stored per device; falls back to the system default if the chosen one is not available. Tested on Android and desktop; browsers that do not allow a choice (iPhone/Safari) keep using the default - feedback from iPhone users is still pending.
+3. New: audio output selection (Setup & Sync -> Audio). The received audio can be played on a chosen device of the computer, for example the monitor of the sound card or a virtual audio cable, so WSJT-X or JS8Call on the same computer can decode it without further tools. Tested with WSJT-X and JS8Call on Ubuntu with Brave, Chrome and Firefox. Needs a browser that supports choosing the output (Chrome, Edge, Brave, current Firefox on the desktop).
+
+### V-281026 WFS
 
 1. RF waterfall and S-meter are independent now: you can use the ESP32 S-meter together with the OpenWebRX (or SDR dongle) waterfall. A new selection "RF waterfall source" sits in Setup & Sync -> Display & background, together with all waterfall options (on/off, span, "keep running while transmitting"). Switching the S-meter source no longer touches the waterfall, so the display mode does not have to be changed a second time. OpenWebRX is only contacted while the waterfall is switched on and someone is watching it. Existing installations keep the behaviour they had (the waterfall uses the S-meter source) until you choose a source.
 2. The waterfall message on the display now names the chosen source and shows its state (for example "waiting for OpenWebRX data ... (connected, waiting for config)").
