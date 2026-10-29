@@ -740,6 +740,12 @@ if (authLocked) {
 </div></details>
 <details class="setsec" id="sec_audio" data-sec="audio"><summary>Audio <span class="sechint">WebAudio, roger beep</span></summary>
 <div class="secbody">
+        <p>Microphone (this device): <select id="micSel" onchange="micPrefSave(this.value)" style="width:210px;"></select>
+            <button type="button" onclick="micListLoad()" style="padding: 2px 8px; font-size: 0.8em;" title="Refresh list">&#8635;</button><br>
+            <span style="font-size:0.8em; color:#888;">If a Bluetooth headset switches to hands-free (poor sound) when you start the microphone, choose "Device microphone". Names of the devices appear after the microphone was allowed once. Not every browser (e.g. iPhone) lets you choose.</span></p>
+        <p>Audio output (this device): <select id="outSel" onchange="outPrefSave(this.value)" style="width:210px;"></select>
+            <button type="button" onclick="outListLoad()" style="padding: 2px 8px; font-size: 0.8em;" title="Refresh list">&#8635;</button><br>
+            <span id="outHint" style="font-size:0.8em; color:#888;">Where the received audio is played. Choose a virtual audio cable here to feed WSJT-X / JS8Call on this computer, and choose the other end of a second cable as microphone above. Takes effect when the listening starts, or at once if it is already running. Chrome and Edge on the desktop; Firefox and Safari mostly cannot.</span></p>
         <p>WebAudio streaming (server, ADPCM): <input type="checkbox" id="webaudioToggle" onchange="send('WEBAUDIO_TOGGLE')"></p>
         <p>WebAudio rate (Hz): <select id="waRateSel" onchange="send('SETWA_RATE_' + this.value)" title="Capture rate on the server AND playback rate in the browser. Changing it re-opens the audio streams (~1 s).">
             <option value="16000" {% if config.webaudio_rate == 16000 %}selected{% endif %}>16000</option>
@@ -1446,9 +1452,7 @@ if (authLocked) {
                     if (btn) { btn.textContent = '🎤 Talk (mic)'; }
                     return;
                 }
-                navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }
-                }).then(stream => {
+                micOpen().then(stream => {
                     waMicStream = stream;
                     // WICHTIG: 48000Hz, NICHT WEBAUDIO_SAMPLE_RATE (22050) - Mumble/pymumble erwartet fuers
                     // Senden 48kHz-PCM, das war auch in der alten, funktionierenden Bridge schon so.
@@ -1486,6 +1490,87 @@ if (authLocked) {
             });
     }
 
+    // --- Mikrofonwahl: ein Bluetooth-Headset schaltet auf "Freisprechen" (schlechter Ton), sobald sein Mikrofon benutzt wird.
+    // Mit dem eingebauten Mikrofon bleibt das Headset oft im normalen Wiedergabe-Profil. Wahl pro Geraet gespeichert.
+    const MIC_BT_RE = /bluetooth|headset|hands-?free|airpods|buds|sco|hfp/i;
+    function micPref() { try { return localStorage.getItem('ae_mic_dev') || 'auto'; } catch (e) { return 'auto'; } }
+    async function micOpen() {
+        const base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+        const pref = micPref();
+        let id = null;
+        if (pref !== 'auto') {
+            try {
+                const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+                if (pref === 'builtin') {
+                    const d = devs.find(d => d.label && !MIC_BT_RE.test(d.label) && d.deviceId !== 'default' && d.deviceId !== 'communications');
+                    if (d) id = d.deviceId;
+                } else if (devs.some(d => d.deviceId === pref)) id = pref;
+            } catch (e) {}
+        }
+        if (id) {
+            try { return await navigator.mediaDevices.getUserMedia({ audio: Object.assign({ deviceId: { exact: id } }, base) }); }
+            catch (e) { console.warn('[MIC] gewaehltes Mikrofon nicht nutzbar, nehme Standard:', e); }
+        }
+        const st = await navigator.mediaDevices.getUserMedia({ audio: base });
+        if (pref === 'builtin' && !id) {           // erster Start: Namen sind erst nach der Erlaubnis bekannt -> jetzt nachwaehlen
+            try {
+                const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+                const d = devs.find(d => d.label && !MIC_BT_RE.test(d.label) && d.deviceId !== 'default' && d.deviceId !== 'communications');
+                const cur = (st.getAudioTracks()[0].getSettings() || {}).deviceId;
+                if (d && d.deviceId !== cur) {
+                    const st2 = await navigator.mediaDevices.getUserMedia({ audio: Object.assign({ deviceId: { exact: d.deviceId } }, base) });
+                    st.getTracks().forEach(t => t.stop());
+                    return st2;
+                }
+            } catch (e) {}
+        }
+        micListLoad(); if (typeof outListLoad === 'function') outListLoad();
+        return st;
+    }
+    async function micListLoad() {
+        const sel = document.getElementById('micSel'); if (!sel) return;
+        const pref = micPref();
+        sel.innerHTML = '';
+        const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+        add('auto', 'Auto (system default)');
+        add('builtin', 'Device microphone (not the headset)');
+        try {
+            const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId);
+            devs.forEach((d, i) => { if (d.deviceId !== 'default' && d.deviceId !== 'communications') add(d.deviceId, d.label || ('Microphone ' + (i + 1))); });
+        } catch (e) {}
+        sel.value = Array.from(sel.options).some(o => o.value === pref) ? pref : 'auto';
+    }
+    // --- Ausgabegeraet: Empfangston auf ein bestimmtes Geraet (z. B. virtuelles Audiokabel fuer WSJT-X/JS8Call) lenken ---
+    function outPref() { try { return localStorage.getItem('ae_out_dev') || 'default'; } catch (e) { return 'default'; } }
+    function outSupported() {
+        const el = document.getElementById('waAudioElement');
+        return !!((el && typeof el.setSinkId === 'function') || (window.AudioContext && typeof AudioContext.prototype.setSinkId === 'function'));
+    }
+    async function outApply() {
+        const id = outPref() === 'default' ? '' : outPref();
+        const el = document.getElementById('waAudioElement');
+        try { if (el && typeof el.setSinkId === 'function') await el.setSinkId(id); } catch (e) { console.warn('[OUT] Element:', e); }
+        try { if (waAudioContext && waAudioContext.state !== 'closed' && typeof waAudioContext.setSinkId === 'function') await waAudioContext.setSinkId(id); } catch (e) { console.warn('[OUT] Context:', e); }
+    }
+    async function outListLoad() {
+        const sel = document.getElementById('outSel'); if (!sel) return;
+        const pref = outPref();
+        sel.innerHTML = '';
+        const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+        add('default', 'System default');
+        if (!outSupported()) {
+            sel.disabled = true;
+            document.getElementById('outHint').textContent = 'This browser cannot choose the audio output (works in Chrome and Edge on the desktop).';
+            return;
+        }
+        try {
+            const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audiooutput' && d.deviceId);
+            devs.forEach((d, i) => { if (d.deviceId !== 'default' && d.deviceId !== 'communications') add(d.deviceId, d.label || ('Output ' + (i + 1))); });
+        } catch (e) {}
+        sel.value = Array.from(sel.options).some(o => o.value === pref) ? pref : 'default';
+    }
+    function outPrefSave(v) { try { localStorage.setItem('ae_out_dev', v); } catch (e) {} outApply(); }
+    function micPrefSave(v) { try { localStorage.setItem('ae_mic_dev', v); } catch (e) {} }
     function micLost(why) {
         if (!waMicActive) return;
         console.warn('[MIC] Mikrofon weggefallen (' + why + ') - Mikrofon aus, PTT frei.');
@@ -1655,6 +1740,7 @@ if (authLocked) {
                 waAudioContext.onstatechange = _waEngineStart;
             }
             waAudioContext.resume();
+            outApply();
             // NEU: Ausgabe ueber ein verstecktes <audio>-Element route - Android/Chrome behandeln das
             // eher als "richtige" Medienwiedergabe (Hintergrund-Ueberleben bei ausgeschaltetem Display).
             if (WA_OUT_ROUTE === 'element' && !waMediaStreamDest) {
@@ -1666,6 +1752,7 @@ if (authLocked) {
             // Stop/Start (ohne dass waMediaStreamDest neu erstellt wird) blieb das <audio>-Element sonst
             // dauerhaft pausiert, obwohl im Hintergrund schon wieder brav Audio eingeplant wurde: stumme
             // Wiedergabe, "Erneutes Draufdruecken bringt das Audio nicht zurueck".
+            outApply();
             const waAudioElStart = document.getElementById('waAudioElement');
             if (waAudioElStart && WA_OUT_ROUTE === 'element') waAudioElStart.play().catch(() => {});
             if ('mediaSession' in navigator) {
@@ -1869,7 +1956,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-281026 WFS";
+                if (vInd) vInd.textContent = "V-291026 AUD";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2634,6 +2721,8 @@ if (authLocked) {
         }).catch(() => {});
     }
     if (document.getElementById('rogerbeepSelect')) beepSync();
+    if (document.getElementById('micSel')) micListLoad();
+    if (document.getElementById('outSel')) outListLoad();
 
     // --- S-Meter-Quelle (ESP32 / SDR-Dongle / OpenWebRX / aus) ---
     // Floor/Full gelten je Quelle getrennt (die Skalen von rtl_sdr und OpenWebRX sind verschieden) und werden vom Server geladen.
