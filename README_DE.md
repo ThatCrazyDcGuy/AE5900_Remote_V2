@@ -192,6 +192,45 @@ Das ist eigentlich alles, und wer nicht komplett ahnungslos ist, bekommt das sch
 
 [Hamlib / Rigctl / OpenWebRX (HAMLIBOWRX_DE.md)](HAMLIBOWRX_DE.md)
 
+### Digimodes (WSJT-CB, WSJT-X, JS8Call) auf dem Computer, mit dem du im Browser arbeitest:
+
+Der Browser kann den Empfangston auf ein gewähltes Gerät abspielen und das Mikrofon von einem gewählten Gerät nehmen (Setup & Sync -> Audio: "Audio output" und "Microphone"). Mit einem virtuellen Audiokabel zwischen Browser und Digimode-Programm braucht es kein zusätzliches Brückenprogramm. Getestet unter Ubuntu (PipeWire) mit Brave, Chrome und Firefox zusammen mit WSJT-CB und JS8Call. Die Wahl der Ausgabe funktioniert in Chrome, Edge, Brave und aktuellem Firefox am Desktop, nicht auf iPhone/Safari. Zum Senden wird die HTTPS-Adresse (Port 5443) benötigt, siehe Fehlersuche.
+
+**1. Virtuelles Kabel erstellen (Linux, PipeWire)**
+
+Ein kleines Skript erledigt das, zum Beispiel der [PipeWire-Audio-Router von majoranimal](https://github.com/majoranimal/PipeWire-Audio-Router):
+
+```
+./Virtual-Cable.sh -c -i out2in -o in2out
+```
+
+Das erstellt ein Kabel mit dem Wiedergabe-Ende `out2in` und dem Aufnahme-Ende `in2out` (die Namen sind frei wählbar). Alles, was auf `out2in` abgespielt wird, kommt aus `in2out` heraus.
+
+![Virtuelles Kabel erstellen](/pictures/digimode_cable.png)
+
+**2. WebUI (Setup & Sync -> Audio)**
+
+- Audio output: `out2in`
+- Microphone: `in2out`
+
+Lautsprecher-Taste und Mikrofon-Taste drücken, beide zeigen dann "Activated".
+
+**3. Digimode-Programm (hier WSJT-CB, Settings -> Audio)**
+
+- Input: `in2out`
+- Output: `out2in`
+- Radio: Hamlib NET rigctl, Hostname:4532 (siehe HAMLIB-Seite)
+
+Ein Kabel genügt, weil das Funkgerät im Wechselbetrieb arbeitet: Beim Empfang fließt der Ton von der WebUI zum Programm, beim Senden der Ton des Programms zum Mikrofon der WebUI.
+
+![WSJT-CB Audio-Einstellungen und die WebUI](/pictures/digimode_audio.png)
+
+Das war's. Empfangene Stationen erscheinen im Programm, und was es sendet, geht zum Funkgerät.
+
+![WSJT-CB im Betrieb](/pictures/digimode_wsjt.png)
+
+Das Kabel verschwindet nach einem Neustart des Computers (oder seines Audiodienstes); den Befehl dann erneut ausführen oder beim Anmelden automatisch starten. WSJT-CB: [github.com/vash909/WSJT-CB](https://github.com/vash909/WSJT-CB)
+
 ### S-Meter (drei Quellen):
 
 Die Quelle wird im "Setup & Sync" unter "S-Meter source" gewählt: ESP32-Hardware-Mod, RTL-SDR-Dongle oder der eigene OpenWebRX-Server.
@@ -231,7 +270,7 @@ Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
 ### Extras und Testläufe
 
-1. WSJT-CB funktioniert damit recht gut. Konfiguriere dazu unter „Radio“ die Option „Hamlib Net rigctl“ (Hostname:4532). Für den Bereich „Audio“ ist eine Verbindung (Crossover) erforderlich; alternativ kannst du einfach die Monitor-Funktion deines Audiogeräts für den Eingang aktivieren.
+1. WSJT-CB funktioniert damit recht gut. Die Einrichtung (virtuelles Audiokabel, Audio-Einstellungen, Hamlib) steht oben im Abschnitt „Digimodes“.
 
 ![AE5900_Remote_v2](/pictures/wsjt-cb.jpg)
 

@@ -522,7 +522,8 @@ class RadioInterface:
             "sdr_full_db": -20.0,       # Pegel (dBFS) bei dem die Anzeige 100 % zeigt (Eichung)
             "sdr_smooth": 0.5,          # Glaettung des S-Meters (0.05 traege ... 1.0 = keine Glaettung)
             "owrx_smooth": 0.3,
-            "owrx_addr": "127.0.0.1:8073",  # lokales OpenWebRX (Quelle "owrx"), nur Host:Port
+            "owrx_addr": "127.0.0.1:8073",  # OpenWebRX fuer das S-Meter (Quelle "owrx"), nur Host:Port
+            "wf_owrx_addr": "127.0.0.1:8073",  # OpenWebRX fuer den HF-Wasserfall (darf ein anderes sein), nur Host:Port
             "owrx_floor_db": -85.0,     # OpenWebRX-S-Meter-Pegel (dB) bei 0 %
             "owrx_full_db": -30.0,      # OpenWebRX-S-Meter-Pegel (dB) bei 100 %
             "webaudio_enabled": False,
@@ -3189,6 +3190,22 @@ def wf_source():
 def wf_wanted():
     return bool(radio.config.get("wf_enabled")) and bool(wf_clients)
 
+def _addr(key):
+    return str(radio.config.get(key, "127.0.0.1:8073")).strip() or "127.0.0.1:8073"
+
+def owrx_shared():
+    """True, wenn die OpenWebRX-Verbindung des S-Meters auch den Wasserfall mitbedient (gleiche Adresse bei beiden)."""
+    return (radio.config.get("smeter_source", "esp32") == "owrx" and wf_source() == "owrx" and wf_wanted()
+            and _addr("owrx_addr") == _addr("wf_owrx_addr"))
+
+def wf_state():
+    c = radio.config
+    if wf_source() == "owrx" and owrx_shared():
+        return smeter_info["state"]
+    if wf_source() == "sdr" and c.get("smeter_source", "esp32") == "sdr":
+        return smeter_info["state"]
+    return wf_info["state"]
+
 def current_channel_freq_hz():
     """Frequenz des aktuell eingestellten Kanals (gleiche Zuordnung wie beim Hamlib-Sync)."""
     try:
@@ -3392,7 +3409,7 @@ def api_wf_info():
     c = radio.config
     return jsonify({"enabled": bool(c.get("wf_enabled")), "span": c.get("wf_span_khz", 60), "spans": list(WF_SPANS),
                     "tx": bool(c.get("wf_tx")), "source": c.get("smeter_source", "esp32"), "wf_source": wf_source(),
-                    "state": (smeter_info["state"] if c.get("smeter_source", "esp32") == wf_source() else wf_info["state"]), "viewers": len(wf_clients)})
+                    "wf_addr": _addr("wf_owrx_addr"), "state": wf_state(), "viewers": len(wf_clients)})
 
 @app.route('/api/wf/set')
 def api_wf_set():
@@ -3404,6 +3421,12 @@ def api_wf_set():
         if a.get('source') not in ('owrx', 'sdr'):
             return jsonify({"status": "error", "message": "invalid source"}), 400
         new["wf_source"] = a.get('source')
+    if 'addr' in a:
+        addr = a.get('addr', '').strip() or "127.0.0.1:8073"
+        host, _, port = addr.partition(":")
+        if not host or (port and not port.isdigit()) or len(addr) > 80 or any(c in addr for c in " /\\?#"):
+            return jsonify({"status": "error", "message": "Address must look like host:port"}), 400
+        new["wf_owrx_addr"] = addr
     if 'tx' in a:
         new["wf_tx"] = a.get('tx') in ('1', 'true')
     if 'span' in a:
@@ -3620,8 +3643,11 @@ class MiniWebSocket:
 OWRX_MODS = {"FM": ("nfm", -4000, 4000), "PA": ("nfm", -4000, 4000), "AM": ("am", -4000, 4000),
              "CW": ("cw", -400, 400), "USB": ("usb", 300, 2700), "LSB": ("lsb", -2700, -300)}
 
-def owrx_smeter_worker():
+def owrx_worker(role):
+    """role 'sm': Verbindung fuers S-Meter (bedient den Wasserfall mit, wenn die Adresse gleich ist);
+    role 'wf': eigene Verbindung nur fuer den Wasserfall (andere Adresse oder S-Meter nicht auf OpenWebRX)."""
     ws = None
+    cur_addr = None
     center = None
     srate = None
     sent = None          # zuletzt gesendete (offset, mode)
@@ -3630,23 +3656,36 @@ def owrx_smeter_worker():
     fft_comp = "adpcm"   # NEU: Kompression der OpenWebRX-FFT-Zeilen (kommt in der Konfiguration; Standard ist adpcm)
     while True:
         try:
-            sm = (radio.config.get("smeter_source", "esp32") == "owrx")
+            sm = (role == "sm")
             info = smeter_info if sm else wf_info
-            if not (sm or (wf_source() == "owrx" and wf_wanted())):
+            if sm:
+                want = (radio.config.get("smeter_source", "esp32") == "owrx")
+                addr = _addr("owrx_addr")
+                do_wf = want and owrx_shared()
+            else:
+                want = (wf_source() == "owrx" and wf_wanted() and not owrx_shared())
+                addr = _addr("wf_owrx_addr")
+                do_wf = want
+            if ws is not None and addr != cur_addr:      # Adresse geaendert -> neu verbinden
+                ws.close(); ws = None
+            if not want:
                 if ws is not None:
                     ws.close(); ws = None
                 center = srate = sent = None
                 started = False
                 smoothed = None
-                wf_info["state"] = "-"
-                if smeter_info.get("src") == "owrx":
-                    smeter_info.update({"state": "off", "db": None, "src": None})
+                if sm:
+                    if smeter_info.get("src") == "owrx":
+                        smeter_info.update({"state": "off", "db": None, "src": None})
+                else:
+                    wf_info["state"] = "-"
                 time.sleep(1.0)
                 continue
             if sm:
                 smeter_info["src"] = "owrx"
             if ws is None:
-                host, _, port = str(radio.config.get("owrx_addr", "127.0.0.1:8073")).strip().partition(":")
+                cur_addr = addr
+                host, _, port = addr.partition(":")
                 ws = MiniWebSocket(host or "127.0.0.1", port or 8073, "/ws/", timeout=1.0)
                 ws.send_text("SERVER DE CLIENT client=ae5900 type=receiver")
                 ws.send_text(json.dumps({"type": "connectionproperties",
@@ -3680,7 +3719,7 @@ def owrx_smeter_worker():
                             smeter_info.update({"state": "ok", "db": round(float(smoothed), 1)})
             elif msg is not None and msg[0] == 0x2 and msg[1][:1] == b"\x01":
                 # NEU: FFT-Zeile fuer den HF-Wasserfall (nur wenn eingeschaltet und jemand zuschaut)
-                if wf_wanted() and wf_source() == "owrx" and center and srate:
+                if do_wf and wf_wanted() and center and srate:
                     try:
                         wf_feed_owrx(msg[1][1:], center, srate, fft_comp, current_channel_freq_hz(), radio.is_tx or radio.is_device_sending)
                     except Exception as e:
@@ -3716,7 +3755,14 @@ def owrx_smeter_worker():
             started = False
             time.sleep(3.0)
 
+def owrx_smeter_worker():
+    owrx_worker("sm")
+
+def owrx_wf_worker():
+    owrx_worker("wf")
+
 threading.Thread(target=owrx_smeter_worker, daemon=True).start()
+threading.Thread(target=owrx_wf_worker, daemon=True).start()
 
 # =========================================================================
 # HINTERGRUNDBILD (serverweit, gilt auf allen Geraeten des Nutzers)
