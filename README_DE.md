@@ -315,7 +315,7 @@ Wo die Leute darüber sprechen:
 
 Wenn dir das Projekt nützt, kannst du mir einen Kaffee spendieren. Völlig freiwillig, die Software bleibt kostenlos.
 
-[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
+<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
 
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 
