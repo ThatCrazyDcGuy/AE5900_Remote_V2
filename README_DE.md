@@ -206,7 +206,7 @@ Ein kleines Skript erledigt das, zum Beispiel der [PipeWire-Audio-Router von maj
 
 Das erstellt ein Kabel mit dem Wiedergabe-Ende `out2in` und dem Aufnahme-Ende `in2out` (die Namen sind frei wählbar). Alles, was auf `out2in` abgespielt wird, kommt aus `in2out` heraus.
 
-![Virtuelles Kabel erstellen](/pictures/digimode_cable.png)
+![Virtuelles Kabel erstellen](/pictures/wsjt-cb1.png)
 
 **2. WebUI (Setup & Sync -> Audio)**
 
@@ -223,11 +223,11 @@ Lautsprecher-Taste und Mikrofon-Taste drücken, beide zeigen dann "Activated".
 
 Ein Kabel genügt, weil das Funkgerät im Wechselbetrieb arbeitet: Beim Empfang fließt der Ton von der WebUI zum Programm, beim Senden der Ton des Programms zum Mikrofon der WebUI.
 
-![WSJT-CB Audio-Einstellungen und die WebUI](/pictures/digimode_audio.png)
+![WSJT-CB Audio-Einstellungen und die WebUI](/pictures/wsjt-cb2.png)
 
 Das war's. Empfangene Stationen erscheinen im Programm, und was es sendet, geht zum Funkgerät.
 
-![WSJT-CB im Betrieb](/pictures/digimode_wsjt.png)
+![WSJT-CB im Betrieb](/pictures/wsjt-cb3.png)
 
 Das Kabel verschwindet nach einem Neustart des Computers (oder seines Audiodienstes); den Befehl dann erneut ausführen oder beim Anmelden automatisch starten. WSJT-CB: [github.com/vash909/WSJT-CB](https://github.com/vash909/WSJT-CB)
 
@@ -260,11 +260,12 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-291026 AUD**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-111126 ADR**. Aktualisieren immer mit `git pull`.
 
-1. Fix: "CQ REC" nahm nur eine leere Datei auf (44 Byte). Die Aufnahme suchte die alte Mumble-Verbindung und fand den Mikrofon-Stream der WebUI nie, also nahm sie Stille auf. Jetzt verbindet sie sich mit dem Mikrofon-Stream (und versucht es während der Aufnahme weiter), und das Log meldet, wenn sie keinen findet. Das Browser-Mikrofon (🎤) muss dafür laufen.
-2. Neu: Mikrofonauswahl (Setup & Sync -> Audio). "Device microphone" nimmt das eigene Mikrofon von Handy oder Computer, damit ein Bluetooth-Headset beim Start des Mikrofons nicht mehr ins Freisprechprofil (schlechter Ton) gezwungen wird. Alternativ lässt sich jedes einzelne Eingabegerät wählen. Wird pro Gerät gespeichert; ist das gewählte Gerät nicht verfügbar, gilt der Systemstandard. Getestet mit Android und Desktop; Browser ohne Auswahlmöglichkeit (iPhone/Safari) bleiben beim Standard - Rückmeldungen von iPhone-Nutzern stehen noch aus.
-3. Neu: Auswahl des Audio-Ausgabegeräts (Setup & Sync -> Audio). Der Empfangston kann auf ein gewähltes Gerät des Computers gespielt werden, z. B. den Monitor der Soundkarte oder ein virtuelles Audiokabel, so dass WSJT-X oder JS8Call auf demselben Computer ihn ohne weitere Hilfsprogramme dekodieren. Getestet mit WSJT-X und JS8Call unter Ubuntu mit Brave, Chrome und Firefox. Braucht einen Browser, der die Wahl der Ausgabe unterstützt (Chrome, Edge, Brave, aktuelles Firefox am Desktop).
+1. OpenWebRX-Adresse pro Funktion: HF-Wasserfall und S-Meter haben je eine eigene OpenWebRX-Adresse (Standard 127.0.0.1:8073), in Setup & Sync unter "Display & background" (Wasserfall) und "S-meter & RF waterfall" (S-Meter). So lassen sich zwei verschiedene OpenWebRX-Server gleichzeitig nutzen, zum Beispiel einer pro Antenne, oder das ESP32-S-Meter zusammen mit dem Wasserfall eines beliebigen OpenWebRX im Netz. Bei gleicher Adresse wird nur eine Verbindung geöffnet. Der Eintrag "RF waterfall" im Anzeigemodus nennt die gewählte Quelle und Adresse.
+2. Die S-Meter-Statuszeile zeigt den Wert jetzt auch in Prozent und weist darauf hin, wenn er unter "Floor" oder über "Full" liegt. Eine noch nicht kalibrierte Quelle wirkt so nicht mehr tot.
+3. "Status correction override" ist jetzt ein eigener einklappbarer Abschnitt zwischen "Camera" und "Security".
+4. Dokumentation: neuer Abschnitt "Digimodes (WSJT-CB, WSJT-X, JS8Call)" mit virtuellem Audiokabel und Bildern.
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
