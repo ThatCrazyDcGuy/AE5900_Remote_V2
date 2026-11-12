@@ -783,12 +783,15 @@ if (authLocked) {
                 <option value="bars">Classic (Bars)</option>
                 <option value="waterfall">Waterfall</option>
                 <option value="both">Both (Bars + Waterfall)</option>
-                <option value="rf">RF waterfall (SDR dongle)</option>
+                <option value="rf">RF waterfall (OpenWebRX {{ config.get('wf_owrx_addr','127.0.0.1:8073') }})</option>
             </select>
         </p>
             <div id="wfBox" style="border-top: 1px solid #333; margin-top: 8px; padding-top: 8px;">
-                <p>RF waterfall source: <select id="wfSrc" onchange="wfApply(); wfShowSrc()" style="width:150px;"><option value="owrx">OpenWebRX (local)</option><option value="sdr">SDR dongle (RTL-SDR)</option></select>
+                <p>RF waterfall source: <select id="wfSrc" onchange="wfApply(); wfShowSrc()" style="width:150px;"><option value="owrx">OpenWebRX</option><option value="sdr">SDR dongle (RTL-SDR)</option></select>
                     <span style="font-size:0.8em; color:#888;">independent of the S-meter source</span></p>
+                <p id="wfAddrRow">OpenWebRX address (waterfall):
+                    <input type="text" id="wfAddr" value="{{ config.get('wf_owrx_addr','127.0.0.1:8073') }}" style="width:150px; text-align:center; font-family:monospace;" onchange="wfApply()"
+                           title="host:port of the OpenWebRX that delivers the RF waterfall. May differ from the one used for the S-meter."></p>
                 <p>RF waterfall (around the channel):
                     <input type="checkbox" id="wfEnable" onchange="wfApply()" title="Off by default. Needs about 10-15 % of one Raspberry Pi 3 core and a few KB/s per viewer while it is open.">
                     <select id="wfSpan" onchange="wfApply()" style="width:90px;">
@@ -834,7 +837,7 @@ if (authLocked) {
             <select id="smSrc" onchange="smeterSwitch()" style="width:190px;">
                 <option value="esp32" {% if config.get('smeter_source','esp32') == 'esp32' %}selected{% endif %}>Hardware mod (ESP32)</option>
                 <option value="sdr" {% if config.get('smeter_source','esp32') == 'sdr' %}selected{% endif %}>SDR dongle (RTL-SDR)</option>
-                <option value="owrx" {% if config.get('smeter_source','esp32') == 'owrx' %}selected{% endif %}>OpenWebRX (local)</option>
+                <option value="owrx" {% if config.get('smeter_source','esp32') == 'owrx' %}selected{% endif %}>OpenWebRX</option>
                 <option value="off" {% if config.get('smeter_source','esp32') == 'off' %}selected{% endif %}>Off</option>
             </select>
         </p>
@@ -843,7 +846,7 @@ if (authLocked) {
             <p id="smGainRow">SDR gain (dB or auto):
                 <input type="text" id="smGain" value="{{ config.get('sdr_gain','30') }}" style="width:55px; text-align:center;" onchange="smeterApply()">
             </p>
-            <p id="smAddrRow">OpenWebRX address:
+            <p id="smAddrRow">OpenWebRX address (S-meter):
                 <input type="text" id="smAddr" value="{{ config.get('owrx_addr','127.0.0.1:8073') }}" style="width:140px; text-align:center; font-family:monospace;" onchange="smeterApply()">
             </p>
             <p>Floor (0 %):
@@ -891,31 +894,8 @@ if (authLocked) {
         </div>
 
 </div></details>
-<details class="setsec" id="sec_security" data-sec="security"><summary>Security <span class="sechint">password, PTT key</span></summary>
-<div class="secbody">
-        <div style="border-left: 2px solid #aa6600; padding-left: 8px; margin: 4px 0 16px 0;">
-            <p style="margin-bottom:6px;"><b>Security</b> <span style="font-size:0.8em; color:#888;">password for this web interface</span></p>
-            <p>Change password:
-                <input type="password" id="pwOld" placeholder="current" autocomplete="current-password" style="width:105px;">
-                <input type="password" id="pwNew" placeholder="new (min. 6)" autocomplete="new-password" style="width:105px;">
-                <button type="button" onclick="pwChange()" style="min-height:0; padding:4px 10px;">CHANGE</button>
-                <span id="pwMsg" style="font-size:0.85em;"></span></p>
-            <p><button type="button" onclick="authLogout()" style="min-height:0; padding:4px 10px;">LOG OUT</button>
-                <span style="font-size:0.8em; color:#888;">this device only</span></p>
-            <p>Key for other programs (PTT only):
-                <button type="button" onclick="keyShow()" style="min-height:0; padding:4px 10px;">SHOW</button>
-                <button type="button" onclick="keyNew()" style="min-height:0; padding:4px 10px;">NEW KEY</button><br>
-                <code id="keyOut" style="word-break:break-all; color:#0cf;"></code></p>
-            <p style="font-size:0.8em; color:#888; margin-top:2px;">For programs on <b>other</b> computers (JS8Call, the OpenWebRX PTT button): add the key to the call,
-                e.g. <code>/api/rig/ptt/1?key=KEY</code> or <code>/api/cmd/TX?state=1&amp;key=KEY</code>. The key allows nothing but PTT.
-                Programs on the Raspberry Pi itself (127.0.0.1) need no key. A new key makes the old one useless.</p>
-        </div>
-
-</div></details>
-    </div>
-
-    <details class="setsec" id="sec_repair" data-sec="repair" style="margin-top:12px;"><summary>🔧 Status correction override <span class="sechint">if the display and the radio disagree</span></summary>
-    <div class="secbody" style="padding-top:8px;">
+<details class="setsec" id="sec_repair" data-sec="repair"><summary>🔧 Status correction override <span class="sechint">if the display and the radio disagree</span></summary>
+    <div class="secbody">
         <p style="font-size: 0.85em; color: #888; margin-top: 5px;">If you face some asyncron issues, e.g. ASQ is of but the WebUI shows on or you're on FM but the WebUI shows USB, select the checkbox or modulation to force synchronisation...</p>
         
         <table style="width: 100%; color: #aaa; font-size: 0.95em; margin-bottom: 10px;">
@@ -942,6 +922,29 @@ if (authLocked) {
         </table>
         <button onclick="submitConfigOverride()" style="width: 100%; background: #4a4a00; color: #fff; padding: 8px; font-weight: bold;">REVERSE & CORRECT ALL STATES</button>
     </div></details>
+<details class="setsec" id="sec_security" data-sec="security"><summary>Security <span class="sechint">password, PTT key</span></summary>
+<div class="secbody">
+        <div style="border-left: 2px solid #aa6600; padding-left: 8px; margin: 4px 0 16px 0;">
+            <p style="margin-bottom:6px;"><b>Security</b> <span style="font-size:0.8em; color:#888;">password for this web interface</span></p>
+            <p>Change password:
+                <input type="password" id="pwOld" placeholder="current" autocomplete="current-password" style="width:105px;">
+                <input type="password" id="pwNew" placeholder="new (min. 6)" autocomplete="new-password" style="width:105px;">
+                <button type="button" onclick="pwChange()" style="min-height:0; padding:4px 10px;">CHANGE</button>
+                <span id="pwMsg" style="font-size:0.85em;"></span></p>
+            <p><button type="button" onclick="authLogout()" style="min-height:0; padding:4px 10px;">LOG OUT</button>
+                <span style="font-size:0.8em; color:#888;">this device only</span></p>
+            <p>Key for other programs (PTT only):
+                <button type="button" onclick="keyShow()" style="min-height:0; padding:4px 10px;">SHOW</button>
+                <button type="button" onclick="keyNew()" style="min-height:0; padding:4px 10px;">NEW KEY</button><br>
+                <code id="keyOut" style="word-break:break-all; color:#0cf;"></code></p>
+            <p style="font-size:0.8em; color:#888; margin-top:2px;">For programs on <b>other</b> computers (JS8Call, the OpenWebRX PTT button): add the key to the call,
+                e.g. <code>/api/rig/ptt/1?key=KEY</code> or <code>/api/cmd/TX?state=1&amp;key=KEY</code>. The key allows nothing but PTT.
+                Programs on the Raspberry Pi itself (127.0.0.1) need no key. A new key makes the old one useless.</p>
+        </div>
+
+</div></details>
+    </div>
+
 
     <div class="anleitung-box" style="background: #111; border: 1px solid #333; padding: 10px; margin-top: 10px; font-size: 0.9em; line-height: 1.4;">
         {% if lang == 'de' %}
@@ -1956,7 +1959,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-291026 AUD";
+                if (vInd) vInd.textContent = "V-111126 ADR";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2740,7 +2743,7 @@ if (authLocked) {
         document.getElementById('smHint').textContent = esp
             ? 'Hardware mod: the ESP32 sends 0-100 (38 steps of resolution). Floor = reading with no signal (noise) -> 0 %, Full = reading at full scale -> 100 %. Hold the squelch open without signal and press "= now" for Floor; with a strong signal for Full.'
             : (src === 'owrx')
-            ? 'Uses the OpenWebRX running on this Raspberry (it must have an SDR profile covering the channel). Relative reading - calibrate with the two values below.'
+            ? 'Uses the OpenWebRX at the address above (it must have an SDR profile covering the channel). It can be a different one than the waterfall uses. Relative reading - calibrate with the two values below.'
             : 'Receive-only second antenna on an RTL-SDR dongle (stop OpenWebRX first, the dongle can only be used once). Relative reading - calibrate with the two values below.';
     }
     function smeterLoad() {
@@ -2798,8 +2801,18 @@ if (authLocked) {
         fetch('/api/smeter?src=' + src).then(r => r.json()).then(d => {
             smLastDb = (src === 'esp32') ? ((d.esp_raw === null || d.esp_raw === undefined) ? null : d.esp_raw) : ((d.db === null || d.db === undefined) ? null : d.db);
             const st = document.getElementById('smStatus');
-            if (st && src === 'esp32') st.textContent = smLastDb !== null ? 'ESP32: reading ' + smLastDb : 'ESP32: no data (Bluetooth connected?)';
-            else if (st) st.textContent = (src === 'owrx' ? 'OpenWebRX: ' : 'SDR: ') + d.state + (smLastDb !== null ? '  |  ' + smLastDb.toFixed(1) + ' dB' : '');
+            // Anzeige in Prozent samt Hinweis, wenn der Wert ausserhalb von Floor/Full liegt (sonst wirkt das Meter "tot")
+            let pct = '';
+            if (smLastDb !== null) {
+                const lo = parseFloat(document.getElementById('smFloor').value), hi = parseFloat(document.getElementById('smFull').value);
+                if (isFinite(lo) && isFinite(hi) && hi > lo) {
+                    const p = (smLastDb - lo) / Math.max(3, hi - lo);
+                    pct = '  ->  ' + Math.round(Math.max(0, Math.min(1, p)) * 100) + ' %'
+                        + (p < 0 ? ' (below Floor - lower Floor or press "= now" with no signal)' : p > 1 ? ' (above Full - raise Full)' : '');
+                }
+            }
+            if (st && src === 'esp32') st.textContent = smLastDb !== null ? 'ESP32: reading ' + smLastDb + pct : 'ESP32: no data (Bluetooth connected?)';
+            else if (st) st.textContent = (src === 'owrx' ? 'OpenWebRX: ' : 'SDR: ') + d.state + (smLastDb !== null ? '  |  ' + smLastDb.toFixed(1) + ' dB' + pct : '');
         }).catch(() => {});
     }
     setInterval(smeterPoll, 1500);
@@ -2892,10 +2905,18 @@ if (authLocked) {
     function wfShowSrc() {         // "beim Senden weiterlesen" gibt es nur beim Dongle
         const sel = document.getElementById('wfSrc'), row = document.getElementById('wfTxRow');
         if (sel && row) row.style.display = (sel.value === 'sdr') ? '' : 'none';
+        const ar = document.getElementById('wfAddrRow'); if (ar && sel) ar.style.display = (sel.value === 'owrx') ? '' : 'none';
+        wfModeLabel();
+    }
+    function wfModeLabel() {       // Eintrag im Anzeigemodus nennt die gewaehlte Quelle (und bei OpenWebRX die Adresse)
+        const o = document.querySelector('#vzModeSelect option[value="rf"]'), sel = document.getElementById('wfSrc'), a = document.getElementById('wfAddr');
+        if (!o || !sel) return;
+        o.textContent = 'RF waterfall (' + (sel.value === 'sdr' ? 'SDR dongle' : 'OpenWebRX ' + ((a && a.value.trim()) || '127.0.0.1:8073')) + ')';
     }
     function wfLoad() {
         fetch('/api/wf').then(r => r.json()).then(d => {
             if (d.wf_source) document.getElementById('wfSrc').value = d.wf_source;
+            if (d.wf_addr) document.getElementById('wfAddr').value = d.wf_addr;
             wfShowSrc();
             document.getElementById('wfEnable').checked = d.enabled;
             document.getElementById('wfSpan').value = String(d.span);
@@ -2905,7 +2926,8 @@ if (authLocked) {
         }).catch(() => {});
     }
     function wfApply() {
-        const q = 'source=' + encodeURIComponent(document.getElementById('wfSrc').value) + '&enabled=' + (document.getElementById('wfEnable').checked ? 1 : 0)
+        wfShowSrc();
+        const q = 'source=' + encodeURIComponent(document.getElementById('wfSrc').value) + '&addr=' + encodeURIComponent(document.getElementById('wfAddr').value.trim()) + '&enabled=' + (document.getElementById('wfEnable').checked ? 1 : 0)
             + '&span=' + encodeURIComponent(document.getElementById('wfSpan').value)
             + '&tx=' + (document.getElementById('wfTx').checked ? 1 : 0);
         fetch('/api/wf/set?' + q).then(r => r.json()).then(d => {
