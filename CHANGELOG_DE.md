@@ -6,7 +6,14 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-291026 AUD (aktuell)
+### V-111126 ADR (aktuell)
+
+OpenWebRX-Adresse pro Funktion: HF-Wasserfall und S-Meter haben je eine eigene OpenWebRX-Adresse (Standard 127.0.0.1:8073), in Setup & Sync unter "Display & background" (Wasserfall) und "S-meter & RF waterfall" (S-Meter). So lassen sich zwei verschiedene OpenWebRX-Server gleichzeitig nutzen, zum Beispiel einer pro Antenne, oder das ESP32-S-Meter zusammen mit dem Wasserfall eines beliebigen OpenWebRX im Netz. Bei gleicher Adresse wird nur eine Verbindung geöffnet. Der Eintrag "RF waterfall" im Anzeigemodus nennt die gewählte Quelle und Adresse.
+Die S-Meter-Statuszeile zeigt den Wert jetzt auch in Prozent und weist darauf hin, wenn er unter "Floor" oder über "Full" liegt. Eine noch nicht kalibrierte Quelle wirkt so nicht mehr tot.
+"Status correction override" ist jetzt ein eigener einklappbarer Abschnitt zwischen "Camera" und "Security".
+Dokumentation: neuer Abschnitt "Digimodes (WSJT-CB, WSJT-X, JS8Call)" mit virtuellem Audiokabel und Bildern.
+
+### V-291026 AUD
 
 1. Fix: "CQ REC" nahm nur eine leere Datei auf (44 Byte). Die Aufnahme suchte die alte Mumble-Verbindung und fand den Mikrofon-Stream der WebUI nie, also nahm sie Stille auf. Jetzt verbindet sie sich mit dem Mikrofon-Stream (und versucht es während der Aufnahme weiter), und das Log meldet, wenn sie keinen findet. Das Browser-Mikrofon (🎤) muss dafür laufen.
 2. Neu: Mikrofonauswahl (Setup & Sync -> Audio). "Device microphone" nimmt das eigene Mikrofon von Handy oder Computer, damit ein Bluetooth-Headset beim Start des Mikrofons nicht mehr ins Freisprechprofil (schlechter Ton) gezwungen wird. Alternativ lässt sich jedes einzelne Eingabegerät wählen. Wird pro Gerät gespeichert; ist das gewählte Gerät nicht verfügbar, gilt der Systemstandard. Getestet mit Android und Desktop; Browser ohne Auswahlmöglichkeit (iPhone/Safari) bleiben beim Standard - Rückmeldungen von iPhone-Nutzern stehen noch aus.
