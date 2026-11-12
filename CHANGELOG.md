@@ -6,7 +6,14 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-291026 AUD (current)
+### V-111126 ADR (current)
+
+OpenWebRX address per function: the RF waterfall and the S-meter each have their own OpenWebRX address (default 127.0.0.1:8073), Setup & Sync -> "Display & background" (waterfall) and "S-meter & RF waterfall" (S-meter). So you can use two different OpenWebRX servers at the same time, for example one per antenna, or a ESP32 S-meter together with the waterfall of any OpenWebRX in your network. With the same address on both only one connection is opened. The entry "RF waterfall" in the display mode shows the selected source and address.
+The S-meter status line now shows the reading in percent and tells you when it is below "Floor" or above "Full", so a not yet calibrated source no longer looks dead.
+"Status correction override" moved into its own collapsible section between "Camera" and "Security".
+Documentation: new section "Digimodes (WSJT-CB, WSJT-X, JS8Call)" with a virtual audio cable and pictures.
+
+### V-291026 AUD
 
 1. Fix: "CQ REC" recorded only an empty file (44 bytes). The recorder looked for the old Mumble connection and never found the microphone stream of the WebUI, so it recorded silence. It now connects to the microphone stream (it keeps trying while recording) and the log tells you if it cannot find one. The browser microphone (🎤) must be running while you record.
 2. New: microphone selection (Setup & Sync -> Audio). "Device microphone" uses the phone's or computer's own microphone, so a Bluetooth headset is no longer forced into hands-free mode (poor sound) when you start the microphone. You can also pick any single input. Stored per device; falls back to the system default if the chosen one is not available. Tested on Android and desktop; browsers that do not allow a choice (iPhone/Safari) keep using the default - feedback from iPhone users is still pending.
