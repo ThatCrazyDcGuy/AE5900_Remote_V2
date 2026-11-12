@@ -305,6 +305,14 @@ Where the people talking about:
 - [cbfunker.online](https://cbfunker.online/)
 - [worldwidedx.com](https://www.worldwidedx.com/threads/web-control-of-cb-radio.271268/#post-872377)
 
+### Support the project
+
+If this project is useful to you, you can buy me a coffee. Completely voluntary, the software stays free.
+
+[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
+
+[buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
+
 ### Contact / Feedback
 
 News, updates and your feedback: [t.me/gz62cb](https://t.me/gz62cb)
