@@ -309,8 +309,7 @@ Where the people talking about:
 
 If this project is useful to you, you can buy me a coffee. Completely voluntary, the software stays free.
 
-[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
-
+<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 
 ### Contact / Feedback
