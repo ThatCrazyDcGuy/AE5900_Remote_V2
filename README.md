@@ -198,7 +198,7 @@ A small script does it, for example [PipeWire-Audio-Router by majoranimal](https
 
 This creates a cable with the playback end `out2in` and the recording end `in2out` (the names are free to choose). Everything played to `out2in` comes out of `in2out`.
 
-![Creating the virtual cable](/pictures/digimode_cable.png)
+![Creating the virtual cable](/pictures/wsjt-cb1.png)
 
 **2. WebUI (Setup & Sync -> Audio)**
 
@@ -215,11 +215,11 @@ Press the speaker button and the microphone button, then both show "Activated".
 
 One cable is enough because the radio works half-duplex: while receiving, the audio flows from the WebUI to the program; while transmitting, the program's audio flows to the WebUI microphone.
 
-![WSJT-CB audio settings and the WebUI](/pictures/digimode_audio.png)
+![WSJT-CB audio settings and the WebUI](/pictures/wsjt-cb2.png)
 
 That's it. Received stations appear in the program, and what it transmits goes to the radio.
 
-![WSJT-CB in operation](/pictures/digimode_wsjt.png)
+![WSJT-CB in operation](/pictures/wsjt-cb3.png)
 
 The cable disappears when the computer (or its audio service) is restarted; run the command again, or start it automatically at login. WSJT-CB: [github.com/vash909/WSJT-CB](https://github.com/vash909/WSJT-CB)
 
