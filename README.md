@@ -256,10 +256,10 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 Current version: **V-111126 ADR**. Always update using `git pull`.
 
-OpenWebRX address per function: the RF waterfall and the S-meter each have their own OpenWebRX address (default 127.0.0.1:8073), Setup & Sync -> "Display & background" (waterfall) and "S-meter & RF waterfall" (S-meter). So you can use two different OpenWebRX servers at the same time, for example one per antenna, or a ESP32 S-meter together with the waterfall of any OpenWebRX in your network. With the same address on both only one connection is opened. The entry "RF waterfall" in the display mode shows the selected source and address.
-The S-meter status line now shows the reading in percent and tells you when it is below "Floor" or above "Full", so a not yet calibrated source no longer looks dead.
-"Status correction override" moved into its own collapsible section between "Camera" and "Security".
-Documentation: new section "Digimodes (WSJT-CB, WSJT-X, JS8Call)" with a virtual audio cable and pictures.
+1. OpenWebRX address per function: the RF waterfall and the S-meter each have their own OpenWebRX address (default 127.0.0.1:8073), Setup & Sync -> "Display & background" (waterfall) and "S-meter & RF waterfall" (S-meter). So you can use two different OpenWebRX servers at the same time, for example one per antenna, or a ESP32 S-meter together with the waterfall of any OpenWebRX in your network. With the same address on both only one connection is opened. The entry "RF waterfall" in the display mode shows the selected source and address.
+2. The S-meter status line now shows the reading in percent and tells you when it is below "Floor" or above "Full", so a not yet calibrated source no longer looks dead.
+3. "Status correction override" moved into its own collapsible section between "Camera" and "Security".
+4. Documentation: new section "Digimodes (WSJT-CB, WSJT-X, JS8Call)" with a virtual audio cable and pictures.
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 
