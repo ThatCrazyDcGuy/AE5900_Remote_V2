@@ -273,10 +273,6 @@ Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
 1. WSJT-CB funktioniert damit recht gut. Die Einrichtung (virtuelles Audiokabel, Audio-Einstellungen, Hamlib) steht oben im Abschnitt „Digimodes“.
 
-![AE5900_Remote_v2](/pictures/wsjt-cb.jpg)
-
-Link zu [WSJT-CB](https://github.com/vash909/WSJT-CB)
-
 2. User-Feedback vom 30. April 2026: Linux Mint um die Version 21.3 und darunter versteht die Python-Vol- und Vol+ nicht.
 Nur falls jemand auf so einem System testet. Ein Mint-Upgrade hilft, das Problem zu lösen.
 
