@@ -736,6 +736,17 @@ if (authLocked) {
         </p>
         <p>Keyboard shortcuts on this device (U/D channel, M mode, A ASQ, S scan, hold S scroll): <input type="checkbox" id="kbdShortcutsToggle" onchange="setKbdShortcuts(this.checked)" title="Off by default. Can also be switched on once with the address ?keys=1 (off again with ?keys=0)."></p>
 
+        <div id="trBox" style="border-left: 2px solid #00aaff; padding-left: 10px; margin: 14px 0 6px 0;">
+            <p style="color: #00aaff; font-weight: bold; margin-bottom: 5px;">T/R switch (ESP32-C3: grounds the SDR branch while transmitting)</p>
+            <p><label><input type="checkbox" id="trEnable" onchange="trApply(true)"> Use T/R switch</label>
+               &nbsp; <span id="trDot" style="color:#888;">&#9679;</span> <span id="trStatus" style="word-break:break-all;">checking ...</span></p>
+            <p>Lead time: <input type="number" id="trLead" min="0" max="1000" step="10" value="50" style="width:65px;" onchange="trApply()" title="Wait after the ESP confirmed the grounding, before PTT is set"> ms
+               &nbsp; Hold time: <input type="number" id="trHold" min="0" max="5000" step="10" value="50" style="width:65px;" onchange="trApply()" title="Time after releasing PTT until the SDR is connected again"> ms</p>
+            <p>Port: <input type="text" id="trPort" placeholder="automatic" style="width:190px;" onchange="trApply()" title="Empty = find the ESP32 automatically (USB). Otherwise e.g. /dev/ttyACM0">
+               <button onclick="trTest()" style="padding: 2px 8px; font-size: 0.8em; background: #575757;">Test relay</button> <span id="trTestRes" style="font-size:0.85em;"></span></p>
+            <p style="font-size:0.8em; color:#999; line-height:1.35;">On: before each transmission the ESP grounds the SDR branch, the program waits for its confirmation and the lead time, then sets PTT. After the transmission the SDR stays grounded for the hold time. If the ESP does not confirm, the radio does <b>not</b> transmit. The relay falls back to the grounded position on its own if the connection breaks. Off: the ESP is not used and stays in the grounded position. Use together with VOX off.</p>
+        </div>
+
 
 </div></details>
 <details class="setsec" id="sec_audio" data-sec="audio"><summary>Audio <span class="sechint">WebAudio, roger beep</span></summary>
@@ -1959,7 +1970,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-111126 ADR";
+                if (vInd) vInd.textContent = "V-141126 TRS";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2071,6 +2082,7 @@ if (authLocked) {
 
     function updateUI(data) {
         if (!data) return;
+        if (data.TR_BLOCK) trShowBlock(data.TR_BLOCK);
         waApplyServerConfig(data); // NEU: WebAudio-Rate/Puffer aus der config.json uebernehmen (geraeteuebergreifend)
         if (data.CLAR_STEP !== undefined) currentClarStepGlobal = data.CLAR_STEP;
         scanRunningGlobal = !!(data.SW_SCAN || data.MW_SCAN || data.SW_STEP || data.MW_STEP);
@@ -2935,6 +2947,71 @@ if (authLocked) {
             rfFloor = null; wfSync();
         }).catch(() => {});
     }
+    // ---- T/R switch (ESP32-C3) ----
+    function trLoad() {
+        fetch('/api/tr').then(r => r.json()).then(d => {
+            const ae = document.activeElement;
+            const set = (id, v) => { const e = document.getElementById(id); if (e && ae !== e) e.value = v; };
+            set('trLead', d.lead_ms); set('trHold', d.hold_ms); set('trPort', d.port_cfg || '');
+            const en = document.getElementById('trEnable'); if (en && ae !== en) en.checked = !!d.enabled;
+            const dot = document.getElementById('trDot'), st = document.getElementById('trStatus');
+            if (!dot || !st) return;
+            let col = '#888', txt = '';
+            if (d.connected) {
+                const rl = d.relay === 'rx' ? 'RX (SDR connected)' : d.relay === 'tx' ? 'TX (SDR grounded)' : '?';
+                if (d.enabled) { col = '#0f0'; txt = 'ESP32 connected (' + d.port + ', fw ' + d.fw + '), relay: ' + rl; }
+                else { col = '#fa0'; txt = 'ESP32 found (' + d.port + ', fw ' + d.fw + '), not in use'; }
+            } else {
+                col = '#f44';
+                txt = 'ESP32 not connected' + (d.error ? ': ' + d.error : '') + (d.enabled ? ' - TX IS BLOCKED' : '');
+            }
+            dot.style.color = col; st.textContent = txt;
+        }).catch(() => {});
+    }
+    function trApply(fromToggle) {
+        let q = 'lead=' + encodeURIComponent(document.getElementById('trLead').value || 0)
+              + '&hold=' + encodeURIComponent(document.getElementById('trHold').value || 0)
+              + '&port=' + encodeURIComponent(document.getElementById('trPort').value.trim());
+        if (fromToggle) q += '&enabled=' + (document.getElementById('trEnable').checked ? 1 : 0);
+        fetch('/api/tr/set?' + q).then(r => r.json()).then(d => {
+            if (d.status !== 'success') {
+                if (fromToggle) { const en = document.getElementById('trEnable'); en.checked = !en.checked; }
+                alert(d.message || 'Could not save T/R settings');
+            }
+            trLoad();
+        }).catch(() => { trLoad(); });
+    }
+    function trTest() {
+        const out = document.getElementById('trTestRes');
+        out.style.color = '#ccc'; out.textContent = 'testing ...';
+        fetch('/api/tr/test').then(r => r.json()).then(d => {
+            if (!d.steps) { out.style.color = '#f66'; out.textContent = d.message || 'failed'; return; }
+            out.style.color = d.ok ? '#0f0' : '#f66';
+            out.textContent = d.steps.map(x => x.state.toUpperCase() + ' ' + (x.ok ? x.ms + ' ms' : 'no answer')).join(' | ');
+            trLoad();
+        }).catch(() => { out.style.color = '#f66'; out.textContent = 'failed'; });
+    }
+    var trBannerT = null;
+    function trShowBlock(msg) {
+        let b = document.getElementById('trBanner');
+        if (!b) {
+            b = document.createElement('div'); b.id = 'trBanner';
+            b.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:99999;background:#a00;color:#fff;padding:8px 14px;border-radius:6px;font-size:0.9em;box-shadow:0 2px 8px #000;max-width:90vw;';
+            document.body.appendChild(b);
+        }
+        b.textContent = msg; b.style.display = 'block';
+        clearTimeout(trBannerT); trBannerT = setTimeout(() => { b.style.display = 'none'; }, 6000);
+    }
+    (function () {
+        const boot = () => {
+            const sec = document.getElementById('sec_radio');
+            if (!sec) return;
+            sec.addEventListener('toggle', () => { if (sec.open) trLoad(); });
+            setInterval(() => { if (sec.open) trLoad(); }, 3000);
+            if (sec.open) trLoad();
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+    })();
     function wfDrawOverlay(m) {
         const c = document.getElementById('wfOverlay'); if (!c) return;
         const g = c.getContext('2d'); g.clearRect(0, 0, WF_W, WF_H);
