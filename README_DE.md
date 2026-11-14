@@ -192,6 +192,10 @@ Das ist eigentlich alles, und wer nicht komplett ahnungslos ist, bekommt das sch
 
 [Hamlib / Rigctl / OpenWebRX (HAMLIBOWRX_DE.md)](HAMLIBOWRX_DE.md)
 
+### Optional: T/R-Umschalter zum Schutz eines SDR an der gleichen Antenne:
+
+Ein ESP32-C3 mit Relais erdet den SDR-Zweig, solange das Funkgerät sendet. Teile, Schaltung, Flashen und Einrichtung: [T/R-Umschalter (TRSWITCH_DE.md)](TRSWITCH_DE.md)
+
 ### Digimodes (WSJT-CB, WSJT-X, JS8Call) auf dem Computer, mit dem du im Browser arbeitest:
 
 Der Browser kann den Empfangston auf ein gewähltes Gerät abspielen und das Mikrofon von einem gewählten Gerät nehmen (Setup & Sync -> Audio: "Audio output" und "Microphone"). Mit einem virtuellen Audiokabel zwischen Browser und Digimode-Programm braucht es kein zusätzliches Brückenprogramm. Getestet unter Ubuntu (PipeWire) mit Brave, Chrome und Firefox zusammen mit WSJT-CB und JS8Call. Die Wahl der Ausgabe funktioniert in Chrome, Edge, Brave und aktuellem Firefox am Desktop, nicht auf iPhone/Safari. Zum Senden wird die HTTPS-Adresse (Port 5443) benötigt, siehe Fehlersuche.
@@ -260,18 +264,20 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-111126 ADR**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-141126 TRS**. Aktualisieren immer mit `git pull`.
 
-1. OpenWebRX-Adresse pro Funktion: HF-Wasserfall und S-Meter haben je eine eigene OpenWebRX-Adresse (Standard 127.0.0.1:8073), in Setup & Sync unter "Display & background" (Wasserfall) und "S-meter & RF waterfall" (S-Meter). So lassen sich zwei verschiedene OpenWebRX-Server gleichzeitig nutzen, zum Beispiel einer pro Antenne, oder das ESP32-S-Meter zusammen mit dem Wasserfall eines beliebigen OpenWebRX im Netz. Bei gleicher Adresse wird nur eine Verbindung geöffnet. Der Eintrag "RF waterfall" im Anzeigemodus nennt die gewählte Quelle und Adresse.
-2. Die S-Meter-Statuszeile zeigt den Wert jetzt auch in Prozent und weist darauf hin, wenn er unter "Floor" oder über "Full" liegt. Eine noch nicht kalibrierte Quelle wirkt so nicht mehr tot.
-3. "Status correction override" ist jetzt ein eigener einklappbarer Abschnitt zwischen "Camera" und "Security".
-4. Dokumentation: neuer Abschnitt "Digimodes (WSJT-CB, WSJT-X, JS8Call)" mit virtuellem Audiokabel und Bildern.
+1. Neu, optional: T/R-Umschalter. Ein ESP32-C3 mit Relais erdet den SDR-Zweig, solange das AE-5900 sendet, und verbindet ihn zum Empfangen wieder. So ist ein RTL-SDR an der gleichen Antenne geschützt. Setup & Sync -> Radio & keys -> „T/R switch“: Ein/Aus-Schalter, Vor- und Nachlaufzeit (Standard 50 ms), Port (standardmäßig automatisch), Statuszeile mit Verbindungsprüfung und ein Knopf „Test relay“. Einschalten geht nur, solange der ESP32 verbunden ist. Bestätigt der ESP32 die Erdung nicht, wird nicht gesendet (rote Meldung). Das Relais ist in der geerdeten Stellung stromlos, deshalb enden Stromausfall, Absturz oder eine verlorene Verbindung immer sicher; der ESP32 fällt auch von selbst zurück, wenn der Heartbeat des Programms ausbleibt. Sketch, Teileliste und Schaltung: [TRSWITCH_DE.md](TRSWITCH_DE.md). Aufgebaut und getestet mit einem ESP32-C3 Super Mini und einem HK19F-5V-Relais. VOX ausgeschaltet lassen.
+2. Intern: Das gesamte PTT-Schalten (Weboberfläche, Hamlib/rigctl, Digimode-Gateway, CQ/QSO-Wiedergabe, PTT-Timeout und Kill-Switch) läuft jetzt über eine zentrale Funktion.
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
 ### Extras und Testläufe
 
 1. WSJT-CB funktioniert damit recht gut. Die Einrichtung (virtuelles Audiokabel, Audio-Einstellungen, Hamlib) steht oben im Abschnitt „Digimodes“.
+
+![AE5900_Remote_v2](/pictures/wsjt-cb.jpg)
+
+Link zu [WSJT-CB](https://github.com/vash909/WSJT-CB)
 
 2. User-Feedback vom 30. April 2026: Linux Mint um die Version 21.3 und darunter versteht die Python-Vol- und Vol+ nicht.
 Nur falls jemand auf so einem System testet. Ein Mint-Upgrade hilft, das Problem zu lösen.
@@ -311,7 +317,7 @@ Wo die Leute darüber sprechen:
 
 Wenn dir das Projekt nützt, kannst du mir einen Kaffee spendieren. Völlig freiwillig, die Software bleibt kostenlos.
 
-<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
+[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
 
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 

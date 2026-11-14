@@ -6,7 +6,12 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-111126 ADR (current)
+### V-141126 TRS (current)
+
+1. New, optional: T/R switch. An ESP32-C3 with a relay grounds the SDR branch while the AE-5900 transmits and connects it again for receiving, so an RTL-SDR on the same antenna is protected. Setup & Sync -> Radio & keys -> "T/R switch": on/off switch, lead and hold time (default 50 ms), port (automatic by default), status line with connection check and a "Test relay" button. It can only be switched on while the ESP32 is connected. If the ESP32 does not confirm the grounding, the radio does not transmit (red message). The relay is de-energised in the grounded position, so power loss, a crash or a lost connection always end safe; the ESP32 also falls back by itself without the heartbeat of the program. Sketch, parts list and schematic: [TRSWITCH.md](TRSWITCH.md). Built and tested with an ESP32-C3 Super Mini and an HK19F-5V relay. Keep VOX off.
+2. Internal: all PTT switching (web interface, Hamlib/rigctl, digimode gateway, CQ/QSO playback, PTT timeout and kill switch) now goes through one central function.
+
+### V-111126 ADR
 
 OpenWebRX address per function: the RF waterfall and the S-meter each have their own OpenWebRX address (default 127.0.0.1:8073), Setup & Sync -> "Display & background" (waterfall) and "S-meter & RF waterfall" (S-meter). So you can use two different OpenWebRX servers at the same time, for example one per antenna, or a ESP32 S-meter together with the waterfall of any OpenWebRX in your network. With the same address on both only one connection is opened. The entry "RF waterfall" in the display mode shows the selected source and address.
 The S-meter status line now shows the reading in percent and tells you when it is below "Floor" or above "Full", so a not yet calibrated source no longer looks dead.

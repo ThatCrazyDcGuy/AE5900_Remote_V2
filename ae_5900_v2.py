@@ -523,6 +523,10 @@ class RadioInterface:
             "sdr_smooth": 0.5,          # Glaettung des S-Meters (0.05 traege ... 1.0 = keine Glaettung)
             "owrx_smooth": 0.3,
             "owrx_addr": "127.0.0.1:8073",  # OpenWebRX fuer das S-Meter (Quelle "owrx"), nur Host:Port
+            "tr_enable": False,         # T/R-Umschalter (ESP32-C3 + Relais, erdet beim Senden den SDR-Zweig)
+            "tr_lead_ms": 50,           # Vorlauf: so lange wartet das Programm nach der Bestaetigung des ESP, bevor PTT gesetzt wird
+            "tr_hold_ms": 50,           # Nachlauf: so lange nach dem Loslassen von PTT bleibt der SDR-Zweig noch geerdet
+            "tr_port": "",              # leer = automatisch (Espressif-USB-Geraet), sonst z. B. /dev/ttyACM0
             "wf_owrx_addr": "127.0.0.1:8073",  # OpenWebRX fuer den HF-Wasserfall (darf ein anderes sein), nur Host:Port
             "owrx_floor_db": -85.0,     # OpenWebRX-S-Meter-Pegel (dB) bei 0 %
             "owrx_full_db": -30.0,      # OpenWebRX-S-Meter-Pegel (dB) bei 100 %
@@ -771,7 +775,7 @@ class RadioInterface:
                                 self.force_rx = False
                                 if self.ser:
                                     with self.lock:
-                                        self.ser.write(bytes.fromhex("4101000000000006"))
+                                        self.ptt_wire(True)
                                 self.ptt_start_time = time.time()
                                 try:
                                     socketio.emit('status', get_current_status_dict())
@@ -782,7 +786,7 @@ class RadioInterface:
                                 print("[CAT-PROXY PTT] <--- TX OFF (Digimode)")
                                 if self.ser:
                                     with self.lock:
-                                        self.ser.write(bytes.fromhex("4100000000000006"))
+                                        self.ptt_wire(False)
                                 self.is_tx = False
                                 self.last_ptt_release_time = time.time()
                                 try:
@@ -1012,12 +1016,12 @@ class RadioInterface:
                                     self.digi_tx = True
                                     self.is_tx = True
                                     with self.lock:
-                                        self.ser.write(bytes.fromhex("4101000000000006"))
+                                        self.ptt_wire(True)
                             else:
                                 if self.digi_tx:
                                     print("[DIGI] <--- Software stoppt! Löse PTT")
                                     with self.lock:
-                                        self.ser.write(bytes.fromhex("4100000000000006"))
+                                        self.ptt_wire(False)
                                     self.digi_tx = False
                                     self.is_tx = False
                                     self.last_ptt_release_time = time.time()
@@ -1026,6 +1030,35 @@ class RadioInterface:
 
         import threading
         threading.Thread(target=udp_listener, daemon=True).start()
+
+    def ptt_wire(self, on):
+        """Zentrale Stelle fuer PTT an der Hardware. Ohne T/R-Umschalter genau das alte Verhalten (nur der
+        Seriell-Befehl). Mit T/R-Umschalter: erst ESP auf 'TX' (SDR geerdet) und Bestaetigung abwarten, dann Vorlauf,
+        dann PTT. Beim Loslassen: erst PTT weg, der ESP geht nach dem Nachlauf wieder auf 'RX'. Kann der ESP die
+        Erdung nicht bestaetigen, wird NICHT gesendet (Schutz des SDR). Gibt True zurueck, wenn PTT gesetzt wurde."""
+        if not self.ser:
+            return True
+        tr = globals().get('TR')
+        if on:
+            if tr is not None and tr.enabled():
+                ok, msg = tr.tx_begin()
+                if not ok:
+                    print(f"[T/R] TX BLOCKIERT: {msg}")
+                    self.is_tx = False
+                    self.digi_tx = False
+                    self.tr_block_msg = "TX blocked: " + msg
+                    self.tr_block_until = time.time() + 6
+                    try:
+                        socketio.emit('status', get_current_status_dict())
+                    except Exception:
+                        pass
+                    return False
+            self.ser.write(bytes.fromhex("4101000000000006"))
+        else:
+            self.ser.write(bytes.fromhex("4100000000000006"))
+            if tr is not None and tr.enabled():
+                tr.tx_end()
+        return True
 
     def send_cmd(self, hex_press, hex_release):
         if not self.ser: return
@@ -1693,11 +1726,11 @@ def rig_ptt_control(state):
             radio.is_tx = True
             radio.ptt_start_time = time.time()
             if radio.ser:
-                with radio.lock: radio.ser.write(bytes.fromhex("4101000000000006"))
+                with radio.lock: radio.ptt_wire(True)
         elif state == 0 and radio.is_tx:
             radio.is_tx = False
             if radio.ser:
-                with radio.lock: radio.ser.write(bytes.fromhex("4100000000000006"))
+                with radio.lock: radio.ptt_wire(False)
             play_roger_beep()
             
         # CORS-FIX: Rohe HTTP-Response mit Wildcard-Origin-Header bauen
@@ -1950,7 +1983,7 @@ def api_cmd(cmd):
                     time.sleep(0.050)             
                 code = "4101000000000006" if radio.is_tx else "4100000000000006"
                 if radio.ser: 
-                    radio.ser.write(bytes.fromhex(code))
+                    radio.ptt_wire(radio.is_tx)
                 radio.ptt_start_time = time.time()
                 radio.save_config()
         # === UNIVERSAL DIGIMODE TRIGGER FOR JS8CALL ===
@@ -1969,14 +2002,14 @@ def api_cmd(cmd):
                     radio.is_tx = True
                     radio.force_rx = False
                     if radio.ser:
-                        radio.ser.write(bytes.fromhex("4101000000000006"))
+                        radio.ptt_wire(True)
                     radio.ptt_start_time = time.time()
                 return "TX ON OK"
             else:
                 if getattr(radio, 'digi_tx', False):
                     print("[DIGI API] <--- PTT LOSGELASSEN (JS8Call fertig)")
                     if radio.ser:
-                        radio.ser.write(bytes.fromhex("4100000000000006"))
+                        radio.ptt_wire(False)
                     radio.digi_tx = False
                     radio.is_tx = False
                     radio.last_ptt_release_time = time.time()
@@ -2438,7 +2471,7 @@ def api_cmd(cmd):
                     with radio.lock:
                         radio.is_tx = True
                         radio.ptt_start_time = time.time()
-                        if radio.ser: radio.ser.write(bytes.fromhex("4101000000000006"))
+                        if radio.ser: radio.ptt_wire(True)
                     
                     # --- SIGNAL-REPORT VOM PAPAGEI ABSPIELEN ---
                     env = os.environ.copy()
@@ -2455,7 +2488,7 @@ def api_cmd(cmd):
                     # --- SENDER ZURÜCK AUF EMPFANG (RX via CAT) ---
                     with radio.lock:
                         radio.is_tx = False
-                        if radio.ser: radio.ser.write(bytes.fromhex("4100000000000006"))
+                        if radio.ser: radio.ptt_wire(False)
                     
                     # --- SCHRITT 4: UNMUTE ---
                     try:
@@ -2598,7 +2631,7 @@ def api_cmd(cmd):
                     with radio.lock:
                         radio.is_tx = True
                         radio.ptt_start_time = time.time()
-                        if radio.ser: radio.ser.write(bytes.fromhex("4101000000000006"))
+                        if radio.ser: radio.ptt_wire(True)
                     
                     # --- CQ-KONSERVE ABSPIELEN ---
                     env = os.environ.copy()
@@ -2615,7 +2648,7 @@ def api_cmd(cmd):
                     # --- SENDER ZURÜCK AUF EMPFANG (RX via CAT) ---
                     with radio.lock:
                         radio.is_tx = False
-                        if radio.ser: radio.ser.write(bytes.fromhex("4100000000000006"))
+                        if radio.ser: radio.ptt_wire(False)
                     
                     # --- SCHRITT 4: UNMUTE ---
                     try:
@@ -2883,7 +2916,7 @@ def api_cmd(cmd):
             radio.is_tx = False
             radio.save_config()
             if radio.ser: 
-                radio.ser.write(bytes.fromhex("4100000000000006"))
+                radio.ptt_wire(False)
             if 'play_roger_beep' in locals() or 'play_roger_beep' in globals():
                 play_roger_beep()
                 
@@ -3079,6 +3112,261 @@ def api_config_override():
     except Exception as e: 
         return jsonify({"status": "error", "message": str(e)}), 500
 
+class TRSwitch:
+    """T/R-Umschalter: ESP32-C3 am USB. Relais AUS = SDR-Zweig geerdet ('TX', sichere Stellung), Relais EIN = SDR
+    verbunden ('RX'). Protokoll (Textzeilen): PING -> PONG AE5900-TR <v> <st>, HB -> HB <st>, RX/TX -> OK RX/TX.
+    Faellt der Heartbeat (1 s) 3 s lang aus, geht der ESP von allein in die sichere Stellung."""
+    def __init__(self, radio):
+        self.radio = radio
+        self.ser = None
+        self.wlock = threading.Lock()
+        self.cv = threading.Condition()
+        self.connected = False
+        self.port = ""
+        self.fw = ""
+        self.relay = "?"            # 'rx' | 'tx' | '?'  (zuletzt vom ESP gemeldet)
+        self.ack_t = 0.0
+        self.err = "starting"
+        self.wd_events = 0
+        self.rx_after = 0.0         # ab dann darf der ESP wieder auf RX
+        self.in_tx = False
+        self.last_hb = 0.0
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def enabled(self):
+        return bool(self.radio.config.get("tr_enable", False))
+
+    def _candidates(self):
+        import glob
+        p = (self.radio.config.get("tr_port") or "").strip()
+        if p:
+            return [p]
+        return sorted(glob.glob("/dev/serial/by-id/*Espressif*"))
+
+    def _send(self, text):
+        with self.wlock:
+            self.ser.write((text + "\n").encode())
+
+    def _close(self, why):
+        try:
+            if self.ser:
+                self.ser.close()
+        except Exception:
+            pass
+        self.ser = None
+        if self.connected:
+            print(f"[T/R] ESP getrennt: {why}")
+        self.connected = False
+        self.relay = "?"
+        self.err = why
+
+    def _open(self):
+        cands = self._candidates()
+        if not cands:
+            self.err = "no ESP32 found (USB)"
+            return False
+        for port in cands:
+            try:
+                # DTR/RTS vor dem Oeffnen aus: sonst kann der ESP32-C3 beim Oeffnen des Ports zuruecksetzen
+                ser = serial.Serial()
+                ser.port = port
+                ser.baudrate = 115200
+                ser.timeout = 0.1
+                ser.write_timeout = 1.0
+                ser.dtr = False
+                ser.rts = False
+                ser.open()
+            except Exception as e:
+                self.err = f"cannot open {port}: {e}"
+                continue
+            try:
+                ser.reset_input_buffer()
+                ser.write(b"PING\n")
+                t0 = time.time()
+                buf = b""
+                while time.time() - t0 < 2.0:
+                    buf += ser.read(64)
+                    for ln in buf.split(b"\n"):
+                        w = ln.strip().decode(errors="ignore").split()
+                        if len(w) >= 3 and w[0] == "PONG" and w[1] == "AE5900-TR":
+                            self.ser = ser
+                            self.port = port
+                            self.fw = w[2]
+                            self.relay = (w[3].lower() if len(w) > 3 else "?")
+                            self.connected = True
+                            self.err = ""
+                            self.last_hb = time.time()
+                            print(f"[T/R] ESP gefunden: {port} (Firmware {self.fw}, Relais {self.relay})")
+                            return True
+                self.err = f"{port}: no answer (wrong firmware?)"
+            except Exception as e:
+                self.err = f"{port}: {e}"
+            try:
+                ser.close()
+            except Exception:
+                pass
+        return False
+
+    def _handle(self, line):
+        w = line.strip().split()
+        if not w:
+            return
+        with self.cv:
+            if w[0] == "OK" and len(w) > 1 and w[1] in ("RX", "TX"):
+                self.relay = w[1].lower()
+                self.ack_t = time.time()
+            elif w[0] in ("HB", "ST") and len(w) > 1:
+                self.relay = w[1].lower()
+                self.last_hb = time.time()
+            elif w[0] == "EV" and len(w) > 1 and w[1] == "WD":
+                self.wd_events += 1
+                self.relay = "tx"
+                print("[T/R] ESP-Watchdog ausgeloest (kein Heartbeat), SDR geerdet")
+            self.cv.notify_all()
+
+    def _run(self):
+        hb_next = 0.0
+        buf = b""
+        while True:
+            try:
+                if not self.connected:
+                    if not self._open():
+                        time.sleep(2.0)
+                    continue
+                data = self.ser.read(128)
+                if data:
+                    buf += data
+                    while b"\n" in buf:
+                        ln, buf = buf.split(b"\n", 1)
+                        self._handle(ln.decode(errors="ignore"))
+                now = time.time()
+                if now >= hb_next:
+                    self._send("HB")
+                    hb_next = now + 1.0
+                if not self.radio.is_tx and self.enabled():
+                    # zurueck auf RX nach dem Nachlauf; stellt auch nach Watchdog/Wiederverbinden wieder her
+                    if now >= self.rx_after and self.relay != "rx":
+                        self._send("RX")
+                if self.last_hb and now - self.last_hb > 4.0:
+                    self._close("no heartbeat answer")
+                    buf = b""
+            except Exception as e:
+                self._close(f"connection lost ({e})")
+                buf = b""
+                time.sleep(1.0)
+
+    def _wait_ack(self, want, t0, timeout):
+        end = time.time() + timeout
+        with self.cv:
+            while time.time() < end:
+                if self.relay == want and self.ack_t >= t0:
+                    return True
+                self.cv.wait(0.05)
+        return False
+
+    def tx_begin(self):
+        """Blockiert bis der ESP die Erdung bestaetigt hat plus Vorlauf. (True, '') oder (False, Grund)."""
+        self.rx_after = float("inf")
+        if not self.connected:
+            return False, "ESP32 not connected (" + (self.err or "?") + ")"
+        t0 = time.time()
+        try:
+            self._send("TX")
+        except Exception as e:
+            self._close(f"connection lost ({e})")
+            return False, "ESP32 not connected"
+        if not self._wait_ack("tx", t0, 0.6):
+            self.rx_after = 0.0
+            return False, "ESP32 did not confirm"
+        self.in_tx = True
+        time.sleep(max(0, int(self.radio.config.get("tr_lead_ms", 50))) / 1000.0)
+        return True, ""
+
+    def tx_end(self):
+        self.in_tx = False
+        self.rx_after = time.time() + max(0, int(self.radio.config.get("tr_hold_ms", 50))) / 1000.0
+
+    def test(self):
+        """Relais einmal klacken lassen (nur wenn nicht gesendet wird). Liefert Liste von Schritten mit Zeiten."""
+        if self.radio.is_tx:
+            return {"ok": False, "message": "transmitting"}
+        if not self.connected:
+            return {"ok": False, "message": "ESP32 not connected"}
+        steps = []
+        ok = True
+        keep_rx = self.enabled()
+        self.rx_after = float("inf")
+        try:
+            for st in ("rx", "tx", "rx" if keep_rx else "tx"):
+                t0 = time.time()
+                self._send(st.upper())
+                good = self._wait_ack(st, t0, 0.8)
+                steps.append({"state": st, "ok": good, "ms": int((time.time() - t0) * 1000)})
+                ok = ok and good
+                time.sleep(0.35)
+        finally:
+            self.rx_after = 0.0
+        return {"ok": ok, "steps": steps}
+
+    def info(self):
+        c = self.radio.config
+        return {"enabled": self.enabled(), "connected": self.connected, "port": self.port, "fw": self.fw,
+                "relay": self.relay, "error": self.err if not self.connected else "", "wd": self.wd_events,
+                "lead_ms": int(c.get("tr_lead_ms", 50)), "hold_ms": int(c.get("tr_hold_ms", 50)),
+                "port_cfg": c.get("tr_port", ""), "tx": bool(self.radio.is_tx)}
+
+
+TR = TRSwitch(radio)
+
+
+@app.route('/api/tr')
+def api_tr_info():
+    return jsonify(TR.info())
+
+
+@app.route('/api/tr/set')
+def api_tr_set():
+    a = request.args
+    new = {}
+    try:
+        if 'lead' in a:
+            new["tr_lead_ms"] = max(0, min(1000, int(float(a.get('lead')))))
+        if 'hold' in a:
+            new["tr_hold_ms"] = max(0, min(5000, int(float(a.get('hold')))))
+    except ValueError:
+        return jsonify({"status": "error", "message": "invalid number"}), 400
+    if 'port' in a:
+        port = a.get('port', '').strip()
+        if port and (not port.startswith('/dev/') or len(port) > 120 or any(c in port for c in " ;|&$`\\?#")):
+            return jsonify({"status": "error", "message": "Port must look like /dev/ttyACM0 (or empty for automatic)"}), 400
+        new["tr_port"] = port
+    if 'enabled' in a:
+        want = a.get('enabled') in ('1', 'true')
+        if want and not TR.enabled():
+            if radio.is_tx:
+                return jsonify({"status": "error", "message": "Not while transmitting"}), 409
+            if not TR.connected:
+                return jsonify({"status": "error", "message": "ESP32 not found: " + (TR.err or "check the USB cable")}), 409
+        if not want and TR.enabled() and radio.is_tx:
+            return jsonify({"status": "error", "message": "Not while transmitting"}), 409
+        new["tr_enable"] = want
+    if new:
+        old_port = radio.config.get("tr_port", "")
+        with radio.lock:
+            radio.config.update(new)
+            radio.save_config()
+        if "tr_port" in new and new["tr_port"] != old_port:
+            TR._close("port changed")
+        if new.get("tr_enable") is False:
+            TR.rx_after = 0.0
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/tr/test')
+def api_tr_test():
+    return jsonify(TR.test())
+
+
 def ptt_heartbeat_watchdog(radio):
     global LAST_BROWSER_HEARTBEAT
     print("PTT Heartbeat-Waechter (30 Sek.) aktiv und synchronisiert.")
@@ -3094,7 +3382,7 @@ def ptt_heartbeat_watchdog(radio):
                         radio.is_tx = False
                         radio.save_config()
                         if radio.ser: 
-                            radio.ser.write(bytes.fromhex("4100000000000006"))
+                            radio.ptt_wire(False)
                     if 'play_roger_beep' in locals() or 'play_roger_beep' in globals():
                         play_roger_beep()
             time.sleep(0.5)
@@ -4148,6 +4436,7 @@ def get_current_status_dict():
         "MAX_SQ": radio.config.get("max_sq_steps", 80),
         "MAX_ASQ": radio.config.get("max_asq_steps", 9),
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
+        "TR_BLOCK": (getattr(radio, "tr_block_msg", "") if time.time() < getattr(radio, "tr_block_until", 0) else ""),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
         "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),

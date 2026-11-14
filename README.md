@@ -184,6 +184,10 @@ That's basically it; anyone with a basic level of technical knowledge should be 
 
 [Hamlib / Rigctl / OpenWebRX (HAMLIBOWRX.md)](HAMLIBOWRX.md)
 
+### Optional: T/R switch to protect an SDR on the same antenna:
+
+An ESP32-C3 with a relay grounds the SDR branch while the radio transmits. Parts, schematic, flashing and setup: [T/R switch (TRSWITCH.md)](TRSWITCH.md)
+
 ### Digimodes (WSJT-CB, WSJT-X, JS8Call) on the computer you browse with:
 
 The browser can play the received audio to a chosen device and take the microphone from a chosen device (Setup & Sync -> Audio: "Audio output" and "Microphone"). With a virtual audio cable between the browser and the digimode program no extra bridge program is needed. Tested on Ubuntu (PipeWire) with Brave, Chrome and Firefox together with WSJT-CB and JS8Call. Choosing the output works in Chrome, Edge, Brave and current Firefox on the desktop, not on iPhone/Safari. Transmitting needs the HTTPS address (port 5443), see Troubleshooting.
@@ -254,18 +258,20 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current version: **V-111126 ADR**. Always update using `git pull`.
+Current version: **V-141126 TRS**. Always update using `git pull`.
 
-1. OpenWebRX address per function: the RF waterfall and the S-meter each have their own OpenWebRX address (default 127.0.0.1:8073), Setup & Sync -> "Display & background" (waterfall) and "S-meter & RF waterfall" (S-meter). So you can use two different OpenWebRX servers at the same time, for example one per antenna, or a ESP32 S-meter together with the waterfall of any OpenWebRX in your network. With the same address on both only one connection is opened. The entry "RF waterfall" in the display mode shows the selected source and address.
-2. The S-meter status line now shows the reading in percent and tells you when it is below "Floor" or above "Full", so a not yet calibrated source no longer looks dead.
-3. "Status correction override" moved into its own collapsible section between "Camera" and "Security".
-4. Documentation: new section "Digimodes (WSJT-CB, WSJT-X, JS8Call)" with a virtual audio cable and pictures.
+1. New, optional: T/R switch. An ESP32-C3 with a relay grounds the SDR branch while the AE-5900 transmits and connects it again for receiving, so an RTL-SDR on the same antenna is protected. Setup & Sync -> Radio & keys -> "T/R switch": on/off switch, lead and hold time (default 50 ms), port (automatic by default), status line with connection check and a "Test relay" button. It can only be switched on while the ESP32 is connected. If the ESP32 does not confirm the grounding, the radio does not transmit (red message). The relay is de-energised in the grounded position, so power loss, a crash or a lost connection always end safe; the ESP32 also falls back by itself without the heartbeat of the program. Sketch, parts list and schematic: [TRSWITCH.md](TRSWITCH.md). Built and tested with an ESP32-C3 Super Mini and an HK19F-5V relay. Keep VOX off.
+2. Internal: all PTT switching (web interface, Hamlib/rigctl, digimode gateway, CQ/QSO playback, PTT timeout and kill switch) now goes through one central function.
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 
 ### Extras and Test Runs
 
 1. WSJT-CB works quite well with it. The setup (virtual audio cable, audio settings, Hamlib) is described in the section "Digimodes" above.
+
+![AE5900_Remote_v2](/pictures/wsjt-cb.jpg)
+
+Link to [WSJT-CB](https://github.com/vash909/WSJT-CB)
 
 2. User feedback from April 30, 2026: Linux Mint around version 21.3 and below don't understand the Python Vol- and Vol+.
 Just in case someone tests on such a system. A mint upgrade helps solve the problem.
@@ -305,7 +311,7 @@ Where the people talking about:
 
 If this project is useful to you, you can buy me a coffee. Completely voluntary, the software stays free.
 
-<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
+[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
 
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 

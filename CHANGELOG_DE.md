@@ -6,7 +6,12 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-111126 ADR (aktuell)
+### V-141126 TRS (aktuell)
+
+1. Neu, optional: T/R-Umschalter. Ein ESP32-C3 mit Relais erdet den SDR-Zweig, solange das AE-5900 sendet, und verbindet ihn zum Empfangen wieder. So ist ein RTL-SDR an der gleichen Antenne geschützt. Setup & Sync -> Radio & keys -> „T/R switch“: Ein/Aus-Schalter, Vor- und Nachlaufzeit (Standard 50 ms), Port (standardmäßig automatisch), Statuszeile mit Verbindungsprüfung und ein Knopf „Test relay“. Einschalten geht nur, solange der ESP32 verbunden ist. Bestätigt der ESP32 die Erdung nicht, wird nicht gesendet (rote Meldung). Das Relais ist in der geerdeten Stellung stromlos, deshalb enden Stromausfall, Absturz oder eine verlorene Verbindung immer sicher; der ESP32 fällt auch von selbst zurück, wenn der Heartbeat des Programms ausbleibt. Sketch, Teileliste und Schaltung: [TRSWITCH_DE.md](TRSWITCH_DE.md). Aufgebaut und getestet mit einem ESP32-C3 Super Mini und einem HK19F-5V-Relais. VOX ausgeschaltet lassen.
+2. Intern: Das gesamte PTT-Schalten (Weboberfläche, Hamlib/rigctl, Digimode-Gateway, CQ/QSO-Wiedergabe, PTT-Timeout und Kill-Switch) läuft jetzt über eine zentrale Funktion.
+
+### V-111126 ADR
 
 OpenWebRX-Adresse pro Funktion: HF-Wasserfall und S-Meter haben je eine eigene OpenWebRX-Adresse (Standard 127.0.0.1:8073), in Setup & Sync unter "Display & background" (Wasserfall) und "S-meter & RF waterfall" (S-Meter). So lassen sich zwei verschiedene OpenWebRX-Server gleichzeitig nutzen, zum Beispiel einer pro Antenne, oder das ESP32-S-Meter zusammen mit dem Wasserfall eines beliebigen OpenWebRX im Netz. Bei gleicher Adresse wird nur eine Verbindung geöffnet. Der Eintrag "RF waterfall" im Anzeigemodus nennt die gewählte Quelle und Adresse.
 Die S-Meter-Statuszeile zeigt den Wert jetzt auch in Prozent und weist darauf hin, wenn er unter "Floor" oder über "Full" liegt. Eine noch nicht kalibrierte Quelle wirkt so nicht mehr tot.
