@@ -3045,7 +3045,7 @@ def api_config_override():
         data = request.get_json()
         if not data: 
             return jsonify({"status": "error", "message": "No data"}), 400
-        mapping = {"toggle_vox": "vox_enabled", "toggle_mute": "mute_enabled", "toggle_asq": "asq_enabled", "toggle_lock": "lock_enabled"}
+        mapping = {"toggle_mute": "mute_enabled", "toggle_asq": "asq_enabled", "toggle_lock": "lock_enabled"}
         with radio.lock:
             for json_key, config_key in mapping.items():
                 if data.get(json_key) is True: 
