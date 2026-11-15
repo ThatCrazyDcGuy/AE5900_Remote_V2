@@ -260,7 +260,7 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 Current version: **V-151126 VOX**. Always update using `git pull`.
 
-1. New: the VOX is now a software function. The VOX button no longer sends a command to the radio; the microphone of the browser triggers PTT when the level goes above a threshold. Setup & Sync -> Radio & keys -> "VOX (software)": Sensitivity (with a live level bar), Delay after speech and "Do not key while a signal is received". The beginning of the speech is not cut off, and switching VOX off releases PTT at once. The VOX goes through the T/R switch as well. The browser microphone must be running ("Talk (mic)").
+1. New: the VOX is now a software function. The VOX button no longer sends a command to the radio; the microphone of the browser triggers PTT when the level goes above a threshold. Setup & Sync -> Radio & keys -> "VOX (software)": Sensitivity (with a live level bar and the trigger line), Delay after speech (200-5000 ms, default 800) and "Do not key while a signal is received". The beginning of the speech is not cut off, and switching VOX off releases PTT at once, also while there is noise. The VOX goes through the T/R switch as well. The browser microphone must be running ("Talk (mic)").
 2. The VOX of the radio itself is not used any more. After the update the VOX starts switched off. If it was on before, check in the AE-5900 menu that the VOX of the radio is off.
 3. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
 
@@ -312,7 +312,7 @@ Where the people talking about:
 
 If this project is useful to you, you can buy me a coffee. Completely voluntary, the software stays free.
 
-[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
+<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
 
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 

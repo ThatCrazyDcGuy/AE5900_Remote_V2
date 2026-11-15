@@ -266,7 +266,7 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 Aktuell: **V-151126 VOX**. Aktualisieren immer mit `git pull`.
 
-1. Neu: Die VOX ist jetzt eine Software-Funktion. Der VOX-Knopf sendet keinen Befehl mehr an das Funkgerät; das Mikrofon des Browsers löst PTT aus, wenn der Pegel über eine Schwelle geht. Setup & Sync -> Radio & keys -> „VOX (software)“: Sensitivity (mit Live-Pegelbalken), Delay after speech und „Do not key while a signal is received“. Der Wortanfang geht nicht verloren, und beim Ausschalten der VOX wird PTT sofort losgelassen. Die VOX läuft auch über den T/R-Umschalter. Das Browser-Mikrofon muss laufen („Talk (mic)“).
+1. Neu: Die VOX ist jetzt eine Software-Funktion. Der VOX-Knopf sendet keinen Befehl mehr an das Funkgerät; das Mikrofon des Browsers löst PTT aus, wenn der Pegel über eine Schwelle geht. Setup & Sync -> Radio & keys -> „VOX (software)“: Sensitivity (mit Live-Pegelbalken und Auslöse-Linie), Delay after speech (200-5000 ms, Standard 800) und „Do not key while a signal is received“. Der Wortanfang geht nicht verloren, und beim Ausschalten der VOX wird PTT sofort losgelassen, auch bei Lärm. Die VOX läuft auch über den T/R-Umschalter. Das Browser-Mikrofon muss laufen („Talk (mic)“).
 2. Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet. Falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
 3. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
 
@@ -318,7 +318,7 @@ Wo die Leute darüber sprechen:
 
 Wenn dir das Projekt nützt, kannst du mir einen Kaffee spendieren. Völlig freiwillig, die Software bleibt kostenlos.
 
-[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
+<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
 
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 
