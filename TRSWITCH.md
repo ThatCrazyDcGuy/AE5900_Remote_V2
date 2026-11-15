@@ -19,7 +19,7 @@ This is optional. Without it nothing changes.
 
 **If the ESP32 does not confirm, the radio does not transmit.** A red message appears and the PTT button jumps back.
 
-> Note: the protection only covers transmissions that the program triggers. If the radio itself starts to transmit (its own VOX), the ESP32 does not know. Keep VOX off.
+> Note: the protection covers every transmission that the program triggers, including the VOX of the web interface (it is a software VOX in the program, see the changelog). The VOX of the radio itself is not used any more; if it is still switched on in the AE-5900 menu, the radio would start to transmit without the ESP32 knowing, so keep it off in the radio menu.
 
 ## Parts
 

@@ -19,7 +19,7 @@ Das ist optional. Ohne den Umschalter ändert sich nichts.
 
 **Bestätigt der ESP32 nicht, wird nicht gesendet.** Es erscheint eine rote Meldung, und der PTT-Knopf springt zurück.
 
-> Hinweis: Der Schutz gilt nur für Sendungen, die das Programm auslöst. Beginnt das Funkgerät von selbst zu senden (eigenes VOX), weiß der ESP32 nichts davon. VOX bitte ausgeschaltet lassen.
+> Hinweis: Der Schutz gilt für jede Sendung, die das Programm auslöst, auch für das VOX der Weboberfläche (das ist eine Software-VOX im Programm, siehe Änderungsübersicht). Die VOX des Funkgeräts selbst wird nicht mehr benutzt; ist sie im Menü des AE-5900 noch eingeschaltet, würde das Funkgerät senden, ohne dass der ESP32 davon weiß. Im Funkgeräte-Menü bitte ausgeschaltet lassen.
 
 ## Teileliste
 

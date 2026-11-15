@@ -6,7 +6,13 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-141126 TRS (aktuell)
+### V-151126 VOX (aktuell)
+
+1. Neu: Die VOX ist jetzt eine Software-Funktion des Programms. Der VOX-Knopf sendet keinen Befehl mehr an das Funkgerät; stattdessen löst das Mikrofon des Browsers PTT aus, wenn der Pegel über eine Schwelle geht. Setup & Sync -> Radio & keys -> „VOX (software)“: Sensitivity (mit Live-Pegelbalken und Auslöse-Linie), Delay after speech (200-5000 ms, Standard 800) und „Do not key while a signal is received“. Das Audio der ersten Silbe wird zurückgehalten, bis PTT wirklich steht, so geht der Wortanfang nicht verloren. Am Ende wird der Rogerbeep gesendet und PTT losgelassen. Beim Ausschalten der VOX wird PTT sofort losgelassen, auch bei Lärm. Weil derselbe PTT-Weg wie sonst benutzt wird, läuft die VOX auch über den T/R-Umschalter. Das Browser-Mikrofon muss laufen („Talk (mic)“).
+2. Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet. Falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist (ein von selbst sendendes Funkgerät wird vom Programm weiterhin gestoppt, würde aber jedes Mal kurz senden).
+3. T/R-Umschalter: Lange Portnamen in der Statuszeile werden jetzt umgebrochen.
+
+### V-141126 TRS
 
 1. Neu, optional: T/R-Umschalter. Ein ESP32-C3 mit Relais erdet den SDR-Zweig, solange das AE-5900 sendet, und verbindet ihn zum Empfangen wieder. So ist ein RTL-SDR an der gleichen Antenne geschützt. Setup & Sync -> Radio & keys -> „T/R switch“: Ein/Aus-Schalter, Vor- und Nachlaufzeit (Standard 50 ms), Port (standardmäßig automatisch), Statuszeile mit Verbindungsprüfung und ein Knopf „Test relay“. Einschalten geht nur, solange der ESP32 verbunden ist. Bestätigt der ESP32 die Erdung nicht, wird nicht gesendet (rote Meldung). Das Relais ist in der geerdeten Stellung stromlos, deshalb enden Stromausfall, Absturz oder eine verlorene Verbindung immer sicher; der ESP32 fällt auch von selbst zurück, wenn der Heartbeat des Programms ausbleibt. Sketch, Teileliste und Schaltung: [TRSWITCH_DE.md](TRSWITCH_DE.md). Aufgebaut und getestet mit einem ESP32-C3 Super Mini und einem HK19F-5V-Relais. VOX ausgeschaltet lassen.
 2. Intern: Das gesamte PTT-Schalten (Weboberfläche, Hamlib/rigctl, Digimode-Gateway, CQ/QSO-Wiedergabe, PTT-Timeout und Kill-Switch) läuft jetzt über eine zentrale Funktion.

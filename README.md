@@ -59,7 +59,7 @@ Flexible solutions provide better access. And that's exactly what this project s
 4. Clarifier
 5. Lock
 6. Mute
-7. Vox
+7. VOX (software: sensitivity and delay adjustable)
 8. MW (multi channel scan)
 9. Squelch // Autosquelch
 10. PTT kill switch activates after 30 seconds following connection loss.
@@ -258,10 +258,11 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current version: **V-141126 TRS**. Always update using `git pull`.
+Current version: **V-151126 VOX**. Always update using `git pull`.
 
-1. New, optional: T/R switch. An ESP32-C3 with a relay grounds the SDR branch while the AE-5900 transmits and connects it again for receiving, so an RTL-SDR on the same antenna is protected. Setup & Sync -> Radio & keys -> "T/R switch": on/off switch, lead and hold time (default 50 ms), port (automatic by default), status line with connection check and a "Test relay" button. It can only be switched on while the ESP32 is connected. If the ESP32 does not confirm the grounding, the radio does not transmit (red message). The relay is de-energised in the grounded position, so power loss, a crash or a lost connection always end safe; the ESP32 also falls back by itself without the heartbeat of the program. Sketch, parts list and schematic: [TRSWITCH.md](TRSWITCH.md). Built and tested with an ESP32-C3 Super Mini and an HK19F-5V relay. Keep VOX off.
-2. Internal: all PTT switching (web interface, Hamlib/rigctl, digimode gateway, CQ/QSO playback, PTT timeout and kill switch) now goes through one central function.
+1. New: the VOX is now a software function. The VOX button no longer sends a command to the radio; the microphone of the browser triggers PTT when the level goes above a threshold. Setup & Sync -> Radio & keys -> "VOX (software)": Sensitivity (with a live level bar), Delay after speech and "Do not key while a signal is received". The beginning of the speech is not cut off, and switching VOX off releases PTT at once. The VOX goes through the T/R switch as well. The browser microphone must be running ("Talk (mic)").
+2. The VOX of the radio itself is not used any more. After the update the VOX starts switched off. If it was on before, check in the AE-5900 menu that the VOX of the radio is off.
+3. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 
@@ -311,7 +312,7 @@ Where the people talking about:
 
 If this project is useful to you, you can buy me a coffee. Completely voluntary, the software stays free.
 
-<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
+[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
 
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 

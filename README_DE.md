@@ -89,7 +89,7 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 4. Clarifier
 5. Lock
 6. Mute
-7. Vox
+7. VOX (Software: Empfindlichkeit und Nachlauf einstellbar)
 8. MW (Multi-Channel-Scan)
 9. Squelch // Autosquelch
 10. Der PTT-Kill-Schalter wird 30 Sekunden nach Verbindungsverlust aktiviert.
@@ -264,10 +264,11 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-141126 TRS**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-151126 VOX**. Aktualisieren immer mit `git pull`.
 
-1. Neu, optional: T/R-Umschalter. Ein ESP32-C3 mit Relais erdet den SDR-Zweig, solange das AE-5900 sendet, und verbindet ihn zum Empfangen wieder. So ist ein RTL-SDR an der gleichen Antenne geschützt. Setup & Sync -> Radio & keys -> „T/R switch“: Ein/Aus-Schalter, Vor- und Nachlaufzeit (Standard 50 ms), Port (standardmäßig automatisch), Statuszeile mit Verbindungsprüfung und ein Knopf „Test relay“. Einschalten geht nur, solange der ESP32 verbunden ist. Bestätigt der ESP32 die Erdung nicht, wird nicht gesendet (rote Meldung). Das Relais ist in der geerdeten Stellung stromlos, deshalb enden Stromausfall, Absturz oder eine verlorene Verbindung immer sicher; der ESP32 fällt auch von selbst zurück, wenn der Heartbeat des Programms ausbleibt. Sketch, Teileliste und Schaltung: [TRSWITCH_DE.md](TRSWITCH_DE.md). Aufgebaut und getestet mit einem ESP32-C3 Super Mini und einem HK19F-5V-Relais. VOX ausgeschaltet lassen.
-2. Intern: Das gesamte PTT-Schalten (Weboberfläche, Hamlib/rigctl, Digimode-Gateway, CQ/QSO-Wiedergabe, PTT-Timeout und Kill-Switch) läuft jetzt über eine zentrale Funktion.
+1. Neu: Die VOX ist jetzt eine Software-Funktion. Der VOX-Knopf sendet keinen Befehl mehr an das Funkgerät; das Mikrofon des Browsers löst PTT aus, wenn der Pegel über eine Schwelle geht. Setup & Sync -> Radio & keys -> „VOX (software)“: Sensitivity (mit Live-Pegelbalken), Delay after speech und „Do not key while a signal is received“. Der Wortanfang geht nicht verloren, und beim Ausschalten der VOX wird PTT sofort losgelassen. Die VOX läuft auch über den T/R-Umschalter. Das Browser-Mikrofon muss laufen („Talk (mic)“).
+2. Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet. Falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
+3. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
@@ -317,7 +318,7 @@ Wo die Leute darüber sprechen:
 
 Wenn dir das Projekt nützt, kannst du mir einen Kaffee spendieren. Völlig freiwillig, die Software bleibt kostenlos.
 
-<a href="https://buymeacoffee.com/thatcrazydcguy"><img src="/pictures/qr-code_bmac.png" width="200" alt="Buy me a coffee"></a>
+[![Buy me a coffee](/pictures/qr-code_bmac.png)](https://buymeacoffee.com/thatcrazydcguy)
 
 [buymeacoffee.com/thatcrazydcguy](https://buymeacoffee.com/thatcrazydcguy)
 

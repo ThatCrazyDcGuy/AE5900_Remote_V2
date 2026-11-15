@@ -6,7 +6,13 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-141126 TRS (current)
+### V-151126 VOX (current)
+
+1. New: the VOX is now a software function of the program. The VOX button no longer sends a command to the radio; instead the microphone of the browser triggers PTT when the level goes above a threshold. Setup & Sync -> Radio & keys -> "VOX (software)": Sensitivity (with a live level bar and the trigger line), Delay after speech (200-5000 ms, default 800) and "Do not key while a signal is received". The audio of the first syllable is held back until PTT is really on, so the beginning of the speech is not cut off. At the end the roger beep is sent and PTT is released. Switching VOX off releases PTT at once, also while there is noise. Because it uses the same PTT path as everything else, the VOX also goes through the T/R switch. The browser microphone must be running ("Talk (mic)").
+2. The VOX of the radio itself is not used any more. After the update the VOX starts switched off. If it was switched on before, check in the AE-5900 menu that the VOX of the radio is off (a self-transmitting radio is still stopped by the program, but it would transmit briefly each time).
+3. T/R switch: long port names in the status line wrap now.
+
+### V-141126 TRS
 
 1. New, optional: T/R switch. An ESP32-C3 with a relay grounds the SDR branch while the AE-5900 transmits and connects it again for receiving, so an RTL-SDR on the same antenna is protected. Setup & Sync -> Radio & keys -> "T/R switch": on/off switch, lead and hold time (default 50 ms), port (automatic by default), status line with connection check and a "Test relay" button. It can only be switched on while the ESP32 is connected. If the ESP32 does not confirm the grounding, the radio does not transmit (red message). The relay is de-energised in the grounded position, so power loss, a crash or a lost connection always end safe; the ESP32 also falls back by itself without the heartbeat of the program. Sketch, parts list and schematic: [TRSWITCH.md](TRSWITCH.md). Built and tested with an ESP32-C3 Super Mini and an HK19F-5V relay. Keep VOX off.
 2. Internal: all PTT switching (web interface, Hamlib/rigctl, digimode gateway, CQ/QSO playback, PTT timeout and kill switch) now goes through one central function.

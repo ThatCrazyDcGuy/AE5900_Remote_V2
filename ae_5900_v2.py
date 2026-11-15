@@ -205,6 +205,7 @@ setup_audio()
 # =========================================================================
 mic_tx_queue = queue.Queue(maxsize=30)
 mic_tx_stream = None
+svox_gate_closed = False   # Software-VOX: Mikrofon-Audio zurueckhalten, bis PTT wirklich steht
 
 _mic_tx_leftover = bytearray()
 
@@ -217,6 +218,8 @@ def _mic_tx_callback(in_data, frame_count, time_info, status):
     global _mic_tx_leftover
     try:
         needed = frame_count * 2
+        if svox_gate_closed:
+            return (b'\x00' * needed, pyaudio.paContinue)
         while len(_mic_tx_leftover) < needed:
             try:
                 chunk = mic_tx_queue.get_nowait()
@@ -375,6 +378,7 @@ class RadioInterface:
         self.is_tx = False
         self.is_rx = False
         self.is_device_sending = False
+        self.svox_active = False
         self.force_rx = False
         self.is_scanning = False
         self.sw_scan_active = False
@@ -523,6 +527,10 @@ class RadioInterface:
             "sdr_smooth": 0.5,          # Glaettung des S-Meters (0.05 traege ... 1.0 = keine Glaettung)
             "owrx_smooth": 0.3,
             "owrx_addr": "127.0.0.1:8073",  # OpenWebRX fuer das S-Meter (Quelle "owrx"), nur Host:Port
+            "svox_sens": 50,            # Software-VOX: Empfindlichkeit 0-100 (hoeher = empfindlicher)
+            "svox_hang_ms": 800,        # Software-VOX: Nachlauf nach Sprachende
+            "svox_block_rx": True,      # Software-VOX: nicht ausloesen, solange ein Signal empfangen wird
+            "svox_ver": 1,
             "tr_enable": False,         # T/R-Umschalter (ESP32-C3 + Relais, erdet beim Senden den SDR-Zweig)
             "tr_lead_ms": 50,           # Vorlauf: so lange wartet das Programm nach der Bestaetigung des ESP, bevor PTT gesetzt wird
             "tr_hold_ms": 50,           # Nachlauf: so lange nach dem Loslassen von PTT bleibt der SDR-Zweig noch geerdet
@@ -588,6 +596,12 @@ class RadioInterface:
                         disk_config["clar_offsets"] = {str(ch).zfill(2): 0 for ch in range(1, 41)}
                         disk_config["clar_offsets"][str(disk_config.get("last_ch", 1)).zfill(2)] = int(old_val)
                     if "clar_offsets" not in disk_config: disk_config["clar_offsets"] = default["clar_offsets"]
+                    if "svox_ver" not in disk_config:
+                        # Aus einer aelteren Version: "vox_enabled" war dort der VOX des Funkgeraets, jetzt die Software-VOX. Sie startet aus.
+                        if disk_config.get("vox_enabled"):
+                            print("[VOX] Hinweis: Die VOX des Funkgeraets wird nicht mehr benutzt. Falls sie im Menue des AE-5900 noch an ist, dort ausschalten.")
+                        disk_config["vox_enabled"] = False
+                        disk_config["svox_ver"] = 1
                     self.config = {**default, **disk_config}
             except: self.config = default
         else: self.config = default
@@ -961,10 +975,10 @@ class RadioInterface:
                             except Exception as e:
                                 print(f"Fehler beim Live-Config-Read: {e}")
 
-                            if not self.config.get("vox_enabled", False) and not getattr(self, 'is_vox_changing', False) and not getattr(self, 'digi_tx', False):
+                            if not getattr(self, 'is_vox_changing', False) and not getattr(self, 'digi_tx', False) and not getattr(self, 'svox_active', False):
                                 with self.lock:
                                     self.ser.write(bytes.fromhex("4100000000000006"))
-                                print("VOX-VETO: Automatisches Senden unterdrueckt.")
+                                print("VOX-VETO: Das Funkgeraet hat von selbst gesendet (VOX im Menue des AE-5900 ausschalten; die Software-VOX schaltet PTT selbst).")
                                 vox_detected = False
 
                         if self.force_rx and not getattr(self, 'is_vox_changing', False):
@@ -1805,6 +1819,12 @@ def api_cmd(cmd):
                 radio.config["vol"] = max(0, current_vol - 5)
             radio.save_config()
 
+        elif cmd == 'VOX_TOGGLE':
+            # Software-VOX (kein Befehl mehr an das Funkgeraet)
+            radio.config["vox_enabled"] = not radio.config.get("vox_enabled", False)
+            radio.save_config()
+            print("[VOX] Software-VOX " + ("AN" if radio.config["vox_enabled"] else "AUS"))
+
         elif cmd in ['U', 'D']:
             band = radio.config.get("current_band", "EU")
             current_hardware_mode = MODES[radio.mode_idx].upper()
@@ -2203,28 +2223,9 @@ def api_cmd(cmd):
             label_key = f"{cmd.lower()}_label"
             current_label = radio.config.get(label_key, "").upper()
             if "VOX" in current_label:
-                if radio.config.get("vox_enabled", False):
-                    old_vol = radio.config.get("vol", 85)
-                    os.system("amixer set Master 0%") 
-                    radio.audio_mute = True
-                    
-                    def delayed_vox_off():
-                        radio.send_cmd(f"41000100{p_codes[cmd]}000006", f"41000000{p_codes[cmd]}000006")
-                        radio.config["vox_enabled"] = False
-                        radio.force_rx = True 
-                        radio.save_config()
-                        time.sleep(2.5)
-                        os.system(f"amixer set Master {old_vol}%")
-                        radio.audio_mute = False
-                        
-                    threading.Thread(target=delayed_vox_off, daemon=True).start()
-                else:
-                    if radio.ser:
-                        radio.ser.write(bytes.fromhex(f"41000100{p_codes[cmd]}000006"))
-                        time.sleep(0.08)
-                        radio.ser.write(bytes.fromhex(f"41000000{p_codes[cmd]}000006"))
-                    radio.config["vox_enabled"] = True
-                    radio.save_config()
+                radio.config["vox_enabled"] = not radio.config.get("vox_enabled", False)
+                radio.save_config()
+                print("[VOX] Software-VOX " + ("AN" if radio.config["vox_enabled"] else "AUS"))
             else:
                 if radio.ser:
                     radio.ser.write(bytes.fromhex(f"41000100{p_codes[cmd]}000006"))
@@ -4352,6 +4353,161 @@ def handle_connect():
 
 
 
+# =========================================================================
+# SOFTWARE-VOX: Das Mikrofon-Audio vom Browser kommt ohnehin hier an. Ueberschreitet der Pegel die Schwelle, wird PTT
+# ueber dieselbe zentrale Funktion gesetzt wie bei der PTT-Taste (also auch mit T/R-Umschalter). Das Audio dieses
+# Pakets wird zurueckgehalten, bis PTT steht - so geht kein Wortanfang verloren. Nach dem Sprachende laeuft der
+# eingestellte Nachlauf, dann Rogerbeep und PTT aus.
+# =========================================================================
+svox = {"level_db": -99.0, "last_pkt": 0.0, "last_voice": 0.0, "cool_until": 0.0}
+
+def svox_thr_db():
+    sens = max(0, min(100, int(radio.config.get("svox_sens", 50))))
+    return -15.0 - 0.6 * sens          # 0 = -15 dBFS (unempfindlich) ... 100 = -75 dBFS (sehr empfindlich)
+
+def _svox_levels(samples):
+    a = np.asarray(samples, dtype=np.float32) / 32768.0
+    n = (len(a) // 480) * 480          # 480 Samples = 10 ms bei 48 kHz
+    if n == 0:
+        return []
+    rms = np.sqrt(np.mean(a[:n].reshape(-1, 480) ** 2, axis=1))
+    return [20.0 * float(np.log10(max(float(r), 1e-5))) for r in rms]
+
+def _svox_queued_s():
+    return min(2.0, mic_tx_queue.qsize() * 8192 / 48000.0 + len(_mic_tx_leftover) / 2 / 48000.0)
+
+def _svox_do_key():
+    global svox_gate_closed
+    ok = False
+    try:
+        radio.is_tx = True
+        radio.force_rx = False
+        radio.ptt_start_time = time.time()
+        with radio.lock:
+            radio.ptt_wire(True)
+        ok = bool(radio.is_tx)
+    except Exception as e:
+        print(f"[VOX] Fehler beim Tasten: {e}")
+    if ok:
+        radio.svox_active = True
+        svox["last_voice"] = time.time()
+        print("[VOX] ---> TX (Sprache erkannt)")
+    else:
+        radio.svox_active = False
+        radio.is_tx = False
+        svox["cool_until"] = time.time() + 2.0
+        while not mic_tx_queue.empty():
+            try: mic_tx_queue.get_nowait()
+            except queue.Empty: break
+        _mic_tx_leftover.clear()
+    svox_gate_closed = False
+    try:
+        socketio.emit('status', get_current_status_dict())
+    except Exception:
+        pass
+
+def _svox_do_release():
+    radio.svox_active = False
+    if not radio.is_tx:
+        return
+    print("[VOX] <--- TX Ende (Nachlauf abgelaufen)")
+    try:
+        chosen_beep = radio.config.get("current_beep", "None")
+        if chosen_beep != "None" and radio.config.get("roger_beep_enabled", True):
+            beep_path = os.path.join(SCRIPT_DIR, "beeps", chosen_beep)
+            if os.path.exists(beep_path):
+                env = os.environ.copy()
+                env['PULSE_SINK'] = audio_sink_name()
+                subprocess.run(["paplay", beep_path], env=env, check=False)
+        time.sleep(0.050)
+        with radio.lock:
+            radio.is_tx = False
+            radio.ptt_wire(False)
+            radio.ptt_start_time = time.time()
+        radio.last_ptt_release_time = time.time()
+    except Exception as e:
+        print(f"[VOX] Fehler beim Loslassen: {e}")
+        radio.is_tx = False
+    try:
+        socketio.emit('status', get_current_status_dict())
+    except Exception:
+        pass
+
+def svox_feed(samples):
+    """Wird mit jedem Mikrofon-Paket aufgerufen, BEVOR es in die Ausgabe-Warteschlange kommt."""
+    global svox_gate_closed
+    now = time.time()
+    svox["last_pkt"] = now
+    lv = _svox_levels(samples)
+    if not lv:
+        return
+    svox["level_db"] = max(lv)
+    thr = svox_thr_db()
+    if radio.svox_active:
+        if max(lv) >= thr:
+            svox["last_voice"] = now
+        return
+    if not radio.config.get("vox_enabled", False):
+        return
+    # zwei aufeinanderfolgende 10-ms-Bloecke ueber der Schwelle = Sprache (ein einzelner Knacks loest nicht aus)
+    if not any(lv[i] >= thr and lv[i + 1] >= thr for i in range(len(lv) - 1)):
+        return
+    if radio.is_tx or svox_gate_closed or now < svox["cool_until"]:
+        return
+    if radio.config.get("svox_block_rx", True) and radio.is_rx:
+        return
+    svox_gate_closed = True
+    threading.Thread(target=_svox_do_key, daemon=True).start()
+
+def svox_watch():
+    while True:
+        try:
+            time.sleep(0.05)
+            if not radio.svox_active:
+                continue
+            if not radio.is_tx:                       # PTT wurde anderweitig geloest (Taste, Kill-Switch, Timeout)
+                radio.svox_active = False
+                continue
+            now = time.time()
+            hang = max(200, int(radio.config.get("svox_hang_ms", 800))) / 1000.0
+            gone = (now - svox["last_pkt"]) > 1.5 or not radio.config.get("vox_enabled", False)
+            if gone or (now - svox["last_voice"]) > hang + _svox_queued_s():
+                _svox_do_release()
+        except Exception as e:
+            print(f"[VOX] Waechter-Fehler: {e}")
+            time.sleep(1.0)
+
+threading.Thread(target=svox_watch, daemon=True).start()
+
+@app.route('/api/svox')
+def api_svox_info():
+    c = radio.config
+    return jsonify({"enabled": bool(c.get("vox_enabled", False)), "active": bool(radio.svox_active),
+                    "level_db": round(svox["level_db"], 1) if time.time() - svox["last_pkt"] < 1.5 else None,
+                    "thr_db": round(svox_thr_db(), 1), "mic_running": (time.time() - svox["last_pkt"]) < 1.5,
+                    "sens": int(c.get("svox_sens", 50)), "hang_ms": int(c.get("svox_hang_ms", 800)),
+                    "block_rx": bool(c.get("svox_block_rx", True))})
+
+@app.route('/api/svox/set')
+def api_svox_set():
+    a = request.args
+    new = {}
+    try:
+        if 'sens' in a:
+            new["svox_sens"] = max(0, min(100, int(float(a.get('sens')))))
+        if 'hang' in a:
+            new["svox_hang_ms"] = max(200, min(5000, int(float(a.get('hang')))))
+    except ValueError:
+        return jsonify({"status": "error", "message": "invalid number"}), 400
+    if 'block' in a:
+        new["svox_block_rx"] = a.get('block') in ('1', 'true')
+    if new:
+        with radio.lock:
+            radio.config.update(new)
+            radio.save_config()
+    return jsonify({"status": "success"})
+
+
 @socketio.on('mic_start')
 def handle_mic_start():
     # NEU: kein Mumble-Bot mehr - direkter PyAudio-Ausgabe-Stream statt dem Protokoll-Umweg.
@@ -4375,6 +4531,7 @@ def handle_mic_pcm(b64str):
     try:
         adpcm_bytes = base64.b64decode(b64str)
         samples = decode_adpcm(adpcm_bytes)
+        svox_feed(samples)
         pcm_bytes = struct.pack(f"{len(samples)}h", *samples)
         # Gleiches Prinzip wie im Prototyp: bei vollem Puffer aeltestes Paket verwerfen,
         # damit die Latenz nicht immer weiter anwaechst.
@@ -4388,7 +4545,12 @@ def handle_mic_pcm(b64str):
 
 @socketio.on('mic_stop')
 def handle_mic_stop():
+    global svox_gate_closed
     print("[MIC] Browser hat Mikrofon-Senden gestoppt.")
+    svox["last_pkt"] = 0.0
+    if radio.svox_active:
+        threading.Thread(target=_svox_do_release, daemon=True).start()
+    svox_gate_closed = False
     while not mic_tx_queue.empty():
         try: mic_tx_queue.get_nowait()
         except queue.Empty: break
