@@ -736,6 +736,19 @@ if (authLocked) {
         </p>
         <p>Keyboard shortcuts on this device (U/D channel, M mode, A ASQ, S scan, hold S scroll): <input type="checkbox" id="kbdShortcutsToggle" onchange="setKbdShortcuts(this.checked)" title="Off by default. Can also be switched on once with the address ?keys=1 (off again with ?keys=0)."></p>
 
+        <div id="svoxBox" style="border-left: 2px solid #ff8800; padding-left: 10px; margin: 14px 0 6px 0;">
+            <p style="color: #ff8800; font-weight: bold; margin-bottom: 5px;">VOX (software: the microphone triggers PTT)</p>
+            <p>Switch it on and off with the <b>VOX</b> button. State: <span id="svoxState" style="word-break:break-all;">...</span></p>
+            <p>Sensitivity: <input type="range" id="svoxSens" min="0" max="100" step="1" value="50" style="width:160px; vertical-align:middle;" oninput="svoxSensLive()" onchange="svoxApply()" title="Higher = reacts to quieter sounds"> <span id="svoxSensV">50</span></p>
+            <div id="svoxMeter" style="position:relative; height:12px; background:#222; border:1px solid #555; border-radius:3px; margin:4px 0 8px 0; max-width:260px;">
+                <div id="svoxBar" style="position:absolute; left:0; top:0; bottom:0; width:0%; background:#3a3;"></div>
+                <div id="svoxThr" style="position:absolute; top:-2px; bottom:-2px; width:2px; background:#ff8800; left:50%;"></div>
+            </div>
+            <p>Delay after speech: <input type="number" id="svoxHang" min="200" max="5000" step="100" value="800" style="width:70px;" onchange="svoxApply()" title="How long PTT stays on after you stop speaking"> ms</p>
+            <p><label><input type="checkbox" id="svoxBlk" checked onchange="svoxApply()"> Do not key while a signal is received</label></p>
+            <p style="font-size:0.8em; color:#999; line-height:1.35;">The microphone of the browser must be running (tap "Talk (mic)" first). The bar shows the microphone level, the orange line is the trigger threshold: when speech goes beyond it, PTT is set. With loudspeakers next to the microphone the received audio can trigger VOX, a headset avoids that. The VOX of the radio itself is not used any more and must stay off in the radio menu.</p>
+        </div>
+
         <div id="trBox" style="border-left: 2px solid #00aaff; padding-left: 10px; margin: 14px 0 6px 0;">
             <p style="color: #00aaff; font-weight: bold; margin-bottom: 5px;">T/R switch (ESP32-C3: grounds the SDR branch while transmitting)</p>
             <p><label><input type="checkbox" id="trEnable" onchange="trApply(true)"> Use T/R switch</label>
@@ -744,7 +757,7 @@ if (authLocked) {
                &nbsp; Hold time: <input type="number" id="trHold" min="0" max="5000" step="10" value="50" style="width:65px;" onchange="trApply()" title="Time after releasing PTT until the SDR is connected again"> ms</p>
             <p>Port: <input type="text" id="trPort" placeholder="automatic" style="width:190px;" onchange="trApply()" title="Empty = find the ESP32 automatically (USB). Otherwise e.g. /dev/ttyACM0">
                <button onclick="trTest()" style="padding: 2px 8px; font-size: 0.8em; background: #575757;">Test relay</button> <span id="trTestRes" style="font-size:0.85em;"></span></p>
-            <p style="font-size:0.8em; color:#999; line-height:1.35;">On: before each transmission the ESP grounds the SDR branch, the program waits for its confirmation and the lead time, then sets PTT. After the transmission the SDR stays grounded for the hold time. If the ESP does not confirm, the radio does <b>not</b> transmit. The relay falls back to the grounded position on its own if the connection breaks. Off: the ESP is not used and stays in the grounded position. Use together with VOX off.</p>
+            <p style="font-size:0.8em; color:#999; line-height:1.35;">On: before each transmission the ESP grounds the SDR branch, the program waits for its confirmation and the lead time, then sets PTT. After the transmission the SDR stays grounded for the hold time. If the ESP does not confirm, the radio does <b>not</b> transmit. The relay falls back to the grounded position on its own if the connection breaks. Off: the ESP is not used and stays in the grounded position. The VOX of this program also goes through the T/R switch.</p>
         </div>
 
 
@@ -1970,7 +1983,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-141126 TRS";
+                if (vInd) vInd.textContent = "V-151126 VOX";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2947,6 +2960,55 @@ if (authLocked) {
             rfFloor = null; wfSync();
         }).catch(() => {});
     }
+    // ---- VOX (software) ----
+    function svoxDbPct(db) { return Math.max(0, Math.min(100, (db + 80) / 80 * 100)); }
+    function svoxSensLive() {
+        const v = Number(document.getElementById('svoxSens').value);
+        document.getElementById('svoxSensV').textContent = v;
+        document.getElementById('svoxThr').style.left = svoxDbPct(-15 - 0.6 * v) + '%';
+    }
+    function svoxLoad() {
+        fetch('/api/svox').then(r => r.json()).then(d => {
+            const ae = document.activeElement;
+            const sl = document.getElementById('svoxSens'); if (sl && ae !== sl) { sl.value = d.sens; }
+            const hg = document.getElementById('svoxHang'); if (hg && ae !== hg) hg.value = d.hang_ms;
+            const bk = document.getElementById('svoxBlk'); if (bk && ae !== bk) bk.checked = !!d.block_rx;
+            if (sl && ae !== sl) svoxSensLive();
+            const bar = document.getElementById('svoxBar');
+            if (bar) {
+                bar.style.width = (d.level_db === null ? 0 : svoxDbPct(d.level_db)) + '%';
+                bar.style.background = (d.level_db !== null && d.level_db >= d.thr_db) ? '#ff8800' : '#3a3';
+            }
+            const st = document.getElementById('svoxState');
+            if (st) {
+                let t, c = '#ccc';
+                if (!d.enabled) t = 'off';
+                else if (d.active) { t = 'on, TRANSMITTING'; c = '#ff8800'; }
+                else if (!d.mic_running) { t = 'on, but the microphone is not running (tap "Talk (mic)")'; c = '#fa0'; }
+                else { t = 'on, waiting for speech'; c = '#0f0'; }
+                st.textContent = t; st.style.color = c;
+            }
+        }).catch(() => {});
+    }
+    function svoxApply() {
+        const q = 'sens=' + encodeURIComponent(document.getElementById('svoxSens').value)
+            + '&hang=' + encodeURIComponent(document.getElementById('svoxHang').value || 800)
+            + '&block=' + (document.getElementById('svoxBlk').checked ? 1 : 0);
+        fetch('/api/svox/set?' + q).then(r => r.json()).then(d => {
+            if (d.status !== 'success') alert(d.message || 'Could not save VOX settings');
+            svoxLoad();
+        }).catch(() => { svoxLoad(); });
+    }
+    (function () {
+        const boot = () => {
+            const sec = document.getElementById('sec_radio');
+            if (!sec) return;
+            sec.addEventListener('toggle', () => { if (sec.open) svoxLoad(); });
+            setInterval(() => { if (sec.open) svoxLoad(); }, 300);
+            if (sec.open) svoxLoad();
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+    })();
     // ---- T/R switch (ESP32-C3) ----
     function trLoad() {
         fetch('/api/tr').then(r => r.json()).then(d => {
