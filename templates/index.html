@@ -918,12 +918,11 @@ if (authLocked) {
         </div>
 
 </div></details>
-<details class="setsec" id="sec_repair" data-sec="repair"><summary>🔧 Status correction override <span class="sechint">if the display and the radio disagree</span></summary>
+<details class="setsec" id="sec_repair" data-sec="repair"><summary>Status correction override <span class="sechint">if the display and the radio disagree</span></summary>
     <div class="secbody">
         <p style="font-size: 0.85em; color: #888; margin-top: 5px;">If you face some asyncron issues, e.g. ASQ is of but the WebUI shows on or you're on FM but the WebUI shows USB, select the checkbox or modulation to force synchronisation...</p>
         
         <table style="width: 100%; color: #aaa; font-size: 0.95em; margin-bottom: 10px;">
-            <tr><td>VOX - Reverse status:</td><td style="text-align: right;"><input type="checkbox" id="tog_vox"></td></tr>
             <tr><td>MUTE - Reverse status:</td><td style="text-align: right;"><input type="checkbox" id="tog_mute"></td></tr>
             <tr><td>ASQ - Reverse status:</td><td style="text-align: right;"><input type="checkbox" id="tog_asq"></td></tr>
             <tr><td>LOCK - Reverse status:</td><td style="text-align: right;"><input type="checkbox" id="tog_lock"></td></tr>
@@ -2564,7 +2563,6 @@ if (authLocked) {
 
     function submitConfigOverride() {
         const payload = { 
-            toggle_vox: document.getElementById('tog_vox').checked, 
             toggle_mute: document.getElementById('tog_mute').checked, 
             toggle_asq: document.getElementById('tog_asq').checked, 
             toggle_lock: document.getElementById('tog_lock').checked,
@@ -2577,7 +2575,6 @@ if (authLocked) {
             body: JSON.stringify(payload) 
         }).then(r => r.json()).then(data => { 
             updateUI(data); 
-            document.getElementById('tog_vox').checked = false; 
             document.getElementById('tog_mute').checked = false; 
             document.getElementById('tog_asq').checked = false; 
             document.getElementById('tog_lock').checked = false; 
