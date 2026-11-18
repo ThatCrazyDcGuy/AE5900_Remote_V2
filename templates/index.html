@@ -489,10 +489,24 @@ let authMode = 'login';
 const _fetchOrig = window.fetch.bind(window);
 const _authPending = new Promise(() => {});
 function _ownUrl(u) { return u.charAt(0) === '/' || u.indexOf(location.origin) === 0; }
+// Client-ID: jeder Browser-Tab schickt sie bei jeder Anfrage mit. Der Server trennt den Sender, wenn der Client,
+// der gerade sendet, verschwindet - auch wenn ein anderer Browser weiter verbunden ist.
+let CLIENT_ID = null;
+try { CLIENT_ID = sessionStorage.getItem('ae_cid'); } catch (e) {}
+if (!CLIENT_ID || !/^[A-Za-z0-9_-]{8,64}$/.test(CLIENT_ID)) {
+    CLIENT_ID = '';
+    try { const a = new Uint8Array(12); crypto.getRandomValues(a); a.forEach(b => { CLIENT_ID += ('0' + b.toString(16)).slice(-2); }); } catch (e) {}
+    if (CLIENT_ID.length < 8) CLIENT_ID = (Math.random().toString(36).slice(2) + Date.now().toString(36) + '00000000').slice(0, 24);
+    try { sessionStorage.setItem('ae_cid', CLIENT_ID); } catch (e) {}
+}
 window.fetch = function (input, init) {
     const url = (typeof input === 'string') ? input : ((input && input.url) || '');
     if (!_ownUrl(url) || url.indexOf('/api/auth/') >= 0) return _fetchOrig(input, init);
-    if (authLocked) return _authPending;      // gesperrt: Abruf bleibt offen, die Anzeige hinter dem Fenster behaelt ihren Anfangszustand
+    if (authLocked) return _authPending;
+    if (typeof input === 'string') {
+        init = Object.assign({}, init || {});
+        try { const h = new Headers(init.headers || {}); h.set('X-Client-Id', CLIENT_ID); init.headers = h; } catch (e) {}
+    }      // gesperrt: Abruf bleibt offen, die Anzeige hinter dem Fenster behaelt ihren Anfangszustand
     return _fetchOrig(input, init).then(r => { if (r.status === 401) authShow('login'); return r; });
 };
 function authShow(mode) {
@@ -1982,7 +1996,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-151126 VOX";
+                if (vInd) vInd.textContent = "V-181126 CID";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
