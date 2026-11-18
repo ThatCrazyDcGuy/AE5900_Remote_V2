@@ -69,7 +69,7 @@ Während der Installation zeigt Tailscale einen Anmelde-Link. Diesen im Browser 
 
 Aktualisieren später immer mit `git pull` und das Programm neu starten. Eigene Einstellungen und das eigene Hintergrundbild bleiben dabei erhalten.
 
-> **Wichtig:** Das AE5900 immer nur von **einem Gerät gleichzeitig** über die Weboberfläche bedienen. Hamlib/Rigctl-Programme (z. B. OpenWebRX, fldigi) neben einem Browser sind in Ordnung. Mehrere Browser oder Handys gleichzeitig sind es nicht, weil dann der PTT-Killswitch bei Verbindungsverlust nicht mehr zuverlässig greift.
+> **Hinweis:** Die Weboberfläche kann auf mehreren Geräten gleichzeitig offen sein (zum Beispiel ein zweiter Bildschirm). Gesendet wird immer von einem Gerät. Verschwindet das Gerät, das PTT in der Weboberfläche hält (Absturz, Verbindungsverlust), trennt der PTT-Kill-Schalter TX nach 30 Sekunden, auch wenn andere Geräte noch verbunden sind. Hamlib/Rigctl-Programme (z. B. OpenWebRX, fldigi) neben einem Browser sind in Ordnung.
 
 ### Hauptziel des Projekts:
 
@@ -92,7 +92,7 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 7. VOX (Software: Empfindlichkeit und Nachlauf einstellbar)
 8. MW (Multi-Channel-Scan)
 9. Squelch // Autosquelch
-10. Der PTT-Kill-Schalter wird 30 Sekunden nach Verbindungsverlust aktiviert.
+10. PTT-Kill-Schalter: TX wird 30 Sekunden nach dem Verlust des sendenden Geräts getrennt, auch wenn andere Geräte verbunden bleiben.
 11. Eigene Rogerbeeps erstellen. Einfach zu den Bestätigungstönen im Ordner beeps hinzufügen.
 12. Physische PTT-Taste/Sondertaste am Telefon oder an der Tastatur verwenden.
 13. Ländercodes müssen im WebUI und am Gerät eingestellt werden.
@@ -264,11 +264,13 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-151126 VOX**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-181126 CID**. Aktualisieren immer mit `git pull`.
 
-1. Neu: Die VOX ist jetzt eine Software-Funktion. Der VOX-Knopf sendet keinen Befehl mehr an das Funkgerät; das Mikrofon des Browsers löst PTT aus, wenn der Pegel über eine Schwelle geht. Setup & Sync -> Radio & keys -> „VOX (software)“: Sensitivity (mit Live-Pegelbalken und Auslöse-Linie), Delay after speech (200-5000 ms, Standard 800) und „Do not key while a signal is received“. Der Wortanfang geht nicht verloren, und beim Ausschalten der VOX wird PTT sofort losgelassen, auch bei Lärm. Die VOX läuft auch über den T/R-Umschalter. Das Browser-Mikrofon muss laufen („Talk (mic)“).
-2. Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet. Falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
-3. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
+1. Sicherheit: Der PTT-Kill-Schalter beobachtet jetzt das Gerät, das gerade sendet. Verschwindet das Gerät, das PTT in der Weboberfläche hält, wird TX nach 30 Sekunden getrennt, auch wenn andere Browser oder Handys verbunden bleiben (zum Beispiel ein vergessener Rechner zu Hause). Die Weboberfläche kann auf mehreren Geräten gleichzeitig offen sein.
+2. Fehlerbehebung: Kanaleingabe am Tastenfeld. Nach einer versehentlichen ersten Ziffer („0-“ im Display) beendet der erste Druck auf eine Gerätetaste (Kanal hoch/runter, Modus, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) jetzt nur die Eingabe, am Funkgerät und in der Weboberfläche gleichermaßen; erst der nächste wirkt auf beide. Vorher lagen Weboberfläche und Funkgerät danach einen Schritt auseinander.
+3. „Status correction override“: Die Checkbox „VOX - Reverse status“ entfällt (die VOX ist jetzt Software).
+4. Außerdem neu seit V-111126 ADR: Die VOX ist jetzt eine Software-Funktion (V-151126 VOX, Setup & Sync -> Radio & keys -> „VOX (software)“). Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet; falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
+5. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 

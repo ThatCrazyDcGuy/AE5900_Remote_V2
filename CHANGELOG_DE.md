@@ -6,7 +6,13 @@ Aktualisieren immer mit `git pull`, danach das Programm neu starten.
 
 Hinweis: Einige Versionsbezeichnungen in älteren Einträgen wurden korrigiert (der Datumsteil ist TTMMJJ).
 
-### V-151126 VOX (aktuell)
+### V-181126 CID (aktuell)
+
+1. Sicherheit: Der PTT-Kill-Schalter beobachtet jetzt das Gerät, das gerade sendet. Jeder Browser-Tab bekommt eine eigene ID. Verschwindet das Gerät, das PTT in der Weboberfläche hält (Absturz, Verbindungsverlust, Browser geschlossen), wird TX nach 30 Sekunden getrennt, auch wenn andere Browser oder Handys verbunden bleiben, zum Beispiel ein vergessener Rechner zu Hause. Die Weboberfläche kann daher auf mehreren Geräten gleichzeitig offen sein; jedes Gerät kann PTT trotzdem jederzeit loslassen. Programme ohne ID (JS8Call/`curl`, Hamlib/rigctl, Tastenbox) verhalten sich wie bisher. Die Software-VOX hat ihren eigenen Schutz (TX endet, wenn der Mikrofonstrom abreißt).
+2. Fehlerbehebung: Kanaleingabe am Tastenfeld. Wurde versehentlich eine erste Ziffer getroffen (Anzeige „0-“) und dann eine Gerätetaste gedrückt (Kanal hoch/runter, Modus, A/SQ +/-, ASQ, LOCK, MUTE, P1-P4 oder PTT), verlässt das Funkgerät nur die Eingabe und führt die Taste nicht aus. Die Weboberfläche führte sie aber aus und zeigte „0-“ bis zum Ende der Wartezeit, sodass Gerät und Weboberfläche danach einen Schritt auseinanderlagen. Jetzt beendet der erste Tastendruck die Eingabe auf beiden Seiten (die Taste geht weiterhin ans Funkgerät); erst der nächste wirkt auf beide. PTT loslassen ist nie betroffen, ebenso wenig Programme wie JS8Call oder Hamlib/rigctl.
+3. „Status correction override“: Die Checkbox „VOX - Reverse status“ entfällt (die VOX ist jetzt Software und spiegelt keinen Gerätezustand mehr), und der Schraubenschlüssel im Titel ist weg, damit das Menü wie die anderen aussieht.
+
+### V-151126 VOX
 
 1. Neu: Die VOX ist jetzt eine Software-Funktion des Programms. Der VOX-Knopf sendet keinen Befehl mehr an das Funkgerät; stattdessen löst das Mikrofon des Browsers PTT aus, wenn der Pegel über eine Schwelle geht. Setup & Sync -> Radio & keys -> „VOX (software)“: Sensitivity (mit Live-Pegelbalken und Auslöse-Linie), Delay after speech (200-5000 ms, Standard 800) und „Do not key while a signal is received“. Das Audio der ersten Silbe wird zurückgehalten, bis PTT wirklich steht, so geht der Wortanfang nicht verloren. Am Ende wird der Rogerbeep gesendet und PTT losgelassen. Beim Ausschalten der VOX wird PTT sofort losgelassen, auch bei Lärm. Weil derselbe PTT-Weg wie sonst benutzt wird, läuft die VOX auch über den T/R-Umschalter. Das Browser-Mikrofon muss laufen („Talk (mic)“).
 2. Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet. Falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist (ein von selbst sendendes Funkgerät wird vom Programm weiterhin gestoppt, würde aber jedes Mal kurz senden).

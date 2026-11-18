@@ -6,7 +6,13 @@ Always update with `git pull`, then restart the program.
 
 Note: some version labels in older entries were corrected (the date part is DDMMYY).
 
-### V-151126 VOX (current)
+### V-181126 CID (current)
+
+1. Security: the PTT kill switch now watches the device that is transmitting. Every browser tab gets its own ID. If the device that holds PTT in the web interface disappears (crash, lost connection, closed browser), TX is cut after 30 seconds, even if other browsers or phones stay connected, for example a forgotten computer at home. So the web interface can be open on several devices at the same time; any device can still release PTT at any time. Programs without an ID (JS8Call/`curl`, Hamlib/rigctl, key box) behave as before. The software VOX has its own protection (TX ends when the microphone stream stops).
+2. Fix: channel entry on the keypad. When a first digit was hit by mistake (the display shows "0-") and then a device key is pressed (channel up/down, mode, A/SQ +/-, ASQ, LOCK, MUTE, P1-P4 or PTT), the radio only leaves the input and does not execute the key, but the web interface executed it and kept showing "0-" until the wait time was over, so radio and web interface ended up one step apart. Now the first press only ends the input on both sides (the key is still sent to the radio); the next press acts on both. Releasing PTT is never affected, and neither are programs such as JS8Call or Hamlib/rigctl.
+3. "Status correction override": the checkbox "VOX - Reverse status" is gone (the VOX is software now and no longer mirrors a radio state), and the wrench icon in the title is removed, so the menu looks like the others.
+
+### V-151126 VOX
 
 1. New: the VOX is now a software function of the program. The VOX button no longer sends a command to the radio; instead the microphone of the browser triggers PTT when the level goes above a threshold. Setup & Sync -> Radio & keys -> "VOX (software)": Sensitivity (with a live level bar and the trigger line), Delay after speech (200-5000 ms, default 800) and "Do not key while a signal is received". The audio of the first syllable is held back until PTT is really on, so the beginning of the speech is not cut off. At the end the roger beep is sent and PTT is released. Switching VOX off releases PTT at once, also while there is noise. Because it uses the same PTT path as everything else, the VOX also goes through the T/R switch. The browser microphone must be running ("Talk (mic)").
 2. The VOX of the radio itself is not used any more. After the update the VOX starts switched off. If it was switched on before, check in the AE-5900 menu that the VOX of the radio is off (a self-transmitting radio is still stopped by the program, but it would transmit briefly each time).

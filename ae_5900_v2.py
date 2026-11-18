@@ -376,6 +376,7 @@ class RadioInterface:
         self.load_config()
         self.lock = threading.Lock()
         self.is_tx = False
+        self.tx_owner = None        # Client-ID des Browsers, der gerade sendet (None = unbekannt/Fremdprogramm)
         self.is_rx = False
         self.is_device_sending = False
         self.svox_active = False
@@ -1050,6 +1051,7 @@ class RadioInterface:
         Seriell-Befehl). Mit T/R-Umschalter: erst ESP auf 'TX' (SDR geerdet) und Bestaetigung abwarten, dann Vorlauf,
         dann PTT. Beim Loslassen: erst PTT weg, der ESP geht nach dem Nachlauf wieder auf 'RX'. Kann der ESP die
         Erdung nicht bestaetigen, wird NICHT gesendet (Schutz des SDR). Gibt True zurueck, wenn PTT gesetzt wurde."""
+        self.tx_owner = None          # wer sendet, setzt der Aufrufer (PTT-Taste) erst danach
         if not self.ser:
             return True
         tr = globals().get('TR')
@@ -1317,6 +1319,38 @@ def _auth_gate():
                 '<body style="background:#111;color:#ccc;font-family:sans-serif;text-align:center;padding:40px">'
                 'Login required. <a style="color:#0cf" href="/">Open the main page</a>, log in, then open the camera again.</body>'), 401
     return jsonify({"status": "error", "message": "login required", "auth": _auth_state(False)}), 401
+
+
+# --- Client-ID: jeder Browser schickt seine ID (Header X-Client-Id) mit. Der Server merkt sich, wann er
+# jeden Client zuletzt gehoert hat; der PTT-Waechter prueft beim Senden NUR den Besitzer des Sendens. ---
+CLIENT_SEEN = {}
+_CID_RE = re.compile(r'^[A-Za-z0-9_-]{8,64}$')
+TX_OWNER_TIMEOUT = 30.0
+
+
+def _req_cid():
+    try:
+        c = request.headers.get('X-Client-Id') or request.args.get('cid')
+    except RuntimeError:
+        return None
+    return c if (c and _CID_RE.match(c)) else None
+
+
+@app.before_request
+def _client_track():
+    if not request.path.startswith('/api/'):
+        return None
+    c = _req_cid()
+    if not c:
+        return None
+    now = time.time()
+    if c not in CLIENT_SEEN and len(CLIENT_SEEN) >= 200:
+        for k in [k for k, t in list(CLIENT_SEEN.items()) if now - t > 3600]:
+            CLIENT_SEEN.pop(k, None)
+        if len(CLIENT_SEEN) >= 200:
+            return None
+    CLIENT_SEEN[c] = now
+    return None
 
 
 def _login_cookie(resp):
@@ -1759,6 +1793,16 @@ def rig_ptt_control(state):
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
+# Tasten, die ein Geraet mit offener Ziffern-Eingabe nur als "Eingabe verlassen" auswertet (Befehl -> Tastencode)
+# Bei Makros (A/SQ +/-, ASQ, LOCK, MUTE) genuegt der EINE Tipp der ersten Taste - der Rest des Makros wuerde sonst schon wirken.
+INPUT_ABORT_KEYS = {'U': '10', 'D': '11', 'M': '0D',
+                    'SQUELCHUP': '24', 'SQUELCHDOWN': '24', 'ASQ_ON_OFF': '24',
+                    'LOCKDEV': '1E', 'MUTECOMBBTN': '34',
+                    'P1': '1A', 'P2': '1B', 'P3': '1C', 'P4': '1D'}
+# PTT zum SENDEN beendet die offene Eingabe ebenfalls (siehe api_cmd). Loslassen wird nie abgefangen.
+INPUT_ABORT_PTT = ('P', 'PTT_ON')
+
+
 @app.route('/api/cmd/<cmd>')
 def api_cmd(cmd):
     global MODES, LAST_BROWSER_HEARTBEAT
@@ -1808,6 +1852,40 @@ def api_cmd(cmd):
     }
 
     with radio.lock:
+        # --- ZIFFERN-EINGABE (0-, 1- ...) ABBRECHEN ---
+        # Wartet das Funkgeraet auf die zweite Ziffer, nimmt es die naechste Kanal-/Modus-Taste NUR als "Eingabe
+        # verlassen" und fuehrt sie nicht aus. Das WebUI hat sie bisher trotzdem ausgefuehrt (Kanal/Modus weitergezaehlt)
+        # und die Eingabe erst nach der Wartezeit beendet -> WebUI und Geraet liefen auseinander. Jetzt: die Taste geht
+        # unveraendert ans Geraet (das damit die Eingabe verlaesst), das WebUI beendet die Eingabe sofort und aendert
+        # nichts. Erst der naechste Klick wirkt wirklich - auf beiden Seiten.
+        # (Nur klassische CB-Baender; im VFO-Modus bekommt das Geraet die Ziffern erst am Ende.)
+        # Bestaetigt: Kanal hoch/runter und Modus. Weitere Tasten hier eintragen, wenn sie sich genauso verhalten.
+        _abort_ptt = (cmd in INPUT_ABORT_PTT and not radio.is_tx)       # Senden starten; Loslassen ist nie betroffen
+        _abort_vox_label = (cmd in ('P1', 'P2', 'P3', 'P4') and "VOX" in radio.config.get(f"{cmd.lower()}_label", "").upper())
+        if ((cmd in INPUT_ABORT_KEYS or _abort_ptt) and not _abort_vox_label and len(radio.key_buffer) > 0
+                and radio.config.get("current_band", "EU") != "VFO"):
+            _mode_now = MODES[radio.mode_idx].upper()
+            _ignored = (cmd in ('U', 'D') and _mode_now in ("USB", "LSB", "CW") and effective_clar_step() != "STEP")
+            if _mode_now == "PA" and cmd in ('U', 'D'):
+                _ignored = True          # PA-Modus: UP/DOWN sind Lautstaerke, bleiben wie bisher
+            if not _ignored:
+                print(f"[KEYPAD ABBRUCH] Eingabe '{radio.key_buffer}' offen: '{cmd}' beendet nur die Eingabe (Geraet und WebUI).")
+                if _abort_ptt:
+                    # PTT-Tipp ueber den zentralen Weg (T/R-Umschalter!), aber OHNE is_tx zu setzen: das Geraet beendet damit
+                    # nur die Eingabe. Kurz (80 ms), dann sofort wieder los.
+                    if radio.ser and radio.ptt_wire(True) is not False:
+                        time.sleep(0.08)
+                        radio.ptt_wire(False)
+                elif radio.ser:
+                    _hx = INPUT_ABORT_KEYS[cmd]
+                    radio.ser.write(bytes.fromhex(f"41000100{_hx}000006"))
+                    time.sleep(0.08)
+                    radio.ser.write(bytes.fromhex(f"41000000{_hx}000006"))
+                radio.key_buffer = ""
+                _st = get_current_status_dict()
+                _st["KEY_BUF"] = ""
+                return jsonify(_st)
+
         if cmd in ['VOLUP', 'VOLDOWN']:
             control_name = "Master"
             step = "5%+" if cmd == 'VOLUP' else "5%-"
@@ -2004,6 +2082,12 @@ def api_cmd(cmd):
                 code = "4101000000000006" if radio.is_tx else "4100000000000006"
                 if radio.ser: 
                     radio.ptt_wire(radio.is_tx)
+                else:
+                    radio.tx_owner = None
+                if radio.is_tx:
+                    radio.tx_owner = _req_cid()          # TX gehoert diesem Browser (None, wenn die Anfrage keine ID hat)
+                    if radio.tx_owner:
+                        print(f"[TX-OWNER] Senden gehoert Client {radio.tx_owner[:8]}")
                 radio.ptt_start_time = time.time()
                 radio.save_config()
         # === UNIVERSAL DIGIMODE TRIGGER FOR JS8CALL ===
@@ -3373,12 +3457,25 @@ def ptt_heartbeat_watchdog(radio):
     print("PTT Heartbeat-Waechter (30 Sek.) aktiv und synchronisiert.")
     while True:
         try:
+            if not radio.is_tx and radio.tx_owner:
+                if radio.lock.acquire(blocking=False):
+                    try:
+                        if not radio.is_tx:
+                            radio.tx_owner = None
+                    finally:
+                        radio.lock.release()
             if radio.is_tx:
-                heartbeat = LAST_BROWSER_HEARTBEAT if LAST_BROWSER_HEARTBEAT is not None else time.time()
+                owner = radio.tx_owner
+                if owner:
+                    # Es sendet ein bekannter Browser: nur DESSEN Lebenszeichen zaehlt. Ein anderer Browser, der
+                    # weiter pollt (z. B. der vergessene Rechner zu Hause), haelt den Sender nicht mehr fest.
+                    heartbeat = CLIENT_SEEN.get(owner, 0.0)
+                else:
+                    heartbeat = LAST_BROWSER_HEARTBEAT if LAST_BROWSER_HEARTBEAT is not None else time.time()
                 silent_duration = time.time() - heartbeat
                 
-                if silent_duration >= 30.0:
-                    print("PTT VERBINDUNGSABBRUCH! Trenne TX.")
+                if silent_duration >= TX_OWNER_TIMEOUT:
+                    print("PTT VERBINDUNGSABBRUCH! Trenne TX." + (f" (Besitzer {owner[:8]} still seit {silent_duration:.0f} s)" if owner else ""))
                     with radio.lock:
                         radio.is_tx = False
                         radio.save_config()

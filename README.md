@@ -62,7 +62,7 @@ Flexible solutions provide better access. And that's exactly what this project s
 7. VOX (software: sensitivity and delay adjustable)
 8. MW (multi channel scan)
 9. Squelch // Autosquelch
-10. PTT kill switch activates after 30 seconds following connection loss.
+10. PTT kill switch: TX is cut 30 seconds after the transmitting device is lost, even if other devices stay connected.
 11. Own roger beeps. Just add them to folder beeps.
 12. Physical PTT key / special key on phone or keyboard
 13. Country codes must be set in the web interface and on the device.
@@ -72,7 +72,7 @@ Flexible solutions provide better access. And that's exactly what this project s
 17. Web Audio HTTP RX only / HTTPS RX and TX
 18. Change the background image for individual style (just for fun)
 
-> **Important:** Use the web interface on **one device at a time**. Hamlib/Rigctl software (e.g. OpenWebRX, fldigi) next to one browser is fine. Several browsers or phones controlling the radio at the same time are not: the PTT kill switch at connection loss can no longer work reliably then.
+> **Note:** The web interface can be open on several devices at the same time (for example a second screen). Transmit from one device at a time. If the device that holds PTT in the web interface disappears (crash, lost connection), the PTT kill switch cuts TX after 30 seconds, even if other devices are still connected. Hamlib/Rigctl software (e.g. OpenWebRX, fldigi) next to a browser is fine.
 
 - Various features are demonstrated here. Rigctl and hamlib are implemented, and a Bluetooth S-meter.
 
@@ -258,11 +258,13 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current version: **V-151126 VOX**. Always update using `git pull`.
+Current version: **V-181126 CID**. Always update using `git pull`.
 
-1. New: the VOX is now a software function. The VOX button no longer sends a command to the radio; the microphone of the browser triggers PTT when the level goes above a threshold. Setup & Sync -> Radio & keys -> "VOX (software)": Sensitivity (with a live level bar and the trigger line), Delay after speech (200-5000 ms, default 800) and "Do not key while a signal is received". The beginning of the speech is not cut off, and switching VOX off releases PTT at once, also while there is noise. The VOX goes through the T/R switch as well. The browser microphone must be running ("Talk (mic)").
-2. The VOX of the radio itself is not used any more. After the update the VOX starts switched off. If it was on before, check in the AE-5900 menu that the VOX of the radio is off.
-3. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
+1. Security: the PTT kill switch now watches the device that is transmitting. If the device that holds PTT in the web interface disappears, TX is cut after 30 seconds, even if other browsers or phones stay connected (for example a forgotten computer at home). The web interface can be open on several devices at the same time.
+2. Fix: keypad channel entry. After a mistaken first digit ("0-" on the display) the first press of a device key (channel up/down, mode, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) now only ends the input, on the radio and in the web interface alike; the next press acts on both. Before, the web interface and the radio ended up one step apart.
+3. "Status correction override": the checkbox "VOX - Reverse status" is gone (the VOX is software now).
+4. Also new since V-111126 ADR: the VOX is now a software function (V-151126 VOX, Setup & Sync -> Radio & keys -> "VOX (software)"). The VOX of the radio itself is not used any more. After the update the VOX starts switched off; if it was on before, check in the AE-5900 menu that the VOX of the radio is off.
+5. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 
