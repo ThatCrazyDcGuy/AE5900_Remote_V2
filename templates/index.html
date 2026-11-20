@@ -131,6 +131,12 @@
 		}
 
         
+        .menu-locked { opacity: 0.3 !important; pointer-events: none !important; }
+        .mbtn { font-weight: bold; }
+        .mbtn.cur { box-shadow: 0 0 10px currentColor; border-color: currentColor !important; background: #1f2630; }
+        .mbtn:disabled { opacity: 0.3; }
+        #menuKeys button:disabled { opacity: 0.3; cursor: not-allowed; }
+        #menuKeys button { font-size: 0.8em; padding: 8px 2px; min-width: 0; white-space: nowrap; }
         .pblk { display: none; }
         .pblk.on { display: contents; }
         .pblk button { touch-action: pan-y; }
@@ -632,7 +638,7 @@ if (authLocked) {
         <button onclick="send('ASQ_ON_OFF')" id="asqBtn">ASQ</button>
         <button id="sqResetBtn" onclick="send('FULL_ASQ_SQ_SYNC')" style="font-size:0.85em;">A/SQ Res.</button>
 
-        {% set apb = config.active_p_block if config.active_p_block in ('voice', 'custom') else 'standard' %}
+        {% set apb = config.active_p_block if config.active_p_block in ('voice', 'custom', 'mode') else 'standard' %}
         <button type="button" class="pArrow" id="pArrL" aria-label="previous key set" onclick="pStep(-1)">&#8249;</button>
         <button type="button" class="pArrow" id="pArrR" aria-label="next key set" onclick="pStep(1)">&#8250;</button>
         <div class="pblk{% if apb == 'standard' %} on{% endif %}" data-p="standard">
@@ -651,6 +657,12 @@ if (authLocked) {
                 <button onclick="send('CQ_REC_SAVE')" style="color:#00ff00; border-color:#00ff00;">💾 Save</button>
                 <button onclick="send('CQ_REC_DISCARD')" style="color:#ff3333; border-color:#ff3333;">✖ Discard</button>
             </div>
+        </div>
+        <div class="pblk{% if apb == 'mode' %} on{% endif %}" data-p="mode">
+            <button class="mbtn" onclick="send('MODE_FM')" id="btn-mfm" style="color: #4da6ff;">FM</button>
+            <button class="mbtn" onclick="send('MODE_AM')" id="btn-mam" style="color: #ffaa00;">AM</button>
+            <button class="mbtn" onclick="send('MODE_USB')" id="btn-musb" style="color: #b388ff;">USB</button>
+            <button class="mbtn" onclick="send('MODE_LSB')" id="btn-mlsb" style="color: #ff7ad9;">LSB</button>
         </div>
         <div class="pblk{% if apb == 'custom' %} on{% endif %}" data-p="custom">
             <button onclick="send('CUST_1')" id="btn-cust1">{{ config.cust_lbl_1 or 'CUST 1' }}</button>
@@ -684,6 +696,7 @@ if (authLocked) {
                <select id="pBlockSelect" onchange="pSet(this.value)" style="background: #333; color: white; border: 1px solid #555; padding: 3px; border-radius: 3px;">
                    <option value="standard" {% if apb == 'standard' %}selected{% endif %}>AMM-500 default (P1-P4)</option>
                    <option value="voice" {% if config.active_p_block == 'voice' %}selected{% endif %}>QSO (REC/PLAY) CQ (REC/PLAY)</option>
+                   <option value="mode" {% if config.active_p_block == 'mode' %}selected{% endif %}>Modulation (FM AM USB LSB)</option>
                    <option value="custom" {% if config.active_p_block == 'custom' %}selected{% endif %}>Custom terminal commands</option>
                </select>
         </p>
@@ -929,6 +942,17 @@ if (authLocked) {
                 <span id="camState" style="font-size:0.8em; color:#0aa; font-family:monospace;"></span>
             </p>
             <img id="camImg" alt="" style="display:none; max-width:100%; border:1px solid #444;">
+            <div style="margin-top: 8px; border-top: 1px solid #333; padding-top: 6px;">
+                <div style="font-size:0.8em; color:#999; margin-bottom: 6px;">Radio menu: MENU (held for 2 s) opens the menu of the radio. Only then are BACK / UP / DOWN / ENTER usable. The menu closes by itself 10 s after the last key press. While it is open, the main keys (channel, mode, digits, CLAR, A/SQ ...) are locked so that nothing is changed by mistake.</div>
+                <div id="menuKeys" style="display:grid; grid-template-columns: repeat(5, 1fr); gap: 6px;">
+                    <button id="mnBack" onclick="send('MENU_BACK')" disabled>BACK</button>
+                    <button id="mnUp" onclick="send('MENU_UP')" disabled>UP &#9650;</button>
+                    <button id="mnDown" onclick="send('MENU_DOWN')" disabled>DOWN &#9660;</button>
+                    <button id="mnEnter" onclick="send('MENU_ENTER')" disabled>ENTER</button>
+                    <button id="mnMenu" onclick="menuOpenClick()" style="border-color:#ffaa00; color:#ffaa00;">MENU</button>
+                </div>
+                <p id="menuState" style="font-size:0.85em; font-family:monospace; color:#888; margin: 8px 0 0 0;">Menu closed. Press MENU (it is held for 2 s).</p>
+            </div>
         </div>
 
 </div></details>
@@ -1996,7 +2020,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-181126 CID";
+                if (vInd) vInd.textContent = "V-201126 CTL";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2109,6 +2133,7 @@ if (authLocked) {
     function updateUI(data) {
         if (!data) return;
         if (data.TR_BLOCK) trShowBlock(data.TR_BLOCK);
+        if (data.MENU_NOTE) trShowBlock(data.MENU_NOTE);
         waApplyServerConfig(data); // NEU: WebAudio-Rate/Puffer aus der config.json uebernehmen (geraeteuebergreifend)
         if (data.CLAR_STEP !== undefined) currentClarStepGlobal = data.CLAR_STEP;
         scanRunningGlobal = !!(data.SW_SCAN || data.MW_SCAN || data.SW_STEP || data.MW_STEP);
@@ -2240,6 +2265,7 @@ if (authLocked) {
         }
 
         if (data.ACTIVE_P_BLOCK && data.ACTIVE_P_BLOCK !== pCur()) pApply(data.ACTIVE_P_BLOCK);
+        if (typeof menuApply === 'function') menuApply(data);
         const voiceButtons = [document.getElementById('btn-rec'), document.getElementById('btn-rplay'), document.getElementById('btn-cqrec'), document.getElementById('btn-cqcall')];
         if (data.PTT === "ON" && data.ACTIVE_P_BLOCK === "voice") { voiceButtons.forEach(b => { if (b) { b.classList.add('click-blocked'); b.style.opacity = "0.3"; } }); }
         else if (data.AUDIO_RECORDING !== true) { voiceButtons.forEach(b => { if (b) { b.classList.remove('click-blocked'); b.style.opacity = ""; } }); }
@@ -2377,6 +2403,7 @@ if (authLocked) {
                 b.disabled = false; b.style.opacity = "";
             });
         }
+        if (typeof menuReassert === 'function') menuReassert();
     }
 
     function send(cmd) { 
@@ -2654,8 +2681,56 @@ if (authLocked) {
         });
     })();
 
+    // --- Geraete-Menue (Fernbedienung) und Modulationsreihe ---
+    // Server fuehrt die Zeit (10 s ab dem letzten Tastendruck); hier nur Anzeige. menuEnds = Ablaufzeit im Browser.
+    var menuEnds = 0, menuOpeningUntil = 0, menuDepth = 0;
+    const HW_KEYS = /^send\('(M|U|D|MUTECOMBBTN|LOCKDEV|SQUELCHUP|SQUELCHDOWN|ASQ_ON_OFF|FULL_ASQ_SQ_SYNC|P[1-4]|MODE_[A-Z]+)'\)$/;
+    function menuHwButtons() {
+        const out = [];
+        document.querySelectorAll('button[onclick]').forEach(b => { if (HW_KEYS.test((b.getAttribute('onclick') || '').trim())) out.push(b); });
+        document.querySelectorAll('.keypad button, #clarUpBtn, #clarHzBtn, #clarDnBtn, #scanBtn, #mwBtn').forEach(b => out.push(b));
+        return out;
+    }
+    function menuRender() {
+        const left = Math.max(0, (menuEnds - Date.now()) / 1000), open = left > 0;
+        ['mnBack', 'mnUp', 'mnDown', 'mnEnter'].forEach(id => { const b = document.getElementById(id); if (b) b.disabled = !open || isWebUIBusy === true; });
+        const mb = document.getElementById('mnMenu');
+        const opening = Date.now() < menuOpeningUntil;
+        if (mb) mb.textContent = opening ? 'MENU ...' : 'MENU';
+        const st = document.getElementById('menuState');
+        if (st) {
+            st.textContent = opening ? 'Opening the menu (holding the key for 2 s) ...' :
+                open ? 'Menu open, level ' + (menuDepth + 1) + ': BACK ' + (menuDepth + 1) + 'x closes it (or ' + Math.ceil(left) + ' s without a key press). Main keys are locked.' :
+                'Menu closed. Press MENU (it is held for 2 s).';
+            st.style.color = open ? '#ffaa00' : '#888';
+        }
+        menuHwButtons().forEach(b => b.classList.toggle('menu-locked', open));
+        document.body.classList.toggle('menu-open', open);
+    }
+    function menuApply(data) {
+        if (data.MENU_OPEN !== undefined) {
+            menuEnds = data.MENU_OPEN ? Date.now() + (data.MENU_LEFT || 0) * 1000 : 0; menuDepth = data.MENU_OPEN ? (data.MENU_DEPTH || 0) : 0;
+            if (data.MENU_OPEN) menuOpeningUntil = 0;
+            menuRender();
+        }
+        if (data.MODE_REACH && data.MODE) { modeReach = data.MODE_REACH; modeCur = data.MODE; modeRender(); }
+    }
+    var modeReach = null, modeCur = null;
+    function modeRender() {
+        if (!modeReach) return;
+        const map = { FM: 'btn-mfm', AM: 'btn-mam', USB: 'btn-musb', LSB: 'btn-mlsb' };
+        Object.keys(map).forEach(k => {
+            const b = document.getElementById(map[k]); if (!b) return;
+            b.classList.toggle('cur', modeCur === k);
+            if (!isWebUIBusy) b.disabled = modeReach.indexOf(k) < 0;
+        });
+    }
+    function menuReassert() { menuRender(); modeRender(); }
+    function menuOpenClick() { menuOpeningUntil = Date.now() + 2300; menuRender(); send('MENU_OPEN'); }
+    setInterval(() => { if (menuEnds || menuOpeningUntil) { if (menuEnds && Date.now() >= menuEnds) menuEnds = 0; menuRender(); } }, 250);
+
     // --- 4. Tastenreihe: Wischen oder Pfeile, gilt fuer alle Geraete (Server merkt sich den Satz) ---
-    const P_ORDER = ['standard', 'voice', 'custom'];
+    const P_ORDER = ['standard', 'voice', 'mode', 'custom'];
     function pCur() { const e = document.querySelector('.pblk.on'); return e ? e.dataset.p : 'standard'; }
     function pPlace() {
         const L = document.getElementById('pArrL'), R = document.getElementById('pArrR'), box = document.querySelector('.controls');
