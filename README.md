@@ -71,6 +71,7 @@ Flexible solutions provide better access. And that's exactly what this project s
 16. If you decide to open and solder the device, an external S-METER can be used via Bluetooth (ESP32).
 17. Web Audio HTTP RX only / HTTPS RX and TX
 18. Change the background image for individual style (just for fun)
+19. Radio menu keys (BACK/UP/DOWN/ENTER/MENU) under the camera picture, and a modulation quick row FM/AM/USB/LSB
 
 > **Note:** The web interface can be open on several devices at the same time (for example a second screen). Transmit from one device at a time. If the device that holds PTT in the web interface disappears (crash, lost connection), the PTT kill switch cuts TX after 30 seconds, even if other devices are still connected. Hamlib/Rigctl software (e.g. OpenWebRX, fldigi) next to a browser is fine.
 
@@ -258,13 +259,15 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current version: **V-181126 CID**. Always update using `git pull`.
+Current version: **V-201126 CTL**. Always update using `git pull`.
 
-1. Security: the PTT kill switch now watches the device that is transmitting. If the device that holds PTT in the web interface disappears, TX is cut after 30 seconds, even if other browsers or phones stay connected (for example a forgotten computer at home). The web interface can be open on several devices at the same time.
-2. Fix: keypad channel entry. After a mistaken first digit ("0-" on the display) the first press of a device key (channel up/down, mode, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) now only ends the input, on the radio and in the web interface alike; the next press acts on both. Before, the web interface and the radio ended up one step apart.
-3. "Status correction override": the checkbox "VOX - Reverse status" is gone (the VOX is software now).
-4. Also new since V-111126 ADR: the VOX is now a software function (V-151126 VOX, Setup & Sync -> Radio & keys -> "VOX (software)"). The VOX of the radio itself is not used any more. After the update the VOX starts switched off; if it was on before, check in the AE-5900 menu that the VOX of the radio is off.
-5. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
+1. New: remote control of the radio menu (BACK, UP, DOWN, ENTER, MENU) under the camera picture and on `/cam`. MENU is held for 2 seconds; while the menu is open the normal keys are locked, and the program shows how many BACK presses close the menu. Do not press BACK more often than shown (in the closed menu it operates the EMG key of the radio).
+2. New: modulation quick row FM / AM / USB / LSB as 4th key row (respects Skip PA / Skip CW). Tested without FW 1.12; feedback with FW 1.12 is welcome.
+3. Also new since V-181126 CID: Security: the PTT kill switch now watches the device that is transmitting. If the device that holds PTT in the web interface disappears, TX is cut after 30 seconds, even if other browsers or phones stay connected (for example a forgotten computer at home). The web interface can be open on several devices at the same time.
+4. Also since V-181126 CID: fix: keypad channel entry. After a mistaken first digit ("0-" on the display) the first press of a device key (channel up/down, mode, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) now only ends the input, on the radio and in the web interface alike; the next press acts on both. Before, the web interface and the radio ended up one step apart.
+5. Also since V-181126 CID: "Status correction override": the checkbox "VOX - Reverse status" is gone (the VOX is software now).
+6. Also new since V-111126 ADR: the VOX is now a software function (V-151126 VOX, Setup & Sync -> Radio & keys -> "VOX (software)"). The VOX of the radio itself is not used any more. After the update the VOX starts switched off; if it was on before, check in the AE-5900 menu that the VOX of the radio is off.
+7. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 

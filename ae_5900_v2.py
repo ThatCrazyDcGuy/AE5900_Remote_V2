@@ -376,6 +376,8 @@ class RadioInterface:
         self.load_config()
         self.lock = threading.Lock()
         self.is_tx = False
+        self.menu_depth = 0         # Menuetiefe: MENU_ENTER zaehlt hoch, MENU_BACK runter, BACK auf Tiefe 0 schliesst das Menue
+        self.menu_until = 0.0       # Geraete-Menue per WebUI offen bis (Zeitstempel); 0 = zu
         self.tx_owner = None        # Client-ID des Browsers, der gerade sendet (None = unbekannt/Fremdprogramm)
         self.is_rx = False
         self.is_device_sending = False
@@ -485,7 +487,7 @@ class RadioInterface:
                 return steps
         return None
 
-    def cat_set_mode(self, raw_mode):
+    def cat_set_mode(self, raw_mode, echo_guard=True):
         """Hamlib 'M <mode>': liefert die Anzahl noetiger Tastendruecke (0 = nichts zu tun) und aktualisiert den Modus.
         - CWR/NFM/PKTFM werden wie CW bzw. FM behandelt (OpenWebRX meldet CW als 'CWR').
         - Echo-Schutz: Meldet Hamlib kurz nach einer Modus-Aenderung 'FM', waehrend das Geraet auf PA steht, ist das nur der
@@ -497,7 +499,7 @@ class RadioInterface:
         old_idx = self.mode_idx
         if new_idx == old_idx:
             return 0
-        if target == "FM" and MODES[old_idx] == "PA" and time.time() - getattr(self, '_mode_changed_at', 0) < 5.0:
+        if echo_guard and target == "FM" and MODES[old_idx] == "PA" and time.time() - getattr(self, '_mode_changed_at', 0) < 5.0:
             print("[CAT-PROXY] Echo 'M FM' bei PA ignoriert (keine Klicks).")
             return 0
         steps = self.mode_click_steps(old_idx, new_idx)
@@ -1794,11 +1796,57 @@ def rig_ptt_control(state):
         return response
 
 # Tasten, die ein Geraet mit offener Ziffern-Eingabe nur als "Eingabe verlassen" auswertet (Befehl -> Tastencode)
+# --- GERAETE-MENUE per WebUI (Fernbedienung der AE-5900-Menuetasten) ---
+# MENU = 0x31 zwei Sekunden halten oeffnet das Menue. Danach sind BACK/UP/DOWN/ENTER nutzbar, bis 10 s nach dem letzten
+# Tastendruck vergangen sind (das Geraet schliesst sein Menue dann selbst). Waehrend das Menue offen ist, sperrt der Server
+# die Haupttasten (Kanal, Modus, Ziffern, CLAR, A/SQ ...): auf dem Geraet wuerden sie sonst im Menue wirken, das WebUI
+# haette sie aber als Kanal-/Modus-Aenderung mitgezaehlt (derselbe Auseinanderlauf wie bei der offenen Ziffern-Eingabe).
+MENU_DEPTH_MAX = 2   # tiefste Ebene (Wert aendern); BACK-Anzahl zum Schliessen = Ebene + 1
+MENU_WINDOW = 10.0
+MENU_OPEN_HOLD = 2.0
+MENU_KEYS = {'MENU_BACK': '25', 'MENU_UP': '26', 'MENU_DOWN': '27', 'MENU_ENTER': '1E'}
+MODE_CMDS = {'MODE_FM': 'FM', 'MODE_AM': 'AM', 'MODE_USB': 'USB', 'MODE_LSB': 'LSB'}
+
+
+def menu_is_open():
+    return time.time() < getattr(radio, 'menu_until', 0.0)
+
+
+def menu_status_fields():
+    left = max(0.0, getattr(radio, 'menu_until', 0.0) - time.time())
+    cur = radio.mode_idx
+    reach = []
+    for name in ('FM', 'AM', 'USB', 'LSB'):
+        if name in MODES:
+            idx = MODES.index(name)
+            if idx == cur or radio.mode_click_steps(cur, idx) is not None:
+                reach.append(name)
+    return {"MENU_OPEN": left > 0, "MENU_LEFT": round(left, 1), "MENU_DEPTH": getattr(radio, 'menu_depth', 0) if left > 0 else 0, "MODE_REACH": reach}
+
+
+def menu_blocks(cmd):
+    """Haupttasten, die bei offenem Geraete-Menue gesperrt sind. PTT LOSLASSEN, Einstellungen, STATUS, Software-VOX und
+    Programme (JS8Call/Hamlib) bleiben frei."""
+    if cmd in MENU_KEYS or cmd == 'MENU_OPEN':
+        return False
+    if cmd in INPUT_ABORT_KEYS or cmd in ('SSCAN', 'MW_TOGGLE', 'FULL_ASQ_SQ_SYNC', 'SQUELCHMAXUP', 'SQUELCHMAXDOWN'):
+        return True
+    if re.fullmatch(r'K\d', cmd):
+        return True
+    if cmd in ('CLARUP', 'CLARDN', 'CLARHZ', 'FUNC_KEY', 'ACTION', 'EMG_TOGGLE', 'DEVBUTTONUP', 'DEVBUTTONDOWN',
+               'DEVROTATEUP', 'DEVROTATEDOWN', 'DEVXUP', 'DEVXDOWN'):
+        return True
+    if cmd in INPUT_ABORT_PTT and not radio.is_tx:
+        return True
+    return False
+
+
 # Bei Makros (A/SQ +/-, ASQ, LOCK, MUTE) genuegt der EINE Tipp der ersten Taste - der Rest des Makros wuerde sonst schon wirken.
 INPUT_ABORT_KEYS = {'U': '10', 'D': '11', 'M': '0D',
                     'SQUELCHUP': '24', 'SQUELCHDOWN': '24', 'ASQ_ON_OFF': '24',
                     'LOCKDEV': '1E', 'MUTECOMBBTN': '34',
-                    'P1': '1A', 'P2': '1B', 'P3': '1C', 'P4': '1D'}
+                    'P1': '1A', 'P2': '1B', 'P3': '1C', 'P4': '1D',
+                    'MODE_FM': '0D', 'MODE_AM': '0D', 'MODE_USB': '0D', 'MODE_LSB': '0D'}
 # PTT zum SENDEN beendet die offene Eingabe ebenfalls (siehe api_cmd). Loslassen wird nie abgefangen.
 INPUT_ABORT_PTT = ('P', 'PTT_ON')
 
@@ -1852,6 +1900,12 @@ def api_cmd(cmd):
     }
 
     with radio.lock:
+        # --- GERAETE-MENUE OFFEN: Haupttasten sperren ---
+        if menu_is_open() and menu_blocks(cmd):
+            _st = get_current_status_dict()
+            _st["MENU_NOTE"] = f"Radio menu is open ({int(menu_status_fields()['MENU_LEFT'])} s left): main keys are locked."
+            return jsonify(_st)
+
         # --- ZIFFERN-EINGABE (0-, 1- ...) ABBRECHEN ---
         # Wartet das Funkgeraet auf die zweite Ziffer, nimmt es die naechste Kanal-/Modus-Taste NUR als "Eingabe
         # verlassen" und fuehrt sie nicht aus. Das WebUI hat sie bisher trotzdem ausgefuehrt (Kanal/Modus weitergezaehlt)
@@ -2004,6 +2058,71 @@ def api_cmd(cmd):
             radio.save_config()
 
 
+
+        elif cmd in MODE_CMDS:
+            # Direktwahl der Modulation: derselbe Weg wie "M <mode>" ueber Hamlib/OpenWebRX (Rotationsregeln, Mode-Skip
+            # FW v1.12, DE ab Kanal 41 / EC nur FM<->PA), die noetigen Mode-Tastendruecke werden gesendet.
+            _target = MODE_CMDS[cmd]
+            if radio.is_tx:
+                _st = get_current_status_dict()
+                _st["MENU_NOTE"] = "No mode change while transmitting."
+                return jsonify(_st)
+            _prev = MODES[radio.mode_idx].upper()
+            if _prev in ["AM", "FM", "UK"]:
+                radio.config["asq_memory"] = radio.config.get("asq_enabled", False)
+            _steps = radio.cat_set_mode(_target, echo_guard=False)
+            _new = MODES[radio.mode_idx].upper()
+            if _new in ["AM", "FM", "UK"]:
+                radio.config["asq_enabled"] = radio.config.get("asq_memory", False)
+            else:
+                radio.config["asq_enabled"] = False
+            radio.save_config()
+            if _steps > 0 and radio.ser:
+                for _ in range(_steps):
+                    radio.ser.write(bytes.fromhex("410001000D000006"))
+                    time.sleep(0.09)
+                    radio.ser.write(bytes.fromhex("410000000D000006"))
+                    time.sleep(0.12)
+            elif _steps == 0 and _new != _target:
+                _st = get_current_status_dict()
+                _st["MENU_NOTE"] = f"{_target} is not reachable in this band/with these mode-skip settings."
+                return jsonify(_st)
+
+        elif cmd == 'MENU_OPEN' or cmd in MENU_KEYS:
+            if radio.is_tx:
+                _st = get_current_status_dict()
+                _st["MENU_NOTE"] = "No radio menu while transmitting."
+                return jsonify(_st)
+            if cmd != 'MENU_OPEN' and not menu_is_open():
+                _st = get_current_status_dict()
+                _st["MENU_NOTE"] = "Radio menu is closed: press MENU first (held for 2 s)."
+                return jsonify(_st)
+            _hx = '31' if cmd == 'MENU_OPEN' else MENU_KEYS[cmd]
+            _hold = MENU_OPEN_HOLD if cmd == 'MENU_OPEN' else 0.15
+            if radio.ser:
+                radio.ser.write(bytes.fromhex(f"41000100{_hx}000006"))
+                time.sleep(_hold)
+                radio.ser.write(bytes.fromhex(f"41000000{_hx}000006"))
+            # Tiefe mitzaehlen: ENTER geht eine Ebene tiefer, BACK eine hoch, BACK auf der obersten Ebene schliesst das Menue
+            # (dann sind die Tasten sofort wieder gesperrt und die Haupttasten frei). Das 10-s-Fenster bleibt als Rueckfall.
+            if cmd == 'MENU_OPEN':
+                radio.menu_depth = 0
+            elif cmd == 'MENU_ENTER':
+                # Ebenen am Geraet: 0 = Menueliste, 1 = Untermenue (blau markiert), 2 = Wert aendern (weiss markiert).
+                # ENTER in Ebene 2 uebernimmt den Wert und springt zurueck in Ebene 1 (mehr als 3 Ebenen gibt es nicht).
+                if radio.menu_depth >= MENU_DEPTH_MAX:
+                    radio.menu_depth = MENU_DEPTH_MAX - 1
+                else:
+                    radio.menu_depth += 1
+            if cmd == 'MENU_BACK' and radio.menu_depth <= 0:
+                radio.menu_until = 0.0
+                radio.menu_depth = 0
+                print("[MENU] BACK auf der obersten Ebene: Menue geschlossen")
+            else:
+                if cmd == 'MENU_BACK':
+                    radio.menu_depth -= 1
+                radio.menu_until = time.time() + MENU_WINDOW    # 10 s ab dem letzten Tastendruck
+                print(f"[MENU] {cmd} gesendet, Ebene {radio.menu_depth}, Menue offen bis +{MENU_WINDOW:.0f} s")
 
         elif cmd == 'M':
             band = radio.config.get("current_band", "EU")
@@ -3116,6 +3235,7 @@ def api_cmd(cmd):
         "MAX_SQ": radio.config.get("max_sq_steps", 80),
         "MAX_ASQ": radio.config.get("max_asq_steps", 9),
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
+        **menu_status_fields(),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
         "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
@@ -3187,6 +3307,7 @@ def api_config_override():
                 "MAX_SQ": radio.config.get("max_sq_steps", 80),
                 "MAX_ASQ": radio.config.get("max_asq_steps", 9),
                 "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
+                **menu_status_fields(),
                 "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
                 "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
@@ -4412,13 +4533,46 @@ CAM_PAGE = """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta n
 <title>AE5900 CAM</title><style>html,body{margin:0;background:#111;color:#0f0;font-family:sans-serif;text-align:center}
 img{max-width:100%;height:auto;border:1px solid #333}#m{padding:8px;font-size:.9em;color:#888}</style></head><body>
 <div id="m">AE5900 CAM</div><img id="v" alt="">
+<div id="mk" style="max-width:520px;margin:10px auto;padding:0 8px">
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+<button id="mnBack" disabled>BACK</button><button id="mnUp" disabled>UP &#9650;</button><button id="mnDown" disabled>DOWN &#9660;</button><button id="mnEnter" disabled>ENTER</button><button id="mnMenu" style="border-color:#fa0;color:#fa0">MENU</button>
+</div><div id="ms" style="font-size:.8em;font-family:monospace;color:#888;margin-top:6px">Radio menu closed. MENU is held for 2 s.</div></div>
 <script>
 const v=document.getElementById('v'), m=document.getElementById('m');
+// --- Geraete-Menue (wie im Setup & Sync unter dem Kamerabild) ---
+let cid='';try{cid=sessionStorage.getItem('ae_cid')||'';}catch(e){}
+if(!/^[A-Za-z0-9_-]{8,64}$/.test(cid)){cid='';try{const a=new Uint8Array(12);crypto.getRandomValues(a);a.forEach(b=>{cid+=('0'+b.toString(16)).slice(-2);});}catch(e){}
+ if(cid.length<8)cid=(Math.random().toString(36).slice(2)+Date.now().toString(36)+'00000000').slice(0,24);try{sessionStorage.setItem('ae_cid',cid);}catch(e){}}
+let mEnds=0, mOpening=0, mBusy=false, mDepth=0;
+const MK=['mnBack','mnUp','mnDown','mnEnter'];
+function mRender(){const left=Math.max(0,(mEnds-Date.now())/1000),open=left>0,op=Date.now()<mOpening;
+ MK.forEach(i=>{document.getElementById(i).disabled=!open||mBusy;});
+ document.getElementById('mnMenu').disabled=mBusy; document.getElementById('mnMenu').textContent=op?'MENU ...':'MENU';
+ const st=document.getElementById('ms');st.style.color=open?'#fa0':'#888';
+ st.textContent=op?'Opening the menu (holding the key for 2 s) ...':open?'Radio menu open, level '+(mDepth+1)+': BACK '+(mDepth+1)+'x closes it (or '+Math.ceil(left)+' s without a key press). Main keys are locked.':'Radio menu closed. MENU is held for 2 s.';}
+function mApply(d){if(d.MENU_OPEN!==undefined){mEnds=d.MENU_OPEN?Date.now()+(d.MENU_LEFT||0)*1000:0;mDepth=d.MENU_OPEN?(d.MENU_DEPTH||0):0;if(d.MENU_OPEN)mOpening=0;}
+ if(d.MENU_NOTE){m.textContent=d.MENU_NOTE;setTimeout(()=>{m.textContent='AE5900 CAM';},5000);} mRender();}
+function mSend(c){if(mBusy)return;mBusy=true;mRender();
+ fetch('/api/cmd/'+c,{headers:{'X-Client-Id':cid}}).then(r=>r.json()).then(mApply).catch(()=>{}).finally(()=>{mBusy=false;mRender();});}
+document.getElementById('mnBack').onclick=()=>mSend('MENU_BACK');
+document.getElementById('mnUp').onclick=()=>mSend('MENU_UP');
+document.getElementById('mnDown').onclick=()=>mSend('MENU_DOWN');
+document.getElementById('mnEnter').onclick=()=>mSend('MENU_ENTER');
+document.getElementById('mnMenu').onclick=()=>{mOpening=Date.now()+2300;mSend('MENU_OPEN');};
+function mPoll(){fetch('/api/menu',{headers:{'X-Client-Id':cid}}).then(r=>r.json()).then(d=>{if(!mBusy)mApply(d);}).catch(()=>{});}
+setInterval(()=>{if(mEnds&&Date.now()>=mEnds)mEnds=0;mRender();},250);
+setInterval(mPoll,1500);mPoll();
 function go(){ v.src='/cam/stream?t='+Date.now(); }
 v.onload=()=>{ m.textContent='AE5900 CAM'; };
 v.onerror=()=>{ m.textContent='No picture - is the camera switched on in Setup & Sync? Retrying ...'; setTimeout(go,4000); };
 go();
 </script></body></html>"""
+
+@app.route('/api/menu')
+def api_menu():
+    # Nur Anzeige (Kamera-Seite): zaehlt NICHT als Lebenszeichen fuer den PTT-Waechter
+    return jsonify(menu_status_fields())
+
 
 @app.route('/cam')
 def cam_page():
@@ -4695,6 +4849,7 @@ def get_current_status_dict():
         "MAX_SQ": radio.config.get("max_sq_steps", 80),
         "MAX_ASQ": radio.config.get("max_asq_steps", 9),
         "ACTIVE_P_BLOCK": radio.config.get("active_p_block", "standard"),
+        **menu_status_fields(),
         "TR_BLOCK": (getattr(radio, "tr_block_msg", "") if time.time() < getattr(radio, "tr_block_until", 0) else ""),
         "AUDIO_RECORDING": getattr(radio, 'is_recording_live', False),
         "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),

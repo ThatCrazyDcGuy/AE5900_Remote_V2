@@ -101,6 +101,7 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 16. Wer sich traut, das Gerät zu öffnen und zu löten: externes S-METER per Bluetooth (ESP32).
 17. Web-Audio HTTP nur RX / HTTPS RX und TX
 18. Hintergrundbild für einen individuellen Stil ändern (einfach nur zum Spaß)
+19. Menütasten des Funkgeräts (BACK/UP/DOWN/ENTER/MENU) unter dem Kamerabild und eine Modulations-Schnellreihe FM/AM/USB/LSB
 
 Hier werden verschiedene Funktionen demonstriert. Rigctl und Hamlib sowie ein Bluetooth-S-Meter sind implementiert.
 
@@ -264,13 +265,15 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-181126 CID**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-201126 CTL**. Aktualisieren immer mit `git pull`.
 
-1. Sicherheit: Der PTT-Kill-Schalter beobachtet jetzt das Gerät, das gerade sendet. Verschwindet das Gerät, das PTT in der Weboberfläche hält, wird TX nach 30 Sekunden getrennt, auch wenn andere Browser oder Handys verbunden bleiben (zum Beispiel ein vergessener Rechner zu Hause). Die Weboberfläche kann auf mehreren Geräten gleichzeitig offen sein.
-2. Fehlerbehebung: Kanaleingabe am Tastenfeld. Nach einer versehentlichen ersten Ziffer („0-“ im Display) beendet der erste Druck auf eine Gerätetaste (Kanal hoch/runter, Modus, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) jetzt nur die Eingabe, am Funkgerät und in der Weboberfläche gleichermaßen; erst der nächste wirkt auf beide. Vorher lagen Weboberfläche und Funkgerät danach einen Schritt auseinander.
-3. „Status correction override“: Die Checkbox „VOX - Reverse status“ entfällt (die VOX ist jetzt Software).
-4. Außerdem neu seit V-111126 ADR: Die VOX ist jetzt eine Software-Funktion (V-151126 VOX, Setup & Sync -> Radio & keys -> „VOX (software)“). Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet; falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
-5. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
+1. Neu: Fernbedienung des Funkgerät-Menüs (BACK, UP, DOWN, ENTER, MENU) unter dem Kamerabild und auf `/cam`. MENU wird 2 Sekunden gehalten; solange das Menü offen ist, sind die normalen Tasten gesperrt, und das Programm zeigt, wie oft BACK das Menü schließt. Nicht öfter BACK drücken als angezeigt (im geschlossenen Menü bedient es die EMG-Taste des Funkgeräts).
+2. Neu: Modulations-Schnellreihe FM / AM / USB / LSB als 4. Tastenreihe (beachtet Skip PA / Skip CW). Getestet ohne FW 1.12; Rückmeldungen mit FW 1.12 sind willkommen.
+3. Außerdem neu seit V-181126 CID: Sicherheit: Der PTT-Kill-Schalter beobachtet jetzt das Gerät, das gerade sendet. Verschwindet das Gerät, das PTT in der Weboberfläche hält, wird TX nach 30 Sekunden getrennt, auch wenn andere Browser oder Handys verbunden bleiben (zum Beispiel ein vergessener Rechner zu Hause). Die Weboberfläche kann auf mehreren Geräten gleichzeitig offen sein.
+4. Außerdem seit V-181126 CID: Fehlerbehebung: Kanaleingabe am Tastenfeld. Nach einer versehentlichen ersten Ziffer („0-“ im Display) beendet der erste Druck auf eine Gerätetaste (Kanal hoch/runter, Modus, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) jetzt nur die Eingabe, am Funkgerät und in der Weboberfläche gleichermaßen; erst der nächste wirkt auf beide. Vorher lagen Weboberfläche und Funkgerät danach einen Schritt auseinander.
+5. Außerdem seit V-181126 CID: „Status correction override“: Die Checkbox „VOX - Reverse status“ entfällt (die VOX ist jetzt Software).
+6. Außerdem neu seit V-111126 ADR: Die VOX ist jetzt eine Software-Funktion (V-151126 VOX, Setup & Sync -> Radio & keys -> „VOX (software)“). Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet; falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
+7. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 
