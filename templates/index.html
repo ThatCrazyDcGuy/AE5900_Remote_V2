@@ -186,12 +186,26 @@
             -webkit-touch-callout: none;
             touch-action: manipulation;
         }
-        button:disabled { 
+        button { transition: background-color .2s ease, color .2s ease, border-color .2s ease, opacity .2s ease; }
+        button:disabled:not([data-busy]) { 
             background: #1a1a1a; 
             color: #444; 
             border: 1px dashed #222; 
             cursor: not-allowed; 
         }
+        /* VFO-Rad: ersetzt S-SCAN und MW im VFO-Band (waagerechte Walze, von der Seite gesehen) */
+        .vfo-wheel { grid-column: span 2; position: relative; overflow: hidden; min-height: 44px; border-radius: 8px;
+                     background: #111; border: 1px solid #555; touch-action: none; cursor: ew-resize;
+                     -webkit-user-select: none; user-select: none; }
+        .vfo-wheel .vw-ticks { position: absolute; inset: 0; background-image: linear-gradient(90deg, #9fb0b8 2px, transparent 2px);
+                               background-size: 16px 100%; background-position-x: 0; }
+        .vfo-wheel .vw-shade { position: absolute; inset: 0; pointer-events: none;
+                               background: linear-gradient(90deg, rgba(0,0,0,.92) 0%, rgba(0,0,0,.35) 22%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, rgba(0,0,0,.35) 78%, rgba(0,0,0,.92) 100%),
+                                           linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,.45)); }
+        .vfo-wheel .vw-mark { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: #ff8800; box-shadow: 0 0 6px #ff8800; pointer-events: none; }
+        .vfo-wheel.vw-off { opacity: .35; pointer-events: none; }
+        /* kurze Sperre waehrend ein Befehl laeuft: Tasten behalten ihre Farbe, nur leicht abgedunkelt (kein Flackern beim schnellen Druecken) */
+        button[data-busy]:disabled { opacity: .85; cursor: progress; }
         .btn-ptt { 
             grid-column: span 4; 
             background: #4a0000; 
@@ -630,8 +644,11 @@ if (authLocked) {
         <button onclick="send('MUTECOMBBTN')">MUTE</button>
 
         <button onclick="send('VOX_TOGGLE')">VOX</button>
-        <button id="scanBtn">S-SCAN</button>
-        <button id="mwBtn">MW</button>
+        <button id="scanBtn"{% if config.current_band == 'VFO' %} style="display:none"{% endif %}>S-SCAN</button>
+        <button id="mwBtn"{% if config.current_band == 'VFO' %} style="display:none"{% endif %}>MW</button>
+        <div id="vfoWheel" class="vfo-wheel" style="display:{{ 'block' if config.current_band == 'VFO' else 'none' }}" title="VFO wheel: swipe left/right (or mouse wheel). Each notch = the VFO step from Setup &amp; Sync. Swipe right = up.">
+            <div class="vw-ticks"></div><div class="vw-shade"></div><div class="vw-mark"></div>
+        </div>
         <button onclick="send('LOCKDEV')">LOCK</button>
 
         <button onclick="send('SQUELCHUP')">A/SQ +</button>
@@ -849,6 +866,7 @@ if (authLocked) {
                     <select id="wfSpan" onchange="wfApply()" style="width:90px;">
                         <option value="40">40 kHz</option><option value="60">60 kHz</option>
                         <option value="100">100 kHz</option><option value="200">200 kHz</option>
+                        <option value="300">300 kHz</option><option value="400">400 kHz</option>
                     </select>
                 </p>
                 <p id="wfTxRow"><label><input type="checkbox" id="wfTx" onchange="wfApply()"> keep running while transmitting (shows your own signal)</label><br>
@@ -1403,8 +1421,11 @@ if (authLocked) {
         const opt48 = document.querySelector('#waRateSel option[value="48000"]');
         if (opt48) {
             const block = !!data.WEBAUDIO_MUMBLE48 && data.WEBAUDIO_RATE !== 48000;
-            opt48.disabled = block;
-            opt48.textContent = block ? '48000 (used by Mumble)' : '48000';
+            // Nur schreiben, wenn sich etwas aendert: jede Aenderung an einer <option> baut das geoeffnete
+            // Auswahlfenster (Android) neu auf und liess es im Sekundentakt flackern.
+            if (opt48.disabled !== block) opt48.disabled = block;
+            const t48 = block ? '48000 (used by Mumble)' : '48000';
+            if (opt48.textContent !== t48) opt48.textContent = t48;
         }
         const rateHint = document.getElementById('waRateHint');
         if (rateHint) {
@@ -2021,7 +2042,7 @@ if (authLocked) {
             socket.on('connect', () => {
                 console.log("Socket.IO verbunden via: " + socket.io.engine.transport.name);
                 const vInd = document.getElementById('versionIndicator');
-                if (vInd) vInd.textContent = "V-201126 CTL";
+                if (vInd) vInd.textContent = "V-271126 WHL";
                 wfJoined = false; if (typeof wfSync === 'function') wfSync();   // nach (Neu-)Verbindung wieder anmelden
             });
 
@@ -2146,7 +2167,11 @@ if (authLocked) {
         const waCb = document.getElementById('webaudioToggle');
         if (waCb && typeof data.WEBAUDIO_ENABLED === 'boolean') waCb.checked = data.WEBAUDIO_ENABLED;
         if (data.MODE) currentMode = data.MODE.toUpperCase();
+        if (data.VFO_STEP) vfoStepHz = data.VFO_STEP;
+        wheelTx = data.PTT === "ON";
+        if (data.VFO_FREQ && wheelPending === 0 && wheelSent === 0 && !wheelActive()) wheelBase = data.VFO_FREQ;   // aeltere Status-Antworten duerfen das Rad nicht zuruecksetzen
         if (data.CURRENT_BAND) { currentBandGlobal = data.CURRENT_BAND; freqs = bandMatrices[currentBandGlobal] || BASE_EU; }
+        vfoWheelSync();
         if (currentBandGlobal === "PL" && (currentMode === "USB" || currentMode === "LSB")) freqs = BASE_EU;
         else if (currentBandGlobal === "PL") freqs = BASE_PL_NULL;
         if (currentBandGlobal === "UK" && currentMode === "UK") freqs = BASE_UK_INLAND;
@@ -2191,7 +2216,7 @@ if (authLocked) {
                 }
                 
                 if (mhzDisp) {
-                    let rawVfo = data.VFO_FREQ || 27555000;
+                    let rawVfo = (wheelActive() ? wheelPreview() : data.VFO_FREQ) || 27555000;
                     let mhzPart = Math.floor(rawVfo / 1000000);
                     let khzPart = String(Math.floor((rawVfo % 1000000) / 10)).padStart(5, '0');
                     
@@ -2244,8 +2269,9 @@ if (authLocked) {
         }
 
         if (btn && stat) {
-            if (data.PTT === "ON") { currentBarColor = 'red'; btn.style.background = "#ff0000"; btn.innerText = "TX ACTIVE (" + data.REMAINING + "s)"; stat.innerText = "● TRANSMIT"; stat.style.color = "red"; }
-            else if (data.VOX_TX) { currentBarColor = 'orange'; btn.style.background = "#ff8800"; btn.innerText = "VOX TRANSMITTING"; stat.innerText = "● VOX ACTIVE"; stat.style.color = "#ff8800"; }
+            // Orange nur, wenn die Software-VOX selbst sendet (VOX_TX); jedes andere Senden ist normales PTT (rot)
+            if (data.PTT === "ON" && data.VOX_TX) { currentBarColor = 'orange'; btn.style.background = "#ff8800"; btn.innerText = "VOX TRANSMITTING"; stat.innerText = "● VOX ACTIVE"; stat.style.color = "#ff8800"; }
+            else if (data.PTT === "ON") { currentBarColor = 'red'; btn.style.background = "#ff0000"; btn.innerText = "TX ACTIVE (" + data.REMAINING + "s)"; stat.innerText = "● TRANSMIT"; stat.style.color = "red"; }
             else if (data.BUSY) { currentBarColor = 'green'; btn.style.background = "#4a0000"; btn.innerText = "PTT TOGGLE"; stat.innerHTML = '<span style="color: #FFD700;">●</span> <span style="color: #00ff00;">SIGNAL</span>'; }
             else { currentBarColor = 'green'; btn.style.background = "#4a0000"; btn.innerText = "PTT TOGGLE"; stat.innerText = "○ RX IDLE"; stat.style.color = "#444"; }
             btn.classList.toggle('active', data.PTT === "ON");
@@ -2366,10 +2392,16 @@ if (authLocked) {
 
     function updateUIState() {
         const allButtons = document.querySelectorAll('.ctrl-btn, .channel-selectors button, .controls button, .keypad button, .keypad-wrapper button, button[onclick]');
-        if (currentSqTimeout > 0 || currentAsqTimeout > 0 || currentMuteTimeout > 0 || isWebUIBusy === true) {
-            allButtons.forEach(b => { b.disabled = true; if (currentSqTimeout > 0) b.style.opacity = "0.4"; });
+        const timeoutLock = currentSqTimeout > 0 || currentAsqTimeout > 0 || currentMuteTimeout > 0;
+        if (timeoutLock || isWebUIBusy === true) {
+            allButtons.forEach(b => {
+                // nur kurz beschaeftigt (kein Squelch/ASQ/MUTE-Timeout): Aussehen bleibt, siehe CSS button[data-busy]
+                if (!timeoutLock) { if (!b.disabled) b.dataset.busy = '1'; } else { delete b.dataset.busy; }
+                b.disabled = true; if (currentSqTimeout > 0) b.style.opacity = "0.4";
+            });
         } else {
             allButtons.forEach(b => {
+                delete b.dataset.busy;
                 const oc = b.getAttribute('onclick') || ''; 
                 if (oc.includes("send('CQ_REC')") && cqRecPendingGlobal) { b.disabled = true; b.style.opacity = "0.4"; return; }
                 if (oc.includes('CLARUP') || oc.includes('CLARDN')) return;
@@ -2405,9 +2437,11 @@ if (authLocked) {
             });
         }
         if (typeof menuReassert === 'function') menuReassert();
+        if (typeof vfoWheelSync === 'function') vfoWheelSync();
     }
 
     function send(cmd) { 
+        wheelHold = 0;      // andere Eingabe: die Anzeige folgt wieder dem Server
         if (isWebUILocked && cmd !== 'LOCKDEV') return;
 
         // --- DER INTERNE TÜRSTEHER FÜR DIE ERSTE '9' IM CB-MODUS ---
@@ -2689,8 +2723,57 @@ if (authLocked) {
     function menuHwButtons() {
         const out = [];
         document.querySelectorAll('button[onclick]').forEach(b => { if (HW_KEYS.test((b.getAttribute('onclick') || '').trim())) out.push(b); });
-        document.querySelectorAll('.keypad button, #clarUpBtn, #clarHzBtn, #clarDnBtn, #scanBtn, #mwBtn').forEach(b => out.push(b));
+        document.querySelectorAll('.keypad button, #clarUpBtn, #clarHzBtn, #clarDnBtn, #scanBtn, #mwBtn, #vfoWheel').forEach(b => out.push(b));
         return out;
+    }
+    // ---- VFO-Rad (ersetzt S-SCAN/MW im VFO-Band) ----
+    // Rastpunkt = VFO-Schrittweite. Der Browser sammelt die Rastpunkte waehrend ein Befehl laeuft und schickt sie gebuendelt
+    // (/api/cmd/VFO_WHEEL?steps=N); der Server macht daraus UP/DOWN-Tipps oder bei vielen Schritten die fertige Frequenz.
+    var vfoStepHz = 1000, wheelBase = 27555000, wheelPending = 0, wheelSent = 0, wheelBusy = false, wheelHold = 0, wheelTx = false, wheelOffs = 0;
+    const WHEEL_DETENT = 16;        // Pixel pro Rastpunkt (= Abstand der Striche)
+    function wheelActive() { return wheelPending !== 0 || wheelSent !== 0 || Date.now() < wheelHold; }
+    function wheelPreview() { return Math.min(30105000, Math.max(24715000, wheelBase + (wheelPending + wheelSent) * vfoStepHz)); }
+    function wheelCan() { return currentBandGlobal === 'VFO' && currentMode !== 'PA' && !isWebUILocked && !wheelTx && !(menuEnds && Date.now() < menuEnds); }
+    function vfoWheelSync() {
+        const on = currentBandGlobal === 'VFO', w = document.getElementById('vfoWheel');
+        if (w) { w.style.display = on ? 'block' : 'none'; w.classList.toggle('vw-off', !wheelCan()); }
+        ['scanBtn', 'mwBtn'].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = on ? 'none' : ''; });
+    }
+    function wheelShow() {
+        const m = document.getElementById('mhzDisp'); if (!m || currentBandGlobal !== 'VFO') return;
+        const f = wheelPreview(), khz = String(Math.floor((f % 1000000) / 10)).padStart(5, '0');
+        m.innerText = Math.floor(f / 1000000) + '.' + khz.substring(0, 3) + '.' + khz.substring(3, 5) + ' MHz'; m.style.color = '#ffff00';
+    }
+    function wheelStep(n) {
+        if (!n || !wheelCan()) return;
+        wheelPending += n; wheelHold = Date.now() + 1200; wheelShow(); wheelFlush();
+    }
+    function wheelFlush() {
+        if (wheelBusy || wheelPending === 0) return;
+        if (isWebUIBusy) { setTimeout(wheelFlush, 60); return; }
+        const n = wheelPending; wheelPending = 0; wheelSent = n; wheelBusy = true; isWebUIBusy = true; updateUIState();
+        const done = () => { wheelSent = 0; wheelBusy = false; isWebUIBusy = false; wheelHold = Date.now() + 1500; };
+        fetch('/api/cmd/VFO_WHEEL?steps=' + n).then(r => r.json()).then(d => { done(); if (d.VFO_FREQ) wheelBase = d.VFO_FREQ; updateUI(d); updateUIState(); wheelFlush(); })
+            .catch(() => { done(); wheelPending = 0; updateUIState(); });
+    }
+    function wheelInit() {
+        const w = document.getElementById('vfoWheel'); if (!w) return;
+        const tk = w.querySelector('.vw-ticks'); let down = false, lx = 0, acc = 0;
+        const move = dx => { wheelOffs += dx; tk.style.backgroundPositionX = wheelOffs + 'px'; };
+        w.addEventListener('pointerdown', e => { if (!wheelCan()) return; down = true; lx = e.clientX; acc = 0; try { w.setPointerCapture(e.pointerId); } catch (x) {} e.preventDefault(); });
+        w.addEventListener('pointermove', e => {
+            if (!down) return;
+            const dx = e.clientX - lx; lx = e.clientX; move(dx); acc += dx;
+            const n = Math.trunc(acc / WHEEL_DETENT); if (n) { acc -= n * WHEEL_DETENT; wheelStep(n); }     // nach rechts wischen = Frequenz hoch
+        });
+        ['pointerup', 'pointercancel'].forEach(ev => w.addEventListener(ev, () => { down = false; acc = 0; }));
+        let wacc = 0;
+        w.addEventListener('wheel', e => {
+            if (!wheelCan()) return; e.preventDefault();
+            let d = (Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? -e.deltaY : e.deltaX); if (e.deltaMode === 1) d *= 16;
+            move(d > 0 ? WHEEL_DETENT * Math.min(3, Math.ceil(d / 40)) : -WHEEL_DETENT * Math.min(3, Math.ceil(-d / 40)));
+            wacc += d; const n = Math.trunc(wacc / 40); if (n) { wacc -= n * 40; wheelStep(n); }       // Mausrad nach oben = hoch
+        }, { passive: false });
     }
     function menuRender() {
         const left = Math.max(0, (menuEnds - Date.now()) / 1000), open = left > 0;
@@ -3383,6 +3466,7 @@ if (authLocked) {
         const kbdCb = document.getElementById('kbdShortcutsToggle'); if (kbdCb) kbdCb.checked = kbdShortcutsOn();
         // NEU: S-SCAN/MW - kurz = normaler Suchlauf (mit Verweilen), lang = "Kanal-Blaetterer"
         // (ignoriert Rauschsperre, fester Takt, fuers Nebenbei-Mithoeren).
+        wheelInit();
         attachLongPress(document.getElementById('scanBtn'), () => send('SSCAN'), () => send('SSCAN_STEP_TOGGLE'));
         attachLongPress(document.getElementById('mwBtn'), () => send('MW_TOGGLE'), () => send('MW_STEP_TOGGLE'));
         // Mikrofon-Button nur unter HTTPS anzeigen - unter HTTP kann getUserMedia() ohnehin nicht funktionieren.
