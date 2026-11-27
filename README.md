@@ -72,6 +72,7 @@ Flexible solutions provide better access. And that's exactly what this project s
 17. Web Audio HTTP RX only / HTTPS RX and TX
 18. Change the background image for individual style (just for fun)
 19. Radio menu keys (BACK/UP/DOWN/ENTER/MENU) under the camera picture, and a modulation quick row FM/AM/USB/LSB
+20. VFO mode with a tuning wheel and auto-completion of typed frequencies
 
 > **Note:** The web interface can be open on several devices at the same time (for example a second screen). Transmit from one device at a time. If the device that holds PTT in the web interface disappears (crash, lost connection), the PTT kill switch cuts TX after 30 seconds, even if other devices are still connected. Hamlib/Rigctl software (e.g. OpenWebRX, fldigi) next to a browser is fine.
 
@@ -166,7 +167,7 @@ Update later with `git pull` and restart the program. Your own settings (`config
 4. Turn up the AE-5900's output volume from 0 to approximately 75% using the volume control.
 5. Ensure proper grounding to avoid RF interference.
 6. Ideally, the AE5900 should already be set to FM and channel 1.
-7. Set the microphone type to "TYPE 2" on your AE5900 and configure your P1–P4 key shortcuts.
+7. Set the microphone type to "TYPE 2" on your AE5900 and configure your P1–P4 key shortcuts. Of all functions you can put on P1–P4, only the **VFO** key is really worth setting (you need it for the VFO mode). Everything else is replaced by software now (VOX, scan, ...). The radio's own VOX on a P key can even be a disadvantage: the program uses the software VOX and stops a radio that transmits by itself, but it would transmit briefly each time.
 8. Run `python3 ae_5900_v2.py` on the host machine/server (the installer already starts it automatically at boot).
 9. Open `http://HOSTNAMEIP:5000` or `https://HOSTNAMEIP:5443` in your browser on your client device. At the first visit the page asks you to set a password (once per device you log in with). Then you should have control over your AE5900.
 10. Open the "Setup" section at the very bottom of the WebUI and perform the sync.
@@ -176,6 +177,14 @@ Update later with `git pull` and restart the program. Your own settings (`config
 The script supports all regions, including VFO mode.
 
 That's basically it; anyone with a basic level of technical knowledge should be able to get this working.
+
+### VFO mode (optional):
+
+Choose the band "VFO (VFO HAM)" in Setup & Sync and set the AE5900 to VFO (a P key set to VFO helps). The range is 24.715 to 30.105 MHz.
+
+- **Step:** "VFO freq. step" in Setup & Sync and the step set on the radio **must be the same** (for example 1 kHz on both). Otherwise the display and the radio drift apart when you turn the wheel or press UP/DOWN. Screenshot of the setting on the radio: ![VFO settings](/pictures/vfosettings.png)
+- **Keypad:** 1-2 digits select a CB channel, 7 digits set a frequency at once (entered in units of 10 Hz: 2755500 = 27.555 MHz). After the short wait, 3-6 digits are filled with zeros: 27555 gives 27.555 MHz, 275 gives 27.5 MHz.
+- **VFO wheel:** it replaces S-SCAN and MW in this band (all other regions keep them). Swipe right = up, left = down; with a mouse use the mouse wheel. One notch is one VFO step. Up to 5 notches go to the radio as single UP/DOWN presses; if you turn faster, the program collects the notches and sends the finished frequency (takes about 1.4 s, however far you turn). The wheel is dimmed while transmitting, in PA mode, with LOCK and while the radio menu is open.
 
 ### Audio Setup (especially for those wishing to use Mumble instead of WebAudio):
 
@@ -259,15 +268,18 @@ Check out OpenwebrxPlus: https://luarvique.github.io/ppa/ RTL-SDR Blog v4: https
 
 ### Version Info & Changelog
 
-Current version: **V-201126 CTL**. Always update using `git pull`.
+Current version: **V-271126 WHL**. Always update using `git pull`.
 
-1. New: remote control of the radio menu (BACK, UP, DOWN, ENTER, MENU) under the camera picture and on `/cam`. MENU is held for 2 seconds; while the menu is open the normal keys are locked, and the program shows how many BACK presses close the menu. Do not press BACK more often than shown (in the closed menu it operates the EMG key of the radio).
-2. New: modulation quick row FM / AM / USB / LSB as 4th key row (respects Skip PA / Skip CW). Tested without FW 1.12; feedback with FW 1.12 is welcome.
-3. Also new since V-181126 CID: Security: the PTT kill switch now watches the device that is transmitting. If the device that holds PTT in the web interface disappears, TX is cut after 30 seconds, even if other browsers or phones stay connected (for example a forgotten computer at home). The web interface can be open on several devices at the same time.
-4. Also since V-181126 CID: fix: keypad channel entry. After a mistaken first digit ("0-" on the display) the first press of a device key (channel up/down, mode, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) now only ends the input, on the radio and in the web interface alike; the next press acts on both. Before, the web interface and the radio ended up one step apart.
-5. Also since V-181126 CID: "Status correction override": the checkbox "VOX - Reverse status" is gone (the VOX is software now).
-6. Also new since V-111126 ADR: the VOX is now a software function (V-151126 VOX, Setup & Sync -> Radio & keys -> "VOX (software)"). The VOX of the radio itself is not used any more. After the update the VOX starts switched off; if it was on before, check in the AE-5900 menu that the VOX of the radio is off.
-7. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
+1. New: VFO wheel instead of S-SCAN/MW in the VFO band (swipe or mouse wheel; one notch = "VFO freq. step"; fast turning sends the finished frequency). Also in VFO: 3-6 typed digits are filled with zeros (27555 gives 27.555 MHz). See the section "VFO mode". The "VFO freq. step" and the step on the radio must be the same.
+2. New: RF waterfall "around the channel" up to 400 kHz (about 40 channels).
+3. Fix: the PTT key no longer lights up orange when released (orange = software VOX transmits). Calmer look while keys are processed, and no more flickering of the "WebAudio rate" list on Android.
+4. Also new since V-201126 CTL: remote control of the radio menu (BACK, UP, DOWN, ENTER, MENU) under the camera picture and on `/cam`. MENU is held for 2 seconds; while the menu is open the normal keys are locked, and the program shows how many BACK presses close the menu. Do not press BACK more often than shown (in the closed menu it operates the EMG key of the radio).
+5. Also since V-201126 CTL: modulation quick row FM / AM / USB / LSB as 4th key row (respects Skip PA / Skip CW). Tested without FW 1.12; feedback with FW 1.12 is welcome.
+6. Also new since V-181126 CID: Security: the PTT kill switch now watches the device that is transmitting. If the device that holds PTT in the web interface disappears, TX is cut after 30 seconds, even if other browsers or phones stay connected (for example a forgotten computer at home). The web interface can be open on several devices at the same time.
+7. Also since V-181126 CID: fix: keypad channel entry. After a mistaken first digit ("0-" on the display) the first press of a device key (channel up/down, mode, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) now only ends the input, on the radio and in the web interface alike; the next press acts on both. Before, the web interface and the radio ended up one step apart.
+8. Also since V-181126 CID: "Status correction override": the checkbox "VOX - Reverse status" is gone (the VOX is software now).
+9. Also new since V-111126 ADR: the VOX is now a software function (V-151126 VOX, Setup & Sync -> Radio & keys -> "VOX (software)"). The VOX of the radio itself is not used any more. After the update the VOX starts switched off; if it was on before, check in the AE-5900 menu that the VOX of the radio is off.
+10. Also new since V-111126 ADR (V-141126 TRS): the optional T/R switch that grounds an SDR on the same antenna while transmitting, see [TRSWITCH.md](TRSWITCH.md).
 
 The complete history is in the [CHANGELOG](CHANGELOG.md).
 

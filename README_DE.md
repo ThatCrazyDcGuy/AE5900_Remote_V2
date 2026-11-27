@@ -102,6 +102,7 @@ Flexible Lösungen verschaffen besseren Zugang. Und genau das soll dieses Projek
 17. Web-Audio HTTP nur RX / HTTPS RX und TX
 18. Hintergrundbild für einen individuellen Stil ändern (einfach nur zum Spaß)
 19. Menütasten des Funkgeräts (BACK/UP/DOWN/ENTER/MENU) unter dem Kamerabild und eine Modulations-Schnellreihe FM/AM/USB/LSB
+20. VFO-Modus mit Tuning-Rad und Auto-Ergänzung getippter Frequenzen
 
 Hier werden verschiedene Funktionen demonstriert. Rigctl und Hamlib sowie ein Bluetooth-S-Meter sind implementiert.
 
@@ -174,7 +175,7 @@ Wer Tailscale nutzen möchte: Den erzeugten Tailscale-Link in den Browser kopier
 4. Stelle die Ausgabelautstärke des AE5900 von 0 auf etwa 75 % am Lautstärkeregler hoch.
 5. Sorge für eine ordnungsgemäße Erdung, um HF-Störungen zu vermeiden.
 6. Bestenfalls ist das AE5900 bereits auf FM und den Kanal 1 gesetzt.
-7. Stelle an deinem AE5900 Mikrofon TYPE 2 ein und setze deine P1 - P4 Key-Shortcuts.
+7. Stelle an deinem AE5900 Mikrofon TYPE 2 ein und setze deine P1 - P4 Key-Shortcuts. Von allen Funktionen, die man auf P1 - P4 legen kann, lohnt sich eigentlich nur die **VFO**-Taste (du brauchst sie für den VFO-Modus). Alles andere wurde durch Software ersetzt (VOX, Suchlauf, ...). Die VOX des Funkgeräts auf einer P-Taste kann sogar nachteilig sein: Das Programm nutzt die Software-VOX und stoppt ein von selbst sendendes Funkgerät, es würde aber jedes Mal kurz senden.
 8. Führe `python3 ae_5900_v2.py` auf dem Hostrechner/Server aus (der Installer startet es beim Booten bereits automatisch).
 9. Öffne auf dem Endgerät `http://HOSTNAMEIP:5000` oder `https://HOSTNAMEIP:5443` in deinem Browser. Beim ersten Besuch setzt du ein Passwort. Danach solltest du bereits Kontrolle über dein AE5900 haben.
 10. Öffne ganz unten im WebUI das Setup und führe den Sync aus.
@@ -184,6 +185,14 @@ Wer Tailscale nutzen möchte: Den erzeugten Tailscale-Link in den Browser kopier
 Das Script ist für alle Regionen inkl. VFO-Mode ausgelegt.
 
 Das ist eigentlich alles, und wer nicht komplett ahnungslos ist, bekommt das schon hin.
+
+### VFO-Modus (optional):
+
+Im Setup & Sync das Band „VFO (VFO HAM)“ wählen und das AE5900 auf VFO stellen (eine P-Taste mit VFO hilft dabei). Der Bereich geht von 24,715 bis 30,105 MHz.
+
+- **Schrittweite:** „VFO freq. step“ im Setup & Sync und die am Funkgerät eingestellte Schrittweite **müssen gleich sein** (zum Beispiel beide 1 kHz). Sonst laufen Anzeige und Funkgerät beim Drehen des Rads oder bei UP/DOWN auseinander. Screenshot der Einstellung am Funkgerät: ![VFO-Einstellungen](/pictures/vfosettings.png)
+- **Tastenfeld:** 1-2 Ziffern wählen einen CB-Kanal, 7 Ziffern setzen sofort eine Frequenz (Eingabe in 10-Hz-Einheiten: 2755500 = 27,555 MHz). Nach der kurzen Wartezeit werden 3-6 Ziffern mit Nullen aufgefüllt: 27555 ergibt 27,555 MHz, 275 ergibt 27,5 MHz.
+- **VFO-Rad:** Es ersetzt in diesem Band S-SCAN und MW (alle anderen Regionen behalten sie). Nach rechts wischen = hoch, nach links = runter; mit der Maus das Mausrad benutzen. Ein Rastpunkt ist ein VFO-Schritt. Bis zu 5 Rastpunkte gehen als einzelne UP/DOWN-Tipps ans Funkgerät; wer schneller dreht, dem sammelt das Programm die Rastpunkte und schickt die fertige Frequenz (dauert etwa 1,4 s, egal wie weit man dreht). Beim Senden, im PA-Modus, bei LOCK und bei offenem Geräte-Menü ist das Rad abgedunkelt.
 
 ### Audio Setup, besonders für jene, die Mumble anstatt WebAudio nutzen möchten:
 
@@ -265,15 +274,18 @@ Ein guter WebSDR lässt sich einfach mit OpenWebRX, einem Raspberry Pi, einem RT
 
 ### Versionsinformationen & Änderungsübersicht
 
-Aktuell: **V-201126 CTL**. Aktualisieren immer mit `git pull`.
+Aktuell: **V-271126 WHL**. Aktualisieren immer mit `git pull`.
 
-1. Neu: Fernbedienung des Funkgerät-Menüs (BACK, UP, DOWN, ENTER, MENU) unter dem Kamerabild und auf `/cam`. MENU wird 2 Sekunden gehalten; solange das Menü offen ist, sind die normalen Tasten gesperrt, und das Programm zeigt, wie oft BACK das Menü schließt. Nicht öfter BACK drücken als angezeigt (im geschlossenen Menü bedient es die EMG-Taste des Funkgeräts).
-2. Neu: Modulations-Schnellreihe FM / AM / USB / LSB als 4. Tastenreihe (beachtet Skip PA / Skip CW). Getestet ohne FW 1.12; Rückmeldungen mit FW 1.12 sind willkommen.
-3. Außerdem neu seit V-181126 CID: Sicherheit: Der PTT-Kill-Schalter beobachtet jetzt das Gerät, das gerade sendet. Verschwindet das Gerät, das PTT in der Weboberfläche hält, wird TX nach 30 Sekunden getrennt, auch wenn andere Browser oder Handys verbunden bleiben (zum Beispiel ein vergessener Rechner zu Hause). Die Weboberfläche kann auf mehreren Geräten gleichzeitig offen sein.
-4. Außerdem seit V-181126 CID: Fehlerbehebung: Kanaleingabe am Tastenfeld. Nach einer versehentlichen ersten Ziffer („0-“ im Display) beendet der erste Druck auf eine Gerätetaste (Kanal hoch/runter, Modus, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) jetzt nur die Eingabe, am Funkgerät und in der Weboberfläche gleichermaßen; erst der nächste wirkt auf beide. Vorher lagen Weboberfläche und Funkgerät danach einen Schritt auseinander.
-5. Außerdem seit V-181126 CID: „Status correction override“: Die Checkbox „VOX - Reverse status“ entfällt (die VOX ist jetzt Software).
-6. Außerdem neu seit V-111126 ADR: Die VOX ist jetzt eine Software-Funktion (V-151126 VOX, Setup & Sync -> Radio & keys -> „VOX (software)“). Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet; falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
-7. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
+1. Neu: VFO-Rad statt S-SCAN/MW im VFO-Band (Wischen oder Mausrad; ein Rastpunkt = „VFO freq. step“; schnelles Drehen sendet die fertige Frequenz). Außerdem im VFO: 3-6 getippte Ziffern werden mit Nullen aufgefüllt (27555 ergibt 27,555 MHz). Siehe Abschnitt „VFO-Modus“. Die „VFO freq. step“ und die Schrittweite am Funkgerät müssen gleich sein.
+2. Neu: HF-Wasserfall „around the channel“ bis 400 kHz (etwa 40 Kanäle).
+3. Fehlerbehebung: Die PTT-Taste leuchtet beim Loslassen nicht mehr orange (Orange = Software-VOX sendet). Ruhigeres Aussehen, solange Tasten verarbeitet werden, und kein Flackern der Liste „WebAudio rate“ unter Android mehr.
+4. Außerdem neu seit V-201126 CTL: Fernbedienung des Funkgerät-Menüs (BACK, UP, DOWN, ENTER, MENU) unter dem Kamerabild und auf `/cam`. MENU wird 2 Sekunden gehalten; solange das Menü offen ist, sind die normalen Tasten gesperrt, und das Programm zeigt, wie oft BACK das Menü schließt. Nicht öfter BACK drücken als angezeigt (im geschlossenen Menü bedient es die EMG-Taste des Funkgeräts).
+5. Außerdem seit V-201126 CTL: Modulations-Schnellreihe FM / AM / USB / LSB als 4. Tastenreihe (beachtet Skip PA / Skip CW). Getestet ohne FW 1.12; Rückmeldungen mit FW 1.12 sind willkommen.
+6. Außerdem neu seit V-181126 CID: Sicherheit: Der PTT-Kill-Schalter beobachtet jetzt das Gerät, das gerade sendet. Verschwindet das Gerät, das PTT in der Weboberfläche hält, wird TX nach 30 Sekunden getrennt, auch wenn andere Browser oder Handys verbunden bleiben (zum Beispiel ein vergessener Rechner zu Hause). Die Weboberfläche kann auf mehreren Geräten gleichzeitig offen sein.
+7. Außerdem seit V-181126 CID: Fehlerbehebung: Kanaleingabe am Tastenfeld. Nach einer versehentlichen ersten Ziffer („0-“ im Display) beendet der erste Druck auf eine Gerätetaste (Kanal hoch/runter, Modus, A/SQ, ASQ, LOCK, MUTE, P1-P4, PTT) jetzt nur die Eingabe, am Funkgerät und in der Weboberfläche gleichermaßen; erst der nächste wirkt auf beide. Vorher lagen Weboberfläche und Funkgerät danach einen Schritt auseinander.
+8. Außerdem seit V-181126 CID: „Status correction override“: Die Checkbox „VOX - Reverse status“ entfällt (die VOX ist jetzt Software).
+9. Außerdem neu seit V-111126 ADR: Die VOX ist jetzt eine Software-Funktion (V-151126 VOX, Setup & Sync -> Radio & keys -> „VOX (software)“). Die VOX des Funkgeräts selbst wird nicht mehr benutzt. Nach dem Update startet die VOX ausgeschaltet; falls sie vorher an war, bitte im Menü des AE-5900 prüfen, dass die VOX des Funkgeräts aus ist.
+10. Außerdem neu seit V-111126 ADR (V-141126 TRS): der optionale T/R-Umschalter, der einen SDR an der gleichen Antenne beim Senden erdet, siehe [TRSWITCH_DE.md](TRSWITCH_DE.md).
 
 Die vollständige Historie steht in der [Änderungsübersicht](CHANGELOG_DE.md).
 

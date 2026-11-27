@@ -556,7 +556,7 @@ class RadioInterface:
             "cam_hflip": False,
             "cam_vflip": False,
             "wf_enabled": False,             # NEU: HF-Wasserfall (nur mit S-Meter-Quelle "sdr") - aus = keine FFT, kein Verkehr
-            "wf_span_khz": 60,               # Gesamtbreite des Fensters um den Kanal in kHz (40 / 60 / 100 / 200)
+            "wf_span_khz": 60,               # Gesamtbreite des Fensters um den Kanal in kHz (40 / 60 / 100 / 200 / 300 / 400)
             "wf_tx": False,                  # Dongle auch waehrend des Sendens weiterlesen (nur mit eigener Empfangsantenne!)
             "audio_card_match": "",          # NEU: nur bei MEHREREN USB-Audiogeraeten: Teil des Kartennamens (z.B. "C-Media"), die verwendet werden soll
             
@@ -1054,6 +1054,10 @@ class RadioInterface:
         dann PTT. Beim Loslassen: erst PTT weg, der ESP geht nach dem Nachlauf wieder auf 'RX'. Kann der ESP die
         Erdung nicht bestaetigen, wird NICHT gesendet (Schutz des SDR). Gibt True zurueck, wenn PTT gesetzt wurde."""
         self.tx_owner = None          # wer sendet, setzt der Aufrufer (PTT-Taste) erst danach
+        if not on:
+            # Jede Freigabe merken: das Funkgeraet meldet kurz noch "sendet", das darf nicht als VOX gelten
+            self.last_ptt_release_time = time.time()
+            self.is_device_sending = False
         if not self.ser:
             return True
         tr = globals().get('TR')
@@ -1802,10 +1806,40 @@ def rig_ptt_control(state):
 # die Haupttasten (Kanal, Modus, Ziffern, CLAR, A/SQ ...): auf dem Geraet wuerden sie sonst im Menue wirken, das WebUI
 # haette sie aber als Kanal-/Modus-Aenderung mitgezaehlt (derselbe Auseinanderlauf wie bei der offenen Ziffern-Eingabe).
 MENU_DEPTH_MAX = 2   # tiefste Ebene (Wert aendern); BACK-Anzahl zum Schliessen = Ebene + 1
+WHEEL_MAX_CLICKS = 5     # bis zu so vielen Schritten schickt das VFO-Rad einzelne UP/DOWN-Tipps, darueber die fertige Frequenz
+WHEEL_MAX_STEPS = 2000
 MENU_WINDOW = 10.0
 MENU_OPEN_HOLD = 2.0
 MENU_KEYS = {'MENU_BACK': '25', 'MENU_UP': '26', 'MENU_DOWN': '27', 'MENU_ENTER': '1E'}
 MODE_CMDS = {'MODE_FM': 'FM', 'MODE_AM': 'AM', 'MODE_USB': 'USB', 'MODE_LSB': 'LSB'}
+
+
+def vfo_apply_digits(buf, locked=False):
+    """VFO-Frequenz aus 3-7 Ziffern (Einheit 10 Hz): fehlende Stellen hinten werden mit Nullen aufgefuellt.
+    Setzt den RAM-Stand und schickt die Ziffernkette ans Funkgeraet. Gibt (ok, 7-stellige Ziffern) zurueck."""
+    digits = str(buf).ljust(7, '0')[:7]
+    target_hz = int(digits) * 10
+    if not (24715000 <= target_hz <= 30105000):
+        return False, digits
+    radio.vfo_freq = target_hz
+    radio.config["vfo_freq"] = target_hz
+    freq_mhz_str = f"{target_hz / 1_000_000:.3f}"
+    radio.current_ch = 0
+    for ch_num, f_str in BASE_EU.items():
+        if f_str == freq_mhz_str:
+            radio.current_ch = int(ch_num)
+            break
+    radio.save_config()
+    if radio.ser:
+        import contextlib
+        with (contextlib.nullcontext() if locked else radio.lock):      # locked=True: Aufrufer haelt radio.lock schon
+            for char in digits:
+                if char in key_codes:
+                    radio.ser.write(bytes.fromhex(f"41000100{key_codes[char]}000006"))
+                    time.sleep(0.10)
+                    radio.ser.write(bytes.fromhex(f"41000000{key_codes[char]}000006"))
+                    time.sleep(0.10)
+    return True, digits
 
 
 def menu_is_open():
@@ -1829,7 +1863,7 @@ def menu_blocks(cmd):
     Programme (JS8Call/Hamlib) bleiben frei."""
     if cmd in MENU_KEYS or cmd == 'MENU_OPEN':
         return False
-    if cmd in INPUT_ABORT_KEYS or cmd in ('SSCAN', 'MW_TOGGLE', 'FULL_ASQ_SQ_SYNC', 'SQUELCHMAXUP', 'SQUELCHMAXDOWN'):
+    if cmd in INPUT_ABORT_KEYS or cmd in ('SSCAN', 'MW_TOGGLE', 'FULL_ASQ_SQ_SYNC', 'SQUELCHMAXUP', 'SQUELCHMAXDOWN', 'VFO_WHEEL'):
         return True
     if re.fullmatch(r'K\d', cmd):
         return True
@@ -1956,6 +1990,45 @@ def api_cmd(cmd):
             radio.config["vox_enabled"] = not radio.config.get("vox_enabled", False)
             radio.save_config()
             print("[VOX] Software-VOX " + ("AN" if radio.config["vox_enabled"] else "AUS"))
+
+        elif cmd == 'VFO_WHEEL':
+            # VFO-Rad im Browser: steps = Anzahl Rastpunkte (+ hoch, - runter), jeder Punkt = eingestellte VFO-Schrittweite.
+            # Wenige Schritte: einzelne UP/DOWN-Tipps ans Geraet. Viele auf einmal (schnelles Wischen): die fertige Frequenz
+            # als Ziffernkette schicken, das dauert immer gleich lang (und gleicht die Anzeige mit dem Geraet ab).
+            try:
+                _n = int(request.args.get('steps', '0'))
+            except ValueError:
+                _n = 0
+            _n = max(-WHEEL_MAX_STEPS, min(WHEEL_MAX_STEPS, _n))
+            if (radio.config.get("current_band", "EU") != "VFO" or radio.is_tx or radio.config.get("lock_enabled", False)
+                    or MODES[radio.mode_idx].upper() == "PA" or _n == 0):
+                return jsonify(get_current_status_dict())
+            radio.key_buffer = ""
+            _step = max(1, int(radio.config.get("vfo_step", 1000)))
+            _target = min(30105000, max(24715000, radio.vfo_freq + _n * _step))
+            _eff = int(round((_target - radio.vfo_freq) / _step))
+            if _eff != 0 and abs(_eff) <= WHEEL_MAX_CLICKS:
+                _hx = "10" if _eff > 0 else "11"
+                for _ in range(abs(_eff)):
+                    if radio.ser:
+                        radio.ser.write(bytes.fromhex(f"41000100{_hx}000006"))
+                        time.sleep(0.08)
+                        radio.ser.write(bytes.fromhex(f"41000000{_hx}000006"))
+                        time.sleep(0.08)
+                radio.vfo_freq = _target
+                radio.config["vfo_freq"] = _target
+                _mhz = f"{_target / 1_000_000:.3f}"
+                radio.current_ch = 0
+                for _c, _f in BASE_EU.items():
+                    if _f == _mhz:
+                        radio.current_ch = int(_c)
+                        break
+                radio.save_config()
+                print(f"[VFO RAD] {abs(_eff)}x {'UP' if _eff > 0 else 'DOWN'} -> {_target} Hz")
+            elif _eff != 0:
+                _ok, _dg = vfo_apply_digits(str(int(round(_target / 10.0))).zfill(7), locked=True)
+                print(f"[VFO RAD] {_eff:+d} Schritte als Frequenz gesendet: {_dg} ({'ok' if _ok else 'ausserhalb'})")
+            return jsonify(get_current_status_dict())
 
         elif cmd in ['U', 'D']:
             band = radio.config.get("current_band", "EU")
@@ -2188,6 +2261,9 @@ def api_cmd(cmd):
                 radio.is_tx = not radio.is_tx
                 radio.force_rx = False 
                 if was_transmitting:
+                    # Ab jetzt gilt "Loslassen": das Funkgeraet meldet waehrend des Rogerbeeps noch "sendet" (zaehlt nicht als VOX)
+                    radio.last_ptt_release_time = time.time()
+                    radio.is_device_sending = False
                     print("PTT-RELEASE: Sende Rogerbeep aktiv ueber den Aether...")
                     chosen_beep = radio.config.get("current_beep", "None")
                     if chosen_beep != "None" and radio.config.get("roger_beep_enabled", True):
@@ -3175,9 +3251,13 @@ def api_cmd(cmd):
                     else:
                         print(f"[WÄCHTER ERROR] VFO-Kanal {val} ungültig.")
                 
-                # FALL 2: Unfertige 3-6 Ziffern im VFO -> Verwerfen
+                # FALL 2: 3-6 Ziffern im VFO -> fehlende Stellen hinten mit Nullen auffuellen (27555 -> 27,55500 MHz)
                 else:
-                    print(f"[WÄCHTER] Unvollständige VFO-Eingabe '{radio.key_buffer}' nach 2s verworfen.")
+                    _ok, _full = vfo_apply_digits(radio.key_buffer)
+                    if _ok:
+                        print(f"[WÄCHTER] VFO-Eingabe '{radio.key_buffer}' mit Nullen ergänzt: {_full} -> {int(_full) * 10} Hz.")
+                    else:
+                        print(f"[WÄCHTER] VFO-Eingabe '{radio.key_buffer}' (ergänzt {_full}) liegt außerhalb des Bereichs, verworfen.")
                 
                 radio.key_buffer = "" # Puffer in jedem Fall löschen
 
@@ -3204,7 +3284,7 @@ def api_cmd(cmd):
         "CH": current_ch_str, 
         "MODE": MODES[radio.mode_idx], 
         "PTT": "ON" if radio.is_tx else "OFF", 
-        "VOX_TX": radio.is_device_sending,
+        "VOX_TX": bool(radio.svox_active and radio.is_tx),
         "VOX_ENABLED": radio.config.get("vox_enabled", False), 
         "MUTE_ENABLED": radio.config.get("mute_enabled", False), 
         "ASQ_ENABLED": radio.config.get("asq_enabled", False),
@@ -3240,7 +3320,7 @@ def api_cmd(cmd):
         "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
-        "VFO_FREQ": radio.vfo_freq,
+        "VFO_FREQ": radio.vfo_freq, "VFO_STEP": int(radio.config.get("vfo_step", 1000)),
         "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
     })
 @app.route('/api/config/override', methods=['POST'])
@@ -3277,7 +3357,7 @@ def api_config_override():
                 "CH": current_ch_str, 
                 "MODE": MODES[radio.mode_idx], 
                 "PTT": "ON" if radio.is_tx else "OFF", 
-                "VOX_TX": radio.is_device_sending, 
+                "VOX_TX": bool(radio.svox_active and radio.is_tx), 
                 "VOX_ENABLED": radio.config.get("vox_enabled", False), 
                 "ASQ_ENABLED": radio.config.get("asq_enabled", False), 
                 "MUTE_ENABLED": radio.config.get("mute_enabled", False), 
@@ -3312,7 +3392,7 @@ def api_config_override():
                 "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
                 "CURRENT_BAND": radio.config.get("current_band", "EU"),
-                "VFO_FREQ": radio.vfo_freq,
+                "VFO_FREQ": radio.vfo_freq, "VFO_STEP": int(radio.config.get("vfo_step", 1000)),
                 "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
             })
     except Exception as e: 
@@ -3747,7 +3827,7 @@ def sdr_band_power_db(iq, center_hz, freq_hz, sample_rate, nfft=8192, half_bw_hz
 # HF-WASSERFALL (optional, nur mit S-Meter-Quelle "sdr"): dieselben IQ-Daten wie das S-Meter, Spektrum um den Kanal.
 # Es wird nur gerechnet und gesendet, solange mindestens ein Browser zuschaut (wf_clients).
 # =========================================================================
-WF_SPANS = (40, 60, 100, 200)    # kHz
+WF_SPANS = (40, 60, 100, 200, 300, 400)    # kHz (400 kHz = etwa 40 CB-Kanaele)
 WF_COLS = 480                    # maximale Spaltenzahl pro Zeile
 WF_ROW_S = 0.1                   # etwa 10 Zeilen pro Sekunde
 wf_clients = set()
@@ -4822,7 +4902,7 @@ def get_current_status_dict():
         "CH": current_ch_str, 
         "MODE": MODES[radio.mode_idx], 
         "PTT": "ON" if radio.is_tx else "OFF", 
-        "VOX_TX": radio.is_device_sending,
+        "VOX_TX": bool(radio.svox_active and radio.is_tx),
         "VOX_ENABLED": radio.config.get("vox_enabled", False), 
         "ASQ_ENABLED": radio.config.get("asq_enabled", False), 
         "MUTE_ENABLED": radio.config.get("mute_enabled", False),
@@ -4855,7 +4935,7 @@ def get_current_status_dict():
         "CQ_REC_PENDING": getattr(radio, 'cq_rec_pending', False),
         "WEBAUDIO_ENABLED": radio.config.get("webaudio_enabled", False),
         "CURRENT_BAND": radio.config.get("current_band", "EU"),
-        "VFO_FREQ": radio.vfo_freq,
+        "VFO_FREQ": radio.vfo_freq, "VFO_STEP": int(radio.config.get("vfo_step", 1000)),
         "FULL_SYNC_ACTIVE": radio.config.get("full_sync_active", False)
     }
 
